@@ -1,0 +1,15 @@
+# Downloaded source dataset and local dependency bundle
+/Bi3/
+/pilot_tools/
+/pilot_run/**/*.json
+/pilot_run/**/README.md
+
+# Generated visual media and caches
+*.jpg
+*.jpeg
+*.png
+__pycache__/
+*.pyc
+
+# Local environment
+.venv/
