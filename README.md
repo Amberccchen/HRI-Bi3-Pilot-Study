@@ -34,6 +34,7 @@ Use [`preprocessing/bi3_derived.py`](preprocessing/bi3_derived.py) to read these
 python traj_gen/run.py select                       # choose 16 test trips -> <run>/test_trips.json
 python traj_gen/run.py run --thinking nothink think # resumable; needs the vLLM server on :8000
 python traj_gen/run.py analyze                      # tables and figures of whatever has finished
+python traj_gen/run.py animate <episode folder> ...  # animation.gif and timeline.png (colour = time) in each folder
 ```
 
 `--run <folder>` (before the subcommand) picks the run folder; the default is `/persistent/experiments/HRI/bi3_traj_gen/20261022_v1`. Each episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip>/s<k>/` (manifest, trajectory, prompts and replies, images, `result.png`). `analyze` writes `<run>/analysis/`: `episodes.csv`, `summary.csv` (per condition and site), `paired_baselines.csv` (each condition minus replay and straight, per trip), `comparisons.csv` (neutral vs social, nothink vs think, text vs map, ... with bootstrap intervals over trips) and `figures/` (condition dot plots, speed-cap violations, one overlay per test trip). All of these are mocap-derived, so run folders stay outside the repository and must not be committed.

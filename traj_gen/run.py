@@ -3,6 +3,7 @@
   select   choose the 16 test trips and write <run>/test_trips.json
   run      run experiments (resumable; one folder per episode, see episodes.py)
   analyze  tables and figures of a (partial) run into <run>/analysis (see analyze.py)
+  animate  animation.gif and timeline.png (colour = time) in given episode folders (see animate.py)
 
 Run folders live outside the repository (they hold mocap-derived outputs):
 /persistent/experiments/HRI/bi3_traj_gen/<run>.
@@ -24,6 +25,7 @@ sys.path.insert(0, str(ROOT / "preprocessing"))
 sys.path.insert(0, str(ROOT / "metrics"))
 sys.path.insert(0, str(ROOT / "traj_gen"))
 from analyze import OVERLAY, analyze
+from animate import animate, timeline
 from bi3_derived import load_site_frames, load_trips  # noqa: E402
 from experiments import EXPERIMENTS  # noqa: E402
 from planners import THINKING  # noqa: E402
@@ -106,6 +108,11 @@ def analysis(args: argparse.Namespace) -> None:
     analyze(args.run, args.overlay)
 
 
+def animate_episodes(args: argparse.Namespace) -> None:
+    for folder in args.episodes:
+        print(animate(folder, args.speed), timeline(folder))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", type=Path, default=RUN, help="run folder")
@@ -122,6 +129,10 @@ def main() -> None:
     p = sub.add_parser("analyze", help="summary tables and figures")
     p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
+    p = sub.add_parser("animate", help="animation.gif and timeline.png for finished episodes")
+    p.add_argument("episodes", nargs="+", type=Path, help="episode folders (each with a manifest.json)")
+    p.add_argument("--speed", type=float, default=2.0, help="playback speed vs real time (2: a 12 s trip plays in 6 s)")
+    p.set_defaults(func=animate_episodes)
     args = parser.parse_args()
     args.func(args)
 
