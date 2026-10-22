@@ -1,0 +1,3 @@
+Plan the robot's motion as velocities (vx, vy) in {unit}/s, one per step of {dt} s: vx points right and vy points up in the room frame. The first applies from t to t + {dt} s, the second from t + {dt} s to t + {dt2} s, and so on. Give as many as needed to reach the goal, at most {max_steps}. A velocity whose speed is above the maximum is scaled down to the maximum.
+Think the situation through first. Then end your reply with the plan as a JSON object and nothing after it, in exactly this form (the numbers here are only an example):
+{{"velocities": [{example}]}}

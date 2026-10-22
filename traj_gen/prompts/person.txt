@@ -1,0 +1,1 @@
+{name}: at {pos}, {activity}. Goal: {goal}. Next goal: {next_goal}. Velocity {velocity} {unit}/s, speed {speed} {unit}/s. Distance from the robot {distance} {unit}. Previous positions, oldest first, every {dt} s over the last {hist_s} s: {history}.

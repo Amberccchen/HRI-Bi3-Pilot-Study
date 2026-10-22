@@ -39,7 +39,9 @@ from bi3_metrics import bi3_metrics  # noqa: E402
 OUT = DERIVED / TRIPS_DIR
 # Bi3's own train/val/test split by trial (fluentrobotics/Bi3 create_data_npys.py).
 TEST_TRIALS = {"laas": ["laas18", "laas19", "laas20"], "um": ["um16", "um17"]}
-DEFAULT_TRIALS = ["laas/laas18", "um/um16"]
+# um13, not a UM test trial: um16/um17 have no overhead video, and the camera-input experiments need one.
+# The VLM planners are not trained on Bi3, so the split matters only when comparing with learned models.
+DEFAULT_TRIALS = ["laas/laas18", "um/um13"]
 CONTROLLERS = ["blind", "cohan", "cv", "hst", "static"]
 SITE_FRAMES = {
     # origin = centre of the occupied area; rotation (deg) applied after shifting

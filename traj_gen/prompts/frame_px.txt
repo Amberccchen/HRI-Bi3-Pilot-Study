@@ -1,0 +1,1 @@
+All coordinates are in pixels of the attached top-down map, which is {image_px} x {image_px} pixels: the origin (0, 0) is the top-left corner of the image, u points right and v points down. The room is the square dark outline on the map; it spans u from {c0_min} to {c0_max} and v from {c1_min} to {c1_max}.

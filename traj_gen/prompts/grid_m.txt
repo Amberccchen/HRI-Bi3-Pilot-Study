@@ -1,0 +1,1 @@
+lines every 0.5 m, labelled in metres (x along the bottom, y along the left)
