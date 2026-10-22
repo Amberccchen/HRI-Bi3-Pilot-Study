@@ -93,3 +93,20 @@ def load_frames(site: str, trial: str, controller: str, agent: str | None = None
     if agent is not None:
         rows = [r for r in rows if r["agent"] == agent]
     return {key: np.array([r[key] for r in rows]) for key in rows[0]} if rows else {}
+
+
+TRIPS_DIR = "trips"
+
+
+def load_site_frames(root: Path = DERIVED) -> dict:
+    """Room frame, robot footprint/radius and room-frame stations per site (from extract_trips.py)."""
+    return json.loads((root / TRIPS_DIR / "site_frames.json").read_text())
+
+
+def load_trips(root: Path = DERIVED, **match) -> list[dict]:
+    """Robot trips from extract_trips.py, optionally filtered, e.g. load_trips(site="um", controller="cohan")."""
+    path = root / TRIPS_DIR / "trips.json"
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found; generate it with preprocessing/extract_trips.py")
+    trips = json.loads(path.read_text())
+    return [t for t in trips if all(t.get(k) == v for k, v in match.items())]

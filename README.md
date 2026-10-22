@@ -22,6 +22,8 @@ The same detector run on the robot finds 96% of its recorded goals, and 90% of i
 
 [`preprocessing/sync_video.py`](preprocessing/sync_video.py) estimates each overhead video's time offset from its mocap by cross-correlating frame-to-frame pixel change with the agents' summed mocap speed (`video_time = mocap_time + offset_s`). Across all 139 videos the offsets range from -1.7 to +0.2 s (median about -1 s at both sites). Results go to `/persistent/data/Bi3_derived/video_sync.csv`.
 
+[`preprocessing/extract_trips.py`](preprocessing/extract_trips.py) cuts robot station-to-station trips into compact samples for trajectory generation: cleaned tracks resampled to 2.5 Hz with 3 s of history, both participants' goal labels, and the Bi³ metrics ([`metrics/bi3_metrics.py`](metrics/bi3_metrics.py)) of the real path. Coordinates are room-centred, with LAAS rotated 180° so both sites have the shared table on the +x wall; `site_frames.json` records each site's frame, the 3.5 m room, the robot footprint and radius (PR2 0.47 m, Stretch 0.24 m) and the stations. By default it uses one Bi³ test trial per site (`laas18`, `um16`). Read results with `load_trips()` and `load_site_frames()`.
+
 Use [`preprocessing/bi3_derived.py`](preprocessing/bi3_derived.py) to read these outputs rather than rerunning the scripts: `load_video_sync()`, `video_time(site, trial, controller, mocap_time)`, `load_stations(site)`, `load_visits(...)` and `load_frames(..., agent="human0")`. Set `BI3_DERIVED` if the files live elsewhere. Each output folder has a manifest (`goals/manifest.json`, `video_sync.manifest.json`) recording the parameters, the script's SHA-256 and the git commit that produced it, so teammates can confirm they share the same labels.
 
 ## Reproduce locally
