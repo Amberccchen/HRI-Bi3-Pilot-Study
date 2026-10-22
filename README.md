@@ -26,6 +26,18 @@ The same detector run on the robot finds 96% of its recorded goals, and 90% of i
 
 Use [`preprocessing/bi3_derived.py`](preprocessing/bi3_derived.py) to read these outputs rather than rerunning the scripts: `load_video_sync()`, `video_time(site, trial, controller, mocap_time)`, `load_stations(site)`, `load_visits(...)` and `load_frames(..., agent="human0")`. Set `BI3_DERIVED` if the files live elsewhere. Each output folder has a manifest (`goals/manifest.json`, `video_sync.manifest.json`) recording the parameters, the script's SHA-256 and the git commit that produced it, so teammates can confirm they share the same labels.
 
+## Trajectory generation
+
+[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM) can plan the robot's path in a Bi³ trip: given the room, the people (positions, recent motion, goals) and the robot's goal station, as text and/or a top-down map, it returns timed waypoints, map pixels or velocities, and the path is scored against the five real controllers and a straight line on the same trips. People are replayed from the logs and do not react to the robot. Design and conditions: experiments in [`traj_gen/experiments.py`](traj_gen/experiments.py), prompts in `traj_gen/prompts/`, metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py).
+
+```
+python traj_gen/run.py select                       # choose 16 test trips -> <run>/test_trips.json
+python traj_gen/run.py run --thinking nothink think # resumable; needs the vLLM server on :8000
+python traj_gen/run.py analyze                      # tables and figures of whatever has finished
+```
+
+`--run <folder>` (before the subcommand) picks the run folder; the default is `/persistent/experiments/HRI/bi3_traj_gen/20261022_v1`. Each episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip>/s<k>/` (manifest, trajectory, prompts and replies, images, `result.png`). `analyze` writes `<run>/analysis/`: `episodes.csv`, `summary.csv` (per condition and site), `paired_baselines.csv` (each condition minus replay and straight, per trip), `comparisons.csv` (neutral vs social, nothink vs think, text vs map, ... with bootstrap intervals over trips) and `figures/` (condition dot plots, speed-cap violations, one overlay per test trip). All of these are mocap-derived, so run folders stay outside the repository and must not be committed.
+
 ## Reproduce locally
 
 1. Download Bi³ separately and place the extracted dataset so that `Bi3/Bi3/videos/laas/`, `Bi3/Bi3/jsons/laas/`, and `Bi3/Bi3/user_impressions/laas/` exist under this repository root. The data are not redistributed here.

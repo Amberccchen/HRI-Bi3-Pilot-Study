@@ -142,16 +142,26 @@ def bev_transform() -> BevTransform:
     return _axes(False)[2]
 
 
-def render_result(site: dict, goal_xy: np.ndarray, executed: np.ndarray, real: np.ndarray, humans: list[np.ndarray], title: str) -> bytes:
-    """Figure of a whole episode on the BEV axes: executed path (time marks), the real path, the straight line and the people's trails."""
-    fig, ax, _ = _axes(False)
-    _draw_room(ax, site, goal_xy)
-    ax.plot(*np.array([executed[0], goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3, label="straight line")
-    ax.plot(*real.T, ls="--", color="#555555", lw=2, zorder=3, label="real path")
+def _draw_people(ax, humans: list[np.ndarray]) -> None:
+    """Whole-episode people: trail, final disk and a P<k> label at the start."""
     for h, track in enumerate(humans):
         ax.plot(*track.T, "-o", color=PERSON, lw=2, ms=3, alpha=0.7, zorder=3, label="people" if h == 0 else None)
         ax.add_patch(Circle(track[-1], HUMAN_RADIUS, fc=PERSON, ec="k", alpha=0.4, zorder=5))
         ax.text(*track[0] + [0, 0.12], f"P{h + 1}", ha="center", fontsize=LABEL_PX * 0.7, color="#7a3300", zorder=7)
+
+
+def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
+    """The straight line from the start to the goal and the real controller's path."""
+    ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3, label="straight line")
+    ax.plot(*real.T, ls="--", color="#555555", lw=2, zorder=3, label="real path")
+
+
+def render_result(site: dict, goal_xy: np.ndarray, executed: np.ndarray, real: np.ndarray, humans: list[np.ndarray], title: str) -> bytes:
+    """Figure of a whole episode on the BEV axes: executed path (time marks), the real path, the straight line and the people's trails."""
+    fig, ax, _ = _axes(False)
+    _draw_room(ax, site, goal_xy)
+    _draw_reference(ax, goal_xy, executed[0], real)
+    _draw_people(ax, humans)
     ax.plot(*executed.T, "-o", color=ROBOT, lw=3, ms=4, zorder=4, label="executed")
     ax.add_patch(Circle(executed[-1], site["robot_radius_m"], fc=ROBOT, ec="k", alpha=0.45, zorder=5))
     ax.plot(*executed[0], marker="s", color="k", ms=8, zorder=6)
@@ -159,6 +169,22 @@ def render_result(site: dict, goal_xy: np.ndarray, executed: np.ndarray, real: n
         ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=ROBOT, zorder=7)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     ax.legend(loc="lower left", fontsize=LABEL_PX * 0.6)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=DPI)
+    return buf.getvalue()
+
+
+def render_overlay(site: dict, goal_xy: np.ndarray, samples: list[np.ndarray], real: np.ndarray, humans: list[np.ndarray], title: str) -> bytes:
+    """Several executed paths (e.g. the samples of one condition) of one trip on the same axes, without time marks or legend (the caller adds a shared legend)."""
+    fig, ax, _ = _axes(False)
+    _draw_room(ax, site, goal_xy)
+    _draw_reference(ax, goal_xy, real[0], real)
+    _draw_people(ax, humans)
+    for path in samples:
+        ax.plot(*path.T, "-o", color=ROBOT, lw=2.5, ms=3, alpha=0.7, zorder=4)
+        ax.add_patch(Circle(path[-1], site["robot_radius_m"], fc=ROBOT, ec="k", alpha=0.15, zorder=5))
+    ax.plot(*real[0], marker="s", color="k", ms=8, zorder=6)
+    ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=DPI)
     return buf.getvalue()

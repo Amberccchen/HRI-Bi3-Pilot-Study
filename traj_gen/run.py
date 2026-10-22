@@ -2,6 +2,7 @@
 
   select   choose the 16 test trips and write <run>/test_trips.json
   run      run experiments (resumable; one folder per episode, see episodes.py)
+  analyze  tables and figures of a (partial) run into <run>/analysis (see analyze.py)
 
 Run folders live outside the repository (they hold mocap-derived outputs):
 /persistent/experiments/HRI/bi3_traj_gen/<run>.
@@ -22,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "preprocessing"))
 sys.path.insert(0, str(ROOT / "metrics"))
 sys.path.insert(0, str(ROOT / "traj_gen"))
+from analyze import OVERLAY, analyze
 from bi3_derived import load_site_frames, load_trips  # noqa: E402
 from experiments import EXPERIMENTS  # noqa: E402
 from planners import THINKING  # noqa: E402
@@ -100,6 +102,10 @@ def run(args: argparse.Namespace) -> None:
         os._exit(130)  # running threads sit in blocking HTTP calls that can take minutes; they would hold the process open
 
 
+def analysis(args: argparse.Namespace) -> None:
+    analyze(args.run, args.overlay)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", type=Path, default=RUN, help="run folder")
@@ -113,6 +119,9 @@ def main() -> None:
     p.add_argument("--trips", type=Path, help="trip list (default: <run>/test_trips.json)")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
     p.set_defaults(func=run)
+    p = sub.add_parser("analyze", help="summary tables and figures")
+    p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
+    p.set_defaults(func=analysis)
     args = parser.parse_args()
     args.func(args)
 
