@@ -1,3 +1,1 @@
 Choose the robot's velocity (vx, vy) in {unit}/s for the next {dt} s: vx points right and vy points up in the room frame. The robot moves with this velocity for {dt} s. If its speed is above the maximum, the velocity is scaled down to the maximum.
-Think the situation through first. Then end your reply with the velocity as a JSON object and nothing after it, in exactly this form (the numbers here are only an example):
-{{"velocities": [{example}]}}

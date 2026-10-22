@@ -8,6 +8,7 @@ Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (came
 in the order they are described in the text.
 """
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ class PromptBuilder:
     """Waypoint plan in the units' coordinates; the base for the other output modes."""
 
     template = "output_waypoints"
+    key = "waypoints"  # key of the JSON object the model replies with: {key: [[a, b], ...]}
     # Example numbers in metres (converted to the units in use): a short slow path, ~0.1 m per step (0.25 m/s)
     # in an arbitrary place so it does not hint at where the robot should go.
     example = [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)]
@@ -48,8 +50,8 @@ class PromptBuilder:
         return ", ".join("[" + ", ".join(self.units.num(c) for c in self.to_units(p)) + "]" for p in self.example)
 
     def output_text(self) -> str:
-        return load_prompt(self.template).format(
-            unit=self.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps, example=self.example_text())
+        output = load_prompt(self.template).format(unit=self.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps)
+        return output + "\n" + load_prompt("reply").format(key=self.key, example=self.example_text())
 
     def system(self, scene: Scene) -> str:
         u, site = self.units, scene.site
@@ -73,6 +75,20 @@ class PromptBuilder:
         parts = [load_prompt(f"task_{self.framing}"), self.captions(scene, self.images), scene.text(self.units), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 
+    @property
+    def prefill(self) -> str:
+        """The start of a reply, to continue from when the thinking is cut off."""
+        return f'{{"{self.key}": [['
+
+    def parse(self, text: str) -> np.ndarray | None:
+        """The (k, 2) array under self.key of the JSON object in the reply, or None if the reply is not a valid plan."""
+        try:
+            plan = np.atleast_2d(np.array(json.loads(text[text.index("{"): text.rindex("}") + 1])[self.key], float))  # atleast_2d: the model sometimes drops the inner brackets of a single pair
+        except (ValueError, KeyError, TypeError):  # no braces, bad JSON, missing key, or entries that are not numbers
+            return None
+        ok = plan.ndim == 2 and plan.shape[1] == 2 and 1 <= len(plan) <= self.max_steps and np.isfinite(plan).all()
+        return plan if ok else None
+
     def followup(self, scene: Scene, executed_s: float) -> Turn:
         """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
@@ -84,12 +100,14 @@ class PixelPrompt(PromptBuilder):
     """Points on the BEV image, in pixels (units must be scene.Pixels)."""
 
     template = "output_pixels"
+    key = "points"
 
 
 class VelocityPrompt(PromptBuilder):
     """One velocity for the next step."""
 
     template = "output_velocity"
+    key = "velocities"
     example = [(0.20, 0.10)]  # m/s, below the cap
 
     def to_units(self, value) -> np.ndarray:

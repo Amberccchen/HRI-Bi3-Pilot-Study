@@ -1,0 +1,2 @@
+Reply with only a JSON object, with nothing before or after it, in exactly this form (the numbers here are only an example):
+{{"{key}": [{example}]}}

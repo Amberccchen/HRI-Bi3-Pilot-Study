@@ -1,3 +1,1 @@
 Plan the robot's path as points on the attached map, in pixels (u, v): one robot position every {dt} s, the first for t + {dt} s (the next step), the second for t + {dt2} s, and so on. Give as many as needed to reach the goal, at most {max_steps}.
-Think the situation through first. Then end your reply with the plan as a JSON object and nothing after it, in exactly this form (the numbers here are only an example):
-{{"points": [{example}]}}
