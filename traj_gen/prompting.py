@@ -18,10 +18,10 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
 from bev import SIZE_PX  # noqa: E402
 from scene import DT, HISTORY_S, Scene, Units, load_prompt  # noqa: E402
-from traj_gen_metrics import GOAL_TOL, SPEED_CAP  # noqa: E402
+from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS, SPEED_CAP  # noqa: E402
 
 
-FRAMINGS = ("neutral", "social")
+FRAMINGS = ("neutral", "social", "social_body", "cautious")  # social_body: social + the centre distance the bodies need; cautious: social, stronger (waiting/detours are fine)
 
 
 @dataclass
@@ -72,7 +72,9 @@ class PromptBuilder:
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
-        parts = [load_prompt(f"task_{self.framing}"), self.captions(scene, self.images), scene.text(self.units), self.output_text()]
+        u, r = self.units, scene.site["robot_radius_m"]
+        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(HUMAN_RADIUS), min_centre=u.len_text(r + HUMAN_RADIUS), unit=u.name)
+        parts = [task, self.captions(scene, self.images), scene.text(self.units), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 
     @property

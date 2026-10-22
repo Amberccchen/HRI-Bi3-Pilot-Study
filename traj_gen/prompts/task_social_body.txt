@@ -1,0 +1,2 @@
+Your task: plan the robot's motion from its current position to its goal station, efficiently and in a way that is socially appropriate and comfortable for the people in the room.
+The robot and the people take up space: the robot is a disk of radius {robot_radius} {unit} and a person is about a disk of radius {person_radius} {unit}, so the robot's centre must stay at least {min_centre} {unit} from every person's centre, now and at every future step, or the robot runs into them.

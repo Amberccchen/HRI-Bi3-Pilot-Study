@@ -47,6 +47,7 @@ MEANS = ["min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "ac
 PAIRED = ["goal_reached", "footprint_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 COMPARED = ["goal_reached", "footprint_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
+FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True)}  # (shape, filled) per prompt framing
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
 FAMILY_COLOUR = {"single shot": "#2a78d6", "rolling": "#eb6834", "conversation": "#1baf7a"}
@@ -143,6 +144,8 @@ def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
     for e in models:
         for th in THINKING:
             pairs.append(("social - neutral prompt", th, (e, "social", th), (e, "neutral", th)))
+            pairs.append(("social + body size - social prompt", th, (e, "social_body", th), (e, "social", th)))
+            pairs.append(("cautious - social prompt", th, (e, "cautious", th), (e, "social", th)))
         for fr in FRAMINGS:
             pairs.append(("think - nothink", fr, (e, fr, "think"), (e, fr, "nothink")))
     for name, experiments in by_experiment.items():
@@ -175,8 +178,8 @@ def style(ax, xlabel: str) -> None:
     ax.spines["bottom"].set_color(GRID)
 
 
-def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: dict, by_cond: dict, key, marker, title: str, legend: list) -> None:
-    """Rows = experiments, one panel per metric; one dot with a bootstrap interval per (offset label); baselines as vertical lines."""
+def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list, by_cond: dict, key, marker, title: str, legend: list) -> None:
+    """Rows = experiments, one panel per metric; one dot with a bootstrap interval per offset label, drawn as marker(label) = (shape, filled); baselines as vertical lines."""
     fig = Figure(figsize=(max(3.4 * len(panels) + 1.6, 7.5), 0.36 * len(rows) * len(offsets) + 2.6), dpi=150)
     axes = fig.subplots(1, len(panels), sharey=True, squeeze=False)[0]
     for ax, (metric, label) in zip(axes, panels.items()):
@@ -187,9 +190,9 @@ def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: dict,
                     continue
                 m, lo, hi = ci(by_cond[cond][metric])
                 colour = FAMILY_COLOUR[FAMILY[EXPERIMENTS[exp].episode]]
-                filled = marker(o)
+                shape, filled = marker(o)
                 ax.plot([lo, hi], [r + off] * 2, color=colour, lw=1.5, zorder=3)
-                ax.plot(m, r + off, "o", ms=7, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
+                ax.plot(m, r + off, shape, ms=7, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
         for base, (colour, ls) in BASELINE_STYLE.items():
             if (base, "-", "-") in by_cond:
                 ax.axvline(by_cond[(base, "-", "-")][metric].mean(), color=colour, ls=ls, lw=1.5, zorder=2)
@@ -207,9 +210,9 @@ def present(by_cond: dict, **fixed) -> list[str]:
     return [e for e in EXPERIMENTS if e not in BASELINES and any(c[0] == e and all(c[KEY.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
 
 
-def legend_handles(baselines: bool, markers: list[tuple[str, bool]]) -> list:
+def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> list:
     handles = [Line2D([], [], marker="o", ls="", ms=7, color=c, label=f) for f, c in FAMILY_COLOUR.items()]
-    handles += [Line2D([], [], marker="o", ls="", ms=7, color=INK, mfc=INK if filled else "white", label=label) for label, filled in markers]
+    handles += [Line2D([], [], marker=shape, ls="", ms=7, color=INK, mfc=INK if filled else "white", label=label) for label, shape, filled in markers]
     if baselines:
         handles += [Line2D([], [], color=c, ls=ls, lw=1.5, label=f"{b} (mean)") for b, (c, ls) in BASELINE_STYLE.items()]
     return handles
@@ -221,12 +224,14 @@ def condition_figures(by_cond: dict, fig_dir: Path) -> None:
     for th in THINKING:
         rows = present(by_cond, thinking=th)
         if rows:
-            dot_plot(fig_dir / f"conditions_{th}.png", panels, rows, {"neutral": 0, "social": 1}, by_cond, lambda e, f: (e, f, th), lambda f: f == "social",
-                     f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval", legend_handles(baselines, [("neutral prompt", False), ("social prompt", True)]))
+            framings = [f for f in FRAMINGS if any(c[1] == f and c[2] == th for c in by_cond)]
+            dot_plot(fig_dir / f"conditions_{th}.png", panels, rows, framings, by_cond, lambda e, f: (e, f, th), FRAMING_MARKER.get,
+                     f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval",
+                     legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
     rows = [e for e in present(by_cond) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
-        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": "share of plan steps above 0.3 m/s"}, rows, {"nothink": 0, "think": 1}, by_cond,
-                 lambda e, th: (e, "neutral", th), lambda th: th == "think", "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", False), ("thinking on", True)]))
+        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": "share of plan steps above 0.3 m/s"}, rows, ["nothink", "think"], by_cond,
+                 lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir: Path) -> None:
