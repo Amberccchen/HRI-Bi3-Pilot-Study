@@ -1,0 +1,1 @@
+Small hollow orange circles joined to a person by a thin dashed line mark where that person will be in {h1} s and {h2} s if they keep their current velocity (the same positions as in the text).

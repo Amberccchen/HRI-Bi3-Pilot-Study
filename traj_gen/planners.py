@@ -52,7 +52,7 @@ class QueryPlanner(Planner):
 
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = self.exp.prompt(self.framing, self.exp.units, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.robot)))
+        builder = self.exp.prompt(self.framing, self.exp.units, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.robot)), self.exp.predict)
         return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property
@@ -60,7 +60,7 @@ class QueryPlanner(Planner):
         return camera_frame(self.trip)  # the frame is the same for every query of the episode
 
     def images(self, scene: Scene, kinds: list[str]) -> dict[str, bytes]:
-        return {k: render_bev(scene, self.pixel_ticks)[0] if k == "bev" else self.cam for k in kinds}
+        return {k: render_bev(scene, self.pixel_ticks, self.exp.predict)[0] if k == "bev" else self.cam for k in kinds}
 
 
 class WaypointPlanner(QueryPlanner):

@@ -73,8 +73,8 @@ def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached."""
     df = episodes.copy()
     metric_cols = [c for c in df.columns if c in RATES + MEANS + ["clearance_min"]]
+    df[RATES] = df[RATES].astype(float)  # before the NaN assignment: pandas refuses NaN into a bool column
     df.loc[df.status != "ok", metric_cols] = np.nan
-    df[RATES] = df[RATES].astype(float)
     df["goal_reached"] = df.goal_reached.fillna(0.0)
     return df
 
@@ -139,6 +139,7 @@ def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
         "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
         "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
         "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
+        "prediction - none": [(e, e.removesuffix("_pred")) for e in models if EXPERIMENTS[e].predict],
     }
     pairs = []
     for e in models:

@@ -2,10 +2,11 @@
 
 Framing (neutral/social) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start; the rolling ones re-plan every
-execute_s of executed motion (rh_vel1_bev every step), `_conv` ones in one growing conversation.
+execute_s of executed motion (rh_vel1_bev every step), `_conv` ones in one growing conversation, `_pred` ones are their base
+experiment plus each person's constant-velocity prediction (text and map).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from bev import bev_transform
 from episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
@@ -23,6 +24,7 @@ class Experiment:
     images: tuple[str, ...]
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
+    predict: bool = False    # also give each person's constant-velocity position (text and map)
 
 
 METRES, PIXELS = Units(), Pixels(bev_transform())
@@ -42,4 +44,5 @@ _experiments = [
     Experiment("straight", StraightPlanner, None, None, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, None, None, (), BaselineEpisode, None),
 ]
+_experiments += [replace(e, id=f"{e.id}_pred", predict=True) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
 EXPERIMENTS = {e.id: e for e in _experiments}

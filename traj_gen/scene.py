@@ -20,6 +20,10 @@ PROMPTS = Path(__file__).parent / "prompts"
 DT = 0.4             # s between samples, from extract_trips.HZ = 2.5
 HISTORY_STEPS = 7    # 2.8 s: the most whole steps that fit in the 3 s of history the trips carry
 HISTORY_S = round(HISTORY_STEPS * DT, 1)  # 2.8, as written in the prompts
+# Horizons of the constant-velocity prediction (prediction experiments): 2 s is the rolling execution window
+# (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
+# middle and the end of the stretch the robot is committed to.
+PREDICT_S = (1.0, 2.0)
 VELOCITY_STEPS = 2   # velocity = displacement over 0.8 s; the tracks are already smoothed over 0.5 s, one step is noisy
 
 
@@ -105,9 +109,10 @@ class Scene:
             xy = np.asarray(track, float)[: i + 1, :2]
             k = min(VELOCITY_STEPS, i)
             v = (xy[-1] - xy[-1 - k]) / (k * DT)
+            half = site["room_m"] / 2  # people stay in the room, so the prediction does too
             self.people.append({
                 "name": f"P{h + 1}", "xy": xy[-1], "history": xy[-1 - HISTORY_STEPS: -1], "velocity": v,
-                "speed": float(np.linalg.norm(v)), "standing": trip["human_state"][h][i] == "at_station",
+                "speed": float(np.linalg.norm(v)), "predicted": np.clip(xy[-1] + np.outer(PREDICT_S, v), -half, half), "standing": trip["human_state"][h][i] == "at_station",
                 "goal": trip["human_goal"][h][i], "next_goal": trip["human_next_goal"][h][i],
                 "distance": float(np.linalg.norm(xy[-1] - self.robot[-1]))})
         self.robot_history = self.robot[-1 - HISTORY_STEPS: -1]
@@ -120,19 +125,24 @@ class Scene:
                   for k, s in stations.items() if "/" in k for a, b in [s["members"]]]
         return "\n".join(lines)
 
-    def person_text(self, p: dict, units: Units) -> str:
+    def person_text(self, p: dict, units: Units, predict: bool) -> str:
         activity = f"standing at {station_text(p['goal'])}" if p["standing"] else "walking"
-        return load_prompt("person").format(
+        text = load_prompt("person").format(
             name=p["name"], pos=units.pos_text(p["xy"]), activity=activity, goal=station_text(p["goal"]),
             next_goal=station_text(p["next_goal"]), velocity=units.vec_text(p["velocity"]),
             speed=units.len_text(p["speed"]), distance=units.len_text(p["distance"]), unit=units.name,
             history=", ".join(units.pos_text(q) for q in p["history"]), hist_s=HISTORY_S, dt=DT)
+        if predict:
+            (h1, h2), (p1, p2) = PREDICT_S, p["predicted"]
+            text += " " + load_prompt("person_prediction").format(
+                name=p["name"], h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
+        return text
 
-    def text(self, units: Units) -> str:
-        """The per-turn state block."""
+    def text(self, units: Units, predict: bool) -> str:
+        """The per-turn state block; predict adds each person's constant-velocity positions."""
         return load_prompt("scene").format(
             time_s=f"{self.time_s:.1f}", robot_pos=units.pos_text(self.robot[-1]), unit=units.name, dt=DT,
             hist_s=HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.robot_history),
             goal=station_text(self.goal), goal_pos=units.pos_text(self.goal_xy),
             goal_dist=units.len_text(np.linalg.norm(self.goal_xy - self.robot[-1])),
-            people="\n".join(self.person_text(p, units) for p in self.people))
+            people="\n".join(self.person_text(p, units, predict) for p in self.people))

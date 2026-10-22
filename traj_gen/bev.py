@@ -18,7 +18,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Circle, Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
-from scene import DT, Scene  # noqa: E402
+from scene import DT, PREDICT_S, Scene  # noqa: E402
 from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS, STATION_BOX_M  # noqa: E402
 
 
@@ -116,8 +116,8 @@ def _draw_room(ax, site: dict, goal_xy: np.ndarray) -> None:
     ax.plot(*goal_xy, marker="*", color=GOAL, ms=18, zorder=4)
 
 
-def render_bev(scene: Scene, pixel_ticks: bool = False) -> tuple[bytes, BevTransform]:
-    """PNG bytes and the exact transform. pixel_ticks labels the grid in image pixels (for the pixel output mode)."""
+def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, BevTransform]:
+    """PNG bytes and the exact transform. pixel_ticks labels the grid in image pixels (for the pixel output mode); predict marks each person's constant-velocity positions at PREDICT_S."""
     fig, ax, transform = _axes(pixel_ticks)
     _draw_room(ax, scene.site, scene.goal_xy)
     _trail(ax, scene.robot_history, scene.robot[-1], ROBOT)
@@ -126,6 +126,10 @@ def render_bev(scene: Scene, pixel_ticks: bool = False) -> tuple[bytes, BevTrans
     for p in scene.people:
         _trail(ax, p["history"], p["xy"], PERSON)
         ax.add_patch(Circle(p["xy"], HUMAN_RADIUS, fc=PERSON, ec="k", alpha=0.6, zorder=5))
+        if predict:
+            ax.plot(*np.vstack([p["xy"], p["predicted"]]).T, ls="--", color=PERSON, lw=1, zorder=3)
+            for q in p["predicted"]:
+                ax.add_patch(Circle(q, HUMAN_RADIUS, fill=False, ec=PERSON, lw=2, zorder=5))
         ax.text(p["xy"][0], p["xy"][1] + HUMAN_RADIUS + 0.06, f"{p['name']} → {_label(p['goal'])} then {_label(p['next_goal'])}",
                 ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color="#7a3300", zorder=7,
                 bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})

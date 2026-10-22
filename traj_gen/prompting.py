@@ -17,7 +17,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
 from bev import SIZE_PX  # noqa: E402
-from scene import DT, HISTORY_S, Scene, Units, load_prompt  # noqa: E402
+from scene import DT, HISTORY_S, PREDICT_S, Scene, Units, load_prompt  # noqa: E402
 from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS, SPEED_CAP  # noqa: E402
 
 
@@ -39,9 +39,9 @@ class PromptBuilder:
     # in an arbitrary place so it does not hint at where the robot should go.
     example = [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)]
 
-    def __init__(self, framing: str, units: Units, images: tuple[str, ...], max_steps: int):
+    def __init__(self, framing: str, units: Units, images: tuple[str, ...], max_steps: int, predict: bool):
         assert framing in FRAMINGS and set(images) <= {"bev", "cam"}
-        self.framing, self.units, self.images, self.max_steps = framing, units, images, max_steps
+        self.framing, self.units, self.images, self.max_steps, self.predict = framing, units, images, max_steps, predict
 
     def to_units(self, value) -> np.ndarray:
         return self.units.pos(value)
@@ -67,14 +67,19 @@ class PromptBuilder:
             return ""
         fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt(f"grid_{self.units.name}"), "hist_s": HISTORY_S,
                   "goal_tol": self.units.len_text(GOAL_TOL), "unit": self.units.name}
-        items = "\n".join(load_prompt(f"caption_{k}").format(n=n, **fields) for n, k in enumerate(kinds, 1))
-        return load_prompt("images").format(items=items)
+        items = []
+        for n, k in enumerate(kinds, 1):
+            caption = load_prompt(f"caption_{k}").format(n=n, **fields)
+            if k == "bev" and self.predict:
+                caption += " " + load_prompt("caption_bev_prediction").format(h1=f"{PREDICT_S[0]:g}", h2=f"{PREDICT_S[1]:g}")
+            items.append(caption)
+        return load_prompt("images").format(items="\n".join(items))
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
         u, r = self.units, scene.site["robot_radius_m"]
         task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(HUMAN_RADIUS), min_centre=u.len_text(r + HUMAN_RADIUS), unit=u.name)
-        parts = [task, self.captions(scene, self.images), scene.text(self.units), self.output_text()]
+        parts = [task, self.captions(scene, self.images), scene.text(self.units, self.predict), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 
     @property
@@ -94,7 +99,7 @@ class PromptBuilder:
     def followup(self, scene: Scene, executed_s: float) -> Turn:
         """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
-        text = load_prompt("followup").format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=scene.text(self.units))
+        text = load_prompt("followup").format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=scene.text(self.units, self.predict))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
 
 
