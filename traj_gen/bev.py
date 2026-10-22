@@ -19,7 +19,7 @@ from matplotlib.patches import Circle, Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
 from scene import DT, Scene  # noqa: E402
-from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS  # noqa: E402
+from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS, STATION_BOX_M  # noqa: E402
 
 
 # 896 = 32 * 28: Qwen's vision tower works on 28 px blocks (one token each), so this size is
@@ -31,7 +31,6 @@ PLOT_PX = 800        # axes size, so 1 m = 200 px exactly and a pixel is 5 mm
 AXES_LEFT_PX, AXES_BOTTOM_PX = 76, 56  # room for the axis label and tick labels on the left and bottom; 76 + 800 + 20 = 896
 GRID_M = 0.5         # grid spacing in metre mode
 GRID_PX = 100        # grid spacing in pixel mode: round numbers for the model to read (0.5 m = 100 px)
-STATION_M = 0.2      # drawn station box size: the station position is the robot's goal point in front of the table and real robots stop 0.49-0.60 m from it, so a bigger box would overlap the robot
 LABEL_OFFSET_M = 0.28  # station labels sit this far outward (away from the room centre), as the box is too small to hold one
 TABLE_PAD_M = 0.12   # shared-table outline around its two stations
 LABEL_PX = 20        # label font size; readable at 896 px
@@ -105,12 +104,12 @@ def _draw_room(ax, site: dict, goal_xy: np.ndarray) -> None:
     for k, s in stations.items():
         if "/" in k:
             pts = np.array([stations[m]["xy"] for m in s["members"]])
-            lo, hi = pts.min(axis=0) - (STATION_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_M / 2 + TABLE_PAD_M)
+            lo, hi = pts.min(axis=0) - (STATION_BOX_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_BOX_M / 2 + TABLE_PAD_M)
             ax.add_patch(Rectangle(lo, *(hi - lo), fill=False, ec=BOX, lw=2, ls="--", zorder=2))
             ax.text(max(room / 2, hi[0]) + 0.03, (lo[1] + hi[1]) / 2, "shared table", ha="left", va="center", rotation=90, fontsize=LABEL_PX * 0.6, color="#555555")  # just outside the wall the table is on (+x at both sites)
         else:
             x, y = s["xy"]
-            ax.add_patch(Rectangle((x - STATION_M / 2, y - STATION_M / 2), STATION_M, STATION_M, fc=BOX, ec="#777777", zorder=2))
+            ax.add_patch(Rectangle((x - STATION_BOX_M / 2, y - STATION_BOX_M / 2), STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
             out = np.array([x, y]) * (1 + LABEL_OFFSET_M / np.hypot(x, y))
             ax.text(*out, _label(k), ha="center", va="center", fontsize=LABEL_PX * 0.8, zorder=4)
     ax.add_patch(Circle(goal_xy, GOAL_TOL, fill=False, ec=GOAL, lw=2, ls="--", zorder=3))

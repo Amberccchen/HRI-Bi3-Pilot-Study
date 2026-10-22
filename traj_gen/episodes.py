@@ -30,7 +30,7 @@ from bi3_metrics import bi3_metrics
 from client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
 from prompting import Turn
 from scene import DT, Scene, load_prompt
-from traj_gen_metrics import GOAL_TOL, traj_gen_metrics
+from traj_gen_metrics import GOAL_TOL, other_stations, traj_gen_metrics
 
 REPO = Path(__file__).resolve().parents[1]
 CODE_DIRS = ["traj_gen", "metrics", "preprocessing"]
@@ -143,7 +143,7 @@ class Episode:
         t, robot = np.asarray(self.trip["time"], float)[sl], self.track[self.start:]
         raw = np.concatenate(self.raw) if self.raw else None
         return {**bi3_metrics(t, robot, humans), **traj_gen_metrics(
-            t, robot, humans, self.goal, self.site["robot_radius_m"], self.site["room_m"], raw)}
+            t, robot, humans, self.goal, self.site["robot_radius_m"], self.site["room_m"], other_stations(self.site, self.trip["robot_goal"]), raw)}
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip

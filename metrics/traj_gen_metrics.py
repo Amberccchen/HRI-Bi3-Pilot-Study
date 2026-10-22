@@ -15,6 +15,9 @@ person is a disk of HUMAN_RADIUS, so:
   being scored as failures. Time to goal is the first such sample.
 - final distance to goal: distance of the last sample, also for paths that never arrive.
 - out of room: any sample outside the square room of side room_m.
+- stations: the robot's centre entering the box of a station other than its goal (the stations
+  are obstacles the planner is told about; the real controllers never do this), and the closest
+  centre distance to such a station.
 - speed cap: for a plan whose raw (before speed limiting) per-step speeds are given,
   the fraction of steps above SPEED_CAP and the largest raw speed.
 
@@ -30,11 +33,24 @@ HUMAN_RADIUS = 0.25  # typical shoulder half-width; mocap tracks only give the b
 GOAL_TOL = 0.5       # arrival distance given to the model; Bi3 switches to the next goal at about this
 GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end up to 0.60 m from the goal at the switch
 SPEED_CAP = 0.3      # m/s, the limit the model is told
+STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station position is the robot's stopping point in front of the table
+
+
+def other_stations(site: dict, goal: str) -> np.ndarray:
+    """(k, 2) positions of the single stations that are not the robot's goal (from site_frames.json)."""
+    return np.array([s["xy"] for k, s in site["stations"].items() if "/" not in k and k != goal], float)
+
+
+def station_metrics(robot: np.ndarray, stations: np.ndarray) -> dict:
+    """Does the robot's centre enter another station's box, and how close does it get to one."""
+    offset = np.abs(np.asarray(robot, float)[:, None, :] - stations[None])  # (T, k, 2)
+    return {"station_crossing": bool((offset.max(axis=-1) <= STATION_BOX_M / 2).any()),
+            "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
 
 
 def traj_gen_metrics(time: np.ndarray, robot: np.ndarray, humans: np.ndarray, goal: np.ndarray,
-                     radius: float, room_m: float, raw_speed: np.ndarray | None = None) -> dict:
-    """All footprint and task metrics for one path; raw_speed (steps,) only for model plans."""
+                     radius: float, room_m: float, stations: np.ndarray, raw_speed: np.ndarray | None = None) -> dict:
+    """All footprint and task metrics for one path; stations from other_stations(); raw_speed (steps,) only for model plans."""
     time, robot, humans = np.asarray(time, float), np.asarray(robot, float), np.asarray(humans, float)
     clearance = np.linalg.norm(humans - robot[:, None, :], axis=-1) - radius - HUMAN_RADIUS  # (T, H)
     to_goal = np.linalg.norm(robot - np.asarray(goal, float), axis=1)
@@ -42,6 +58,7 @@ def traj_gen_metrics(time: np.ndarray, robot: np.ndarray, humans: np.ndarray, go
     out = {"clearance_min": float(clearance.min()), "footprint_overlap": bool((clearance < 0).any()),
            "goal_reached": bool(arrived.size), "time_to_goal": float(time[arrived[0]] - time[0]) if arrived.size else float("nan"),
            "final_distance_to_goal": float(to_goal[-1]), "out_of_room": bool((np.abs(robot) > room_m / 2).any())}
+    out |= station_metrics(robot, stations)
     if raw_speed is not None:
         out |= {"speed_violation_rate": float((np.asarray(raw_speed) > SPEED_CAP).mean()), "raw_speed_max": float(np.max(raw_speed))}
     return out

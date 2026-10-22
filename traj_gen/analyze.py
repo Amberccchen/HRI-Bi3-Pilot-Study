@@ -42,10 +42,10 @@ SEED = 20261022  # fixed so the intervals are reproducible; the run date, no oth
 INFO = ["trip", "site", "controller", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
         "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s"]
 SKIP = {"min_distance_per_person", "min_distance_index", "min_distance_person"}  # per-person detail, not an episode-level number
-RATES = ["goal_reached", "footprint_overlap", "out_of_room"]
-MEANS = ["min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal"]
-PAIRED = ["goal_reached", "footprint_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
-COMPARED = ["goal_reached", "footprint_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
+RATES = ["goal_reached", "footprint_overlap", "out_of_room", "station_crossing"]
+MEANS = ["min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal", "station_distance_min"]
+PAIRED = ["goal_reached", "footprint_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
+COMPARED = ["goal_reached", "footprint_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
