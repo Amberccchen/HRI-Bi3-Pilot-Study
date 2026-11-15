@@ -182,13 +182,13 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# Experiment pairs (A, B) per comparison. The difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev.
+# Experiment pairs (A, B) per comparison. The difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_px_bev / rh_velseq_bev.
 EXPERIMENT_COMPARISONS = {
     "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
     "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
     "cam + bev - bev only (waypoints)": [("ss_wp_bev_cam", "ss_wp_bev"), ("rh_wp_bev_cam", "rh_wp_bev")],
     "rolling - single shot (bev)": [("rh_wp_bev", "ss_wp_bev"), ("rh_px_bev", "ss_px_bev")],
-    "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
+    "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_px_bev_conv", "rh_px_bev"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
     "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
     "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
 }
