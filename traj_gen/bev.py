@@ -182,7 +182,7 @@ def _draw_others(ax, site: dict, others: dict[str, np.ndarray]) -> None:
             ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
 
 
-def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
+def draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
     """The straight line from the start to the goal (below the executed paths) and the real path of the planned agent (above them, so it stays visible where they overlap)."""
     ax.plot(*np.array([start, goal_xy]).T, ls=":", color=STRAIGHT_LINE, lw=2, zorder=3)
     ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6)
@@ -212,7 +212,7 @@ def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndar
     logged agents' trails. Final positions are drawn at each agent's scoring radius (body_radius), the disk contact is scored with."""
     fig, ax, _ = bev_axes(False)
     draw_room(ax, site, agent, goal_xy)
-    _draw_reference(ax, goal_xy, executed[0], real)
+    draw_reference(ax, goal_xy, executed[0], real)
     _draw_others(ax, site, others)
     marker = KIND_MARKER[agent_kind(agent)]
     ax.plot(*executed.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
@@ -230,7 +230,7 @@ def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np
     legend (the caller adds trajectory_legend). Final positions are drawn at each agent's scoring radius (body_radius)."""
     fig, ax, _ = bev_axes(False)
     draw_room(ax, site, agent, goal_xy)
-    _draw_reference(ax, goal_xy, real[0], real)
+    draw_reference(ax, goal_xy, real[0], real)
     _draw_others(ax, site, others)
     marker = KIND_MARKER[agent_kind(agent)]
     for path in samples:

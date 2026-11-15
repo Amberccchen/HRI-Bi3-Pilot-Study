@@ -5,7 +5,7 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
   select-human  the same for person trips: --close and --random trips per site
   run           run experiments (resumable, one folder per episode, see episodes.py)
   analyze       tables and figures of a (partial) run into <run>/analysis (see analyze.py)
-  animate       animation.gif and timeline.png (colour = time) in given episode folders (see animate.py)
+  animate       animation.gif and timeline.png (colour = time) in given episode folders, or one animation.gif of all samples in a condition folder (see animate.py)
 
 The write-up figures come from python -m traj_gen.report_figures --run <run folder>, after analyze.
 
@@ -28,7 +28,7 @@ from preprocessing.bi3_derived import SITES, load_site_frames, load_trips, prove
 from preprocessing.extract_trips import DEFAULT_TRIALS
 from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind
 from traj_gen.analyze import OVERLAY, analyze
-from traj_gen.animate import animate, load_episode, timeline
+from traj_gen.animate import animate, animate_samples, load_episode, timeline
 from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
 from traj_gen.experiments import EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -186,11 +186,14 @@ def animate_episodes(args: argparse.Namespace) -> None:
     if args.speed <= 0:
         raise ValueError(f"--speed must be positive, got {args.speed}")
     _, _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
-    for folder in args.episodes:
+    for folder in args.folders:
         if not folder.resolve().is_relative_to(args.run.resolve()):
-            raise ValueError(f"episode {folder} is not inside the run folder {args.run}")
-        ep = load_episode(folder, trips, sites)
-        print(animate(folder, ep, args.speed), timeline(folder, ep))
+            raise ValueError(f"{folder} is not inside the run folder {args.run}")
+        if (folder / "manifest.json").exists():
+            ep = load_episode(folder, trips, sites)
+            print(animate(folder, ep, args.speed), timeline(folder, ep))
+        else:  # a condition folder <experiment>/<framing>/<thinking>/<trip>: all its samples in one animation
+            print(animate_samples(folder, [load_episode(f.parent, trips, sites) for f in sorted(folder.glob("s*/manifest.json"))], args.speed))
 
 
 def main() -> None:
@@ -217,8 +220,8 @@ def main() -> None:
     p.add_argument("--trips", type=Path, help=f"trip list the run was made with (default: <run>/{TEST_TRIPS})")
     p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
-    p = sub.add_parser("animate", help="animation.gif and timeline.png for finished episodes")
-    p.add_argument("episodes", nargs="+", type=Path, help="episode folders (each with a manifest.json)")
+    p = sub.add_parser("animate", help="animation.gif (and timeline.png) for finished episodes or conditions")
+    p.add_argument("folders", nargs="+", type=Path, help="episode folders (each with a manifest.json), or condition folders <experiment>/<framing>/<thinking>/<trip> holding the samples s0, s1, ...")
     p.add_argument("--speed", type=float, default=2.0, help="playback speed vs real time (2: a 12 s trip plays in 6 s)")
     p.set_defaults(func=animate_episodes)
     args = parser.parse_args()

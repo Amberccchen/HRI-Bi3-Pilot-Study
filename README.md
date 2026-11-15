@@ -44,6 +44,7 @@ python -m traj_gen.run --run <run> select-human --trips-dir <person trips folder
 python -m traj_gen.run --run <run> run --thinking nothink think       # resumable, needs the vLLM server on :8000, framings default to the trips' agent kind
 python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
 python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
+python -m traj_gen.run --run <run> animate <condition folder> ...     # one animation.gif of all samples of <experiment>/<framing>/<thinking>/<trip>
 python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
 ```
 

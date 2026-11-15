@@ -4,10 +4,13 @@
   body disks to scale with short fading trails. The planned agent's real path at the same time is a
   dashed ghost disk, and the plan it is currently following (rolling episodes replan) is a thin line.
   The frame title gives the time and the current clearance to the nearest other agent.
+- animation.gif of a condition folder: the samples of one condition on one trip, drawn as in the overlay figures (purple VLM-controlled
+  paths told apart by line style and an s<k> label, logged agents blue and orange, square robot and triangle person), one frame per time
+  step. A sample that has ended holds its final position while the others continue.
 - timeline.png: the whole episode on one map with colour = time (same colour scale for every agent),
   so a crossing point shows whether both were there at the same moment.
 
-Both are written into the episode folder, next to result.png. They read only the episode's own files
+The single-episode views are written into the episode folder, next to result.png. They read only the episode's own files
 and the trip it was run on, so they work on any finished episode (model or baseline).
 """
 
@@ -24,12 +27,14 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_room, figure_png
+from traj_gen.bev import (EXTENT_M, KIND_COLOUR, KIND_MARKER, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, draw_reference, bev_axes, draw_room, figure_png,
+                          trajectory_legend)
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
 
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
+SAMPLE_LINESTYLES = ["-", "--", ":"]  # samples told apart by line style (and the s<k> label), cycling past three
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
 
 
@@ -85,15 +90,52 @@ def _frame(ep: dict, k: int) -> bytes:
     return figure_png(fig)
 
 
+def _write_gif(frames: list[bytes], out: Path, speed: float) -> Path:
+    """Write PNG frames as a GIF at `speed` times real time, holding the last frame."""
+    images = [Image.open(io.BytesIO(f)).convert("RGB") for f in frames]
+    for image in images:
+        image.thumbnail((GIF_PX, GIF_PX), Image.Resampling.LANCZOS)
+    ms = round(1000 * DT / speed)
+    images[0].save(out, save_all=True, append_images=images[1:], duration=[ms] * (len(images) - 1) + [2000], loop=0)
+    return out
+
+
 def animate(folder: Path, ep: dict, speed: float) -> Path:
     """Write <folder>/animation.gif from load_episode(folder), played `speed` times faster than real time, holding the last frame."""
-    frames = [Image.open(io.BytesIO(_frame(ep, k))).convert("RGB") for k in range(len(ep["t"]))]
-    for f in frames:
-        f.thumbnail((GIF_PX, GIF_PX), Image.Resampling.LANCZOS)
-    ms = round(1000 * DT / speed)
-    out = folder / "animation.gif"
-    frames[0].save(out, save_all=True, append_images=frames[1:], duration=[ms] * (len(frames) - 1) + [2000], loop=0)
-    return out
+    return _write_gif([_frame(ep, k) for k in range(len(ep["t"]))], folder / "animation.gif", speed)
+
+
+def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
+    """Write <folder>/animation.gif from the load_episode of every sample of one condition on one trip: one frame per time step, until the
+    longest sample ends. The logged agents are drawn once, from the longest sample's log (the same in every sample)."""
+    longest = max(eps, key=lambda ep: len(ep["t"]))
+    site, agent, kind = longest["site"], longest["agent"], agent_kind(longest["agent"])
+    others = longest["others"]
+    frames = []
+    for k in range(len(longest["t"])):
+        fig, ax, _ = bev_axes(False)
+        draw_room(ax, site, agent, longest["goal"])
+        draw_reference(ax, longest["goal"], longest["real"][0], longest["real"])
+        for other, track in others.items():
+            other_kind = agent_kind(other)
+            ax.plot(*track[: k + 1].T, "-", marker=KIND_MARKER[other_kind], color=KIND_COLOUR[other_kind], lw=2, ms=4, alpha=0.7, zorder=3)
+            ax.add_patch(Circle(track[k], body_radius(other, site), fc=KIND_COLOUR[other_kind], ec="k", alpha=0.4, zorder=5))
+            ax.plot(*track[k], marker=KIND_MARKER[other_kind], color=KIND_COLOUR[other_kind], mec="k", ms=7, zorder=6)
+            if other_kind == "human":
+                ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
+        for ep in eps:
+            head = min(k, len(ep["t"]) - 1)  # a finished sample holds its final position
+            path = ep["track"][: head + 1]
+            ax.plot(*path.T, ls=SAMPLE_LINESTYLES[ep["manifest"]["sample"] % len(SAMPLE_LINESTYLES)], marker=KIND_MARKER[kind], color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+            ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.35, zorder=5))
+            ax.plot(*path[-1], marker=KIND_MARKER[kind], color=VLM_COLOUR, mec="k", ms=7, zorder=6)
+            ax.text(*path[-1] + [0.05, 0.12], f"s{ep['manifest']['sample']}", fontsize=LABEL_PX * 0.7, color=VLM_COLOUR, zorder=7)
+        m = longest["manifest"]
+        ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{m['experiment']} {m['framing']} {m['thinking']}\n{m['trip']}\nt = {k * DT:.1f} s",
+                ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
+        ax.legend(handles=trajectory_legend(agent, list(others)), ncol=2, loc="lower left", fontsize=LABEL_PX * 0.6, framealpha=0.85)
+        frames.append(figure_png(fig))
+    return _write_gif(frames, folder / "animation.gif", speed)
 
 
 def timeline(folder: Path, ep: dict) -> Path:
