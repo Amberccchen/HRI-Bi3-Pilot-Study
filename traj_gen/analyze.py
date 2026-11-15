@@ -34,10 +34,13 @@ without a move (not ok, or the goal not reached) are left out and counted. The r
 the run's trips folder that reaches its goal and does not start within the arrival radius (as select requires), stratified by
 (start station, goal station). Against the site pool, the pool is split at random into the compared real set and the reference
 pool. Against the same trips, the compared set is the test trips' real moves and the reference pool is the site's other moves.
+Generated moves of a station pair with fewer real moves in the reference pool than generated ones are left out of that comparison
+(n_unmatched_station_pair), since no reference set with their station mix exists.
 """
 
 import io
 import json
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -377,12 +380,20 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.Data
             "same trips": ([pool[site][t] for t in sorted(test)], [m for t, m in pool[site].items() if t not in test]),
         }
         for comparison, (real, reference) in comparisons.items():
-            distances = feature_distances(generated, real, reference, n_bootstrap=SIMILARITY_DRAWS, n_reference_draws=SIMILARITY_DRAWS, rng=rng)
+            # A reference set needs as many real moves of each station pair as the generated set has. Moves of a pair the
+            # reference pool cannot match are left out of the comparison and counted.
+            in_reference = Counter(m["stratum"] for m in reference)
+            in_generated = Counter(m["stratum"] for m in generated)
+            matched = [m for m in generated if in_generated[m["stratum"]] <= in_reference[m["stratum"]]]
+            if not matched:
+                continue
+            distances = feature_distances(matched, real, reference, n_bootstrap=SIMILARITY_DRAWS, n_reference_draws=SIMILARITY_DRAWS, rng=rng)
             for feature, fd in distances.items():
                 rows.append({**dict(zip(COND, cond)), "site": site, "comparison": comparison, "feature": feature, "w1": fd.w1,
                              "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
                              "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
-                             "n_generated": fd.n_generated, "n_real": fd.n_real, "n_episodes": len(d), "n_without_move": len(d) - len(ok)})
+                             "n_generated": fd.n_generated, "n_real": fd.n_real, "n_episodes": len(d), "n_without_move": len(d) - len(ok),
+                             "n_unmatched_station_pair": len(generated) - len(matched)})
     return pd.DataFrame(rows)
 
 
