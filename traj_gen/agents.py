@@ -7,8 +7,18 @@ agent's kind ("robot" or "human"). A kind without an entry has no value, and the
 import numpy as np
 
 
-SPEED_CAP_M_S = {"robot": 0.3}       # the limit the model is told
-ARRIVAL_RADIUS_M = {"robot": 0.5}    # arrival distance given to the model, about where Bi3 switches to the next goal
+# The limit the model is told. For people, the 99th percentile of real per-step speed (0.4 s steps) over Bi3 goal-to-goal
+# moves of both sites, one cap shared by every person.
+SPEED_CAP_M_S = {"robot": 0.3, "human": 1.5}
+# Arrival distance given to the model. For the robot about where Bi3 switches to the next goal. For a person, about where the
+# scatter of real standing positions around a station's goal point ends (90th percentile 0.30-0.36 m).
+ARRIVAL_RADIUS_M = {"robot": 0.5, "human": 0.4}
+# How far beyond the room's walls the agent may go before it counts as out of the room. The station positions and walls
+# bound the robot, but people stand closer to the walls than the robot's stopping points.
+ROOM_MARGIN_M = {"robot": 0.0, "human": 0.25}
+# Whether entering the box of a station that is not the goal is a broken rule of the task. The boxes are the robot's stopping
+# points, which people walk across.
+STATION_CROSSING_INVALID = {"robot": True, "human": False}
 PERSON_BODY_RADIUS_M = 0.15          # person body radius for scoring, since mocap tracks only give the body centre
 PERSON_PROMPT_RADIUS_M = 0.25        # typical shoulder half-width, the person's size in the prompts and maps
 # Personal space of an agent as an obstacle: the disk around its centre that another agent's body should stay out of.

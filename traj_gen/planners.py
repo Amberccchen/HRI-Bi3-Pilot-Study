@@ -57,7 +57,8 @@ class Planner:
 
     def __init__(self, exp, trip: dict, framing: str | None, thinking: str | None):
         self.exp, self.trip, self.framing, self.thinking = exp, trip, framing, thinking
-        self.speed_cap = SPEED_CAP_M_S[agent_kind(trip["agent"])]
+        self.kind = agent_kind(trip["agent"])
+        self.speed_cap = SPEED_CAP_M_S[self.kind]
         self.step_m = self.speed_cap * DT
 
     def positions(self, value: np.ndarray | None, scene: Scene) -> tuple[np.ndarray, np.ndarray | None]:
@@ -67,7 +68,7 @@ class Planner:
 
 class QueryPlanner(Planner):
     """Planners that ask the model. A subclass sets name, template (prompt template), key (JSON key of the reply),
-    example (metres, converted by to_units) and overrides units, pixel_ticks, to_units and max_steps where its mode differs."""
+    example (metres, converted by to_units, per planned-agent kind) and overrides units, pixel_ticks, to_units and max_steps where its mode differs."""
 
     units = METRES
     pixel_ticks = False  # BEV grid labelled in metres
@@ -82,7 +83,7 @@ class QueryPlanner(Planner):
 
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
+        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict, self.kind)
         return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property
@@ -99,9 +100,9 @@ class WaypointPlanner(QueryPlanner):
     name = "waypoints"
     template = "output_waypoints"
     key = "waypoints"  # key of the JSON object the model replies with: {key: [[a, b], ...]}
-    # Example numbers in metres (converted to the units in use): a short slow path, ~0.1 m per step (0.25 m/s)
-    # in an arbitrary place so it does not hint at where the robot should go.
-    example = [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)]
+    # Example numbers in metres (converted to the units in use), in an arbitrary place so they do not hint at where to go:
+    # for the robot a short slow path, ~0.1 m per step (0.25 m/s), for a person ~0.4 m per step (1.0 m/s).
+    example = {"robot": [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)], "human": [(-0.50, 0.40), (-0.12, 0.52), (0.26, 0.64)]}
 
     def positions(self, value, scene):
         return retime(scene.track[-1], value, self.step_m)
@@ -126,7 +127,7 @@ class VelocityPlanner(QueryPlanner):
     name = "velocity_sequence"
     template = "output_velocity_seq"
     key = "velocities"
-    example = [(0.20, 0.10), (0.20, 0.15), (0.15, 0.20)]  # m/s, below the cap
+    example = {"robot": [(0.20, 0.10), (0.20, 0.15), (0.15, 0.20)]}  # m/s, below the cap
 
     def to_units(self, value) -> np.ndarray:
         return self.units.vec(value)
@@ -142,7 +143,7 @@ class StepVelocityPlanner(VelocityPlanner):
 
     name = "velocity"
     template = "output_velocity"
-    example = [(0.20, 0.10)]
+    example = {"robot": [(0.20, 0.10)]}
 
     def max_steps(self, remaining: int) -> int:
         return 1

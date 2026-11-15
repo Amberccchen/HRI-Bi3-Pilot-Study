@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from preprocessing.bi3_derived import TRIP_HZ, label_members
-from traj_gen.agents import agent_kind
+from traj_gen.agents import agent_kind, prompt_radius
 
 
 PROMPTS = Path(__file__).parent / "prompts"
@@ -118,7 +118,7 @@ class Scene:
         self.agent = trip["agent"]
         self.time_s = trip["time"][i]
         self.track = np.asarray(track, float)[: i + 1, :2]
-        self.goal = trip["goal"]
+        self.goal, self.next_goal = trip["goal"], trip["next_goal"]
         self.goal_xy = np.asarray(trip["goal_xy"], float)
         self.others = []
         for other, other_track in trip["tracks"].items():
@@ -137,31 +137,43 @@ class Scene:
         self.history = self.track[-1 - PROMPT_HISTORY_STEPS: -1]
 
     def stations_text(self, units: Metres) -> str:
-        """Station positions, then one sentence per shared table."""
-        stations = self.site["stations"]
-        lines = [f"station {k}: {units.pos_text(s['xy'])}" for k, s in stations.items() if len(s["members"]) == 1]
-        lines += [load_prompt("shared_table").format(a=a, b=b, pos=units.pos_text(s["xy"]))
+        """Station positions, then one sentence per shared table: the robot's stopping points for a planned robot, where people stand for a planned person."""
+        stations, key = self.site["stations"], "xy" if agent_kind(self.agent) == "robot" else "human_xy"
+        lines = [f"station {k}: {units.pos_text(s[key])}" for k, s in stations.items() if len(s["members"]) == 1]
+        lines += [load_prompt("shared_table").format(a=a, b=b, pos=units.pos_text(s[key]))
                   for k, s in stations.items() if len(s["members"]) == 2 for a, b in [s["members"]]]
         return "\n".join(lines)
 
-    def person_text(self, p: dict, units: Metres, predict: bool) -> str:
-        activity = f"standing at {station_text(p['goal'], self.site['stations'])}" if p["standing"] else "walking"
-        text = load_prompt("person").format(
-            name=person_name(p["id"]), pos=units.pos_text(p["xy"]), activity=activity, goal=station_text(p["goal"], self.site["stations"]),
-            next_goal=station_text(p["next_goal"], self.site["stations"]), velocity=units.vec_text(p["velocity"]),
-            speed=units.len_text(p["speed"]), distance=units.len_text(p["distance"]), unit=units.name,
-            history=", ".join(units.pos_text(q) for q in p["history"]), hist_s=PROMPT_HISTORY_S, dt=DT)
+    def other_text(self, p: dict, units: Metres, predict: bool) -> str:
+        """One other agent's line. A planned robot is told each person's goals. A planned person is told what a participant can
+        see: the others' positions and motion, and the station a person stands at, but no one's goals."""
+        human_planned = agent_kind(self.agent) == "human"
+        fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
+                  "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),
+                  "hist_s": PROMPT_HISTORY_S, "dt": DT}
+        if p["kind"] == "robot":
+            name = "the robot"
+            text = load_prompt("robot_other_human").format(radius=units.len_text(prompt_radius(p["id"], self.site)), **fields)
+        else:
+            name = person_name(p["id"])
+            activity = f"standing at {station_text(p['goal'], self.site['stations'])}" if p["standing"] else "walking"
+            text = load_prompt("person_human" if human_planned else "person").format(
+                name=name, activity=activity, goal=station_text(p["goal"], self.site["stations"]),
+                next_goal=station_text(p["next_goal"], self.site["stations"]), **fields)
         if predict:
             (h1, h2), (p1, p2) = PREDICT_S, p["predicted"]
-            text += " " + load_prompt("person_prediction").format(
-                name=person_name(p["id"]), h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
+            text += " " + load_prompt("person_prediction").format(name=name, h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
         return text
 
     def text(self, units: Metres, predict: bool) -> str:
-        """The per-turn state block of the planned robot, with the other people. predict adds each person's constant-velocity positions."""
-        return load_prompt("scene").format(
-            time_s=f"{self.time_s:.1f}", robot_pos=units.pos_text(self.track[-1]), unit=units.name, dt=DT,
-            hist_s=PROMPT_HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.history),
-            goal=station_text(self.goal, self.site["stations"]), goal_pos=units.pos_text(self.goal_xy),
-            goal_dist=units.len_text(np.linalg.norm(self.goal_xy - self.track[-1])),
-            people="\n".join(self.person_text(p, units, predict) for p in self.others if p["kind"] == "human"))
+        """The per-turn state block of the planned agent, with the other agents. predict adds each other agent's constant-velocity positions."""
+        fields = {"time_s": f"{self.time_s:.1f}", "unit": units.name, "dt": DT, "hist_s": PROMPT_HISTORY_S,
+                  "goal": station_text(self.goal, self.site["stations"]), "goal_pos": units.pos_text(self.goal_xy),
+                  "goal_dist": units.len_text(np.linalg.norm(self.goal_xy - self.track[-1]))}
+        own = {"pos": units.pos_text(self.track[-1]), "history": ", ".join(units.pos_text(q) for q in self.history)}
+        if agent_kind(self.agent) == "robot":
+            return load_prompt("scene").format(robot_pos=own["pos"], robot_history=own["history"], **fields,
+                                               people="\n".join(self.other_text(p, units, predict) for p in self.others if p["kind"] == "human"))
+        return load_prompt("scene_human").format(
+            name=person_name(self.agent), **own, **fields, next_goal=station_text(self.next_goal, self.site["stations"]),
+            others="\n".join(self.other_text(p, units, predict) for p in self.others))

@@ -10,6 +10,9 @@ conditions are simply absent) and writes <run>/analysis/:
                         metric class (invalid, contact, efficiency)
   paired_baselines.csv  every condition minus replay and minus straight on the same trips, per kind
   comparisons.csv       the PLAN comparisons (neutral vs social, nothink vs think, ...) as differences, per kind
+  similarity.csv        planned people only: per condition, site and feature, the W1 of the generated moves to real moves
+                        (human_similarity.feature_distances), against the site's pool of real moves and against the real
+                        moves of the same test trips
   figures/              conditions_<kind>_<thinking>.png, speed_violation_<kind>.png, trip_<id>.png (overlays)
 
 Robot and person episodes are never pooled: every table and figure is per planned-agent kind ("robot" or "human").
@@ -17,12 +20,20 @@ Robot and person episodes are never pooled: every table and figure is per planne
 Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only. goal_reached
 counts every episode, so one without a usable path counts as not reached. An episode is invalid when
 its reply is unusable, the server failed (status error), or its plan exceeds the speed cap in any step,
-does not reach the goal, leaves the room or crosses a station. The invalid rate and the rate of each of
+does not reach the goal, leaves the room (beyond the agent kind's ROOM_MARGIN_M) or, where the agent kind's
+STATION_CROSSING_INVALID says so, crosses a station. The invalid rate and the rate of each of
 these parts are shares of all episodes of the condition. An episode without a path (invalid_reply or
 error) counts only in its status part. The speed-cap part does not apply to the baselines, which have no
 model reply, and is NaN for them. Paired differences and comparisons work on per-trip means (over
 the samples of the condition), so a trip is one observation and the intervals are percentile
 bootstrap intervals over trips (few trips: read them as rough). time_to_goal only exists for episodes that reached the goal.
+
+Similarity. A move is the part of a path from the trip start to move_end_index (traj_gen_metrics.move_end_index), for the
+generated paths of ok episodes and for the real paths alike, so a replay episode's move is its trip's real move. Episodes
+without a move (not ok, or the goal not reached) are left out and counted. The real moves are every person trip of the site in
+the run's trips folder that reaches its goal and does not start within the arrival radius (as select requires), stratified by
+(start station, goal station). Against the site pool, the pool is split at random into the compared real set and the reference
+pool. Against the same trips, the compared set is the test trips' real moves and the reference pool is the site's other moves.
 """
 
 import io
@@ -35,10 +46,11 @@ from matplotlib.figure import Figure
 from matplotlib.image import imread
 from matplotlib.lines import Line2D
 
-from metrics.traj_gen_metrics import METRIC_CLASS
-from preprocessing.bi3_derived import SITES
-from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
-from traj_gen.bev import GOAL, KIND_COLOUR, KIND_LEGEND, REAL_PATH, render_overlay
+from metrics.human_similarity import feature_distances, trajectory_features
+from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
+from preprocessing.bi3_derived import SITES, label_members
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind, prompt_radius
+from traj_gen.bev import GOAL, KIND_COLOUR, OTHERS_LEGEND, PLANNED_COLOUR, REAL_PATH, render_overlay
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -49,7 +61,7 @@ KEY = ["kind", *COND]                         # a condition across kinds: robot 
 N_BOOT = 2000   # bootstrap resamples of the trips: the interval's edges are stable to about 0.01 SD
 SEED = 20261022  # fixed so the intervals are reproducible; the run date, no other meaning
 INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
-        "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s"]
+        "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s", "move_end_index"]
 STATUSES = ("ok", "invalid_reply", "error")
 SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other"}  # per-agent detail, not an episode-level number
 METRICS = [m for m in METRIC_CLASS if m not in SKIP]  # episode-level metric columns, present (NaN when absent) in every episode table
@@ -65,7 +77,9 @@ OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure,
 OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
 REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
 PROMPT_DISK = {"robot": "circumscribed disk", "human": "disk"}  # the planned agent's disk in the prompts, by kind
-FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True)}  # (shape, filled) per prompt framing
+FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
+TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
+SIMILARITY_DRAWS = 1000         # bootstrap and reference draws of each feature distance
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
 FAMILY_COLOUR = {"single shot": "#2a78d6", "rolling": "#eb6834", "conversation": "#1baf7a"}
@@ -93,7 +107,8 @@ def collect(run: Path) -> pd.DataFrame:
 def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached.
     Adds the INVALID_PARTS and invalid (any part), 0/1 per episode. An episode without a path is 0 in every part but its
-    status part. invalid_speed_cap is NaN for experiments without a model, whose plans have no raw speeds."""
+    status part. invalid_speed_cap is NaN for experiments without a model, whose plans have no raw speeds, and invalid_station
+    is NaN for agent kinds whose station crossings are not a broken rule (STATION_CROSSING_INVALID)."""
     df = episodes.copy()
     df[RATES] = df[RATES].astype(float)  # before the NaN assignment: pandas refuses NaN into a bool column
     ok = df.status == "ok"
@@ -104,7 +119,7 @@ def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(df.experiment.map(lambda e: EXPERIMENTS[e].uses_model))
     df["invalid_goal"] = (ok & (df.goal_reached == 0)).astype(float)
     df["invalid_room"] = (df.out_of_room == 1).astype(float)
-    df["invalid_station"] = (df.station_crossing == 1).astype(float)
+    df["invalid_station"] = (df.station_crossing == 1).astype(float).where(df.kind.map(STATION_CROSSING_INVALID))
     df["invalid"] = (df[INVALID_PARTS] == 1).any(axis=1).astype(float)
     return df
 
@@ -125,7 +140,7 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
         by_class = {cls: {} for cls in CLASS_ORDER}
         by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
-            if c not in ("out_of_room", "station_crossing"):  # reported as their invalid parts, over all episodes
+            if c != "out_of_room" and not (c == "station_crossing" and g.invalid_station.notna().any()):  # reported as their invalid parts, over all episodes
                 by_class[METRIC_CLASS[c]][c] = g[c].mean()
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
@@ -306,9 +321,9 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         legend = [Line2D([], [], color=REAL_PATH, ls="--", label=REAL_PATH_LABEL[kind]), Line2D([], [], color=GOAL, ls=":", label="straight line"),
                   Line2D([], [], color=GOAL, marker="*", ls="", ms=10, label="goal"),
                   Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"arrival radius ({ARRIVAL_RADIUS_M[kind]:g} m)"),
-                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{KIND_LEGEND[k]} (disk: final position)") for k in other_kinds],
-                  Line2D([], [], color=KIND_COLOUR[kind], marker="o", ms=4, label="model samples"),
-                  Line2D([], [], color=KIND_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.3, mec="k",
+                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{OTHERS_LEGEND[kind][k]} (disk: final position)") for k in other_kinds],
+                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ms=4, label="model samples"),
+                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.3, mec="k",
                          label=f"final position ({PROMPT_DISK[kind]}, {prompt_radius(agent, site):g} m)"),
                   Line2D([], [], color="k", marker="s", ls="", ms=7, label="start")]
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
@@ -316,6 +331,59 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         ncol = int(min(4, max(1, width // OVERLAY_LEGEND_COLUMN_IN)))
         fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, fontsize=9, frameon=False)
         fig.savefig(fig_dir / f"trip_{trip_id}.png", bbox_inches="tight")  # the tight box takes in the legend below the panels and the title
+
+
+def move_features(trip: dict, site: dict, positions: dict[str, np.ndarray], end: int) -> dict:
+    """trajectory_features of a person's move: positions ({agent id: (T, 2)} from the trip start) up to index end, stratified by (start station, goal station)."""
+    agent = trip["agent"]
+    other = next(a for a in positions if a not in (agent, "robot"))
+    return trajectory_features(positions[agent][: end + 1], positions["robot"][: end + 1], positions[other][: end + 1],
+                               (trip["start_goal"], trip["goal"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
+
+
+def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
+    """{site: {trip id: move features}} of every person trip in trips that reaches its goal and does not start within the arrival radius."""
+    radius = ARRIVAL_RADIUS_M["human"]
+    moves = {site: {} for site in SITES}
+    for trip in trips.values():
+        if agent_kind(trip["agent"]) != "human":
+            continue
+        site, a, b = sites[trip["site"]], trip["start_index"], trip["end_index"] + 1
+        positions = {agent: np.asarray(track, float)[a:b, :2] for agent, track in trip["tracks"].items()}
+        goal = np.asarray(trip["goal_xy"], float)
+        if np.linalg.norm(positions[trip["agent"]][0] - goal) <= radius:
+            continue
+        end = move_end_index(positions[trip["agent"]], goal, radius, np.array([site["stations"][m]["xy"] for m in label_members(trip["goal"], site["stations"])], float))
+        if end is not None:
+            moves[trip["site"]][trip["id"]] = move_features(trip, site, positions, end)
+    return moves
+
+
+def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.DataFrame:
+    """One row per person condition, site, comparison and feature: the FeatureDistance of the generated moves to the real moves."""
+    rng = np.random.default_rng(SEED)
+    pool = real_moves(trips, sites)
+    rows = []
+    for (*cond, site), d in df[df.kind == "human"].groupby([*COND, "site"], sort=False):
+        ok = d[(d.status == "ok") & d.move_end_index.notna()]
+        generated = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
+        if not generated:
+            continue
+        ids = list(pool[site])
+        half = rng.permutation(len(ids))
+        test = set(d.trip) & set(ids)
+        comparisons = {
+            "site pool": ([pool[site][ids[i]] for i in half[: len(ids) // 2]], [pool[site][ids[i]] for i in half[len(ids) // 2:]]),
+            "same trips": ([pool[site][t] for t in sorted(test)], [m for t, m in pool[site].items() if t not in test]),
+        }
+        for comparison, (real, reference) in comparisons.items():
+            distances = feature_distances(generated, real, reference, n_bootstrap=SIMILARITY_DRAWS, n_reference_draws=SIMILARITY_DRAWS, rng=rng)
+            for feature, fd in distances.items():
+                rows.append({**dict(zip(COND, cond)), "site": site, "comparison": comparison, "feature": feature, "w1": fd.w1,
+                             "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
+                             "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
+                             "n_generated": fd.n_generated, "n_real": fd.n_real, "n_episodes": len(d), "n_without_move": len(d) - len(ok)})
+    return pd.DataFrame(rows)
 
 
 def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
@@ -335,5 +403,7 @@ def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
         n_conditions += len(by_cond)
     pd.concat(paired).to_csv(out / "paired_baselines.csv", index=False)
     pd.concat(compared).to_csv(out / "comparisons.csv", index=False)
+    if (df.kind == "human").any():
+        similarity(df, run, trips, sites).to_csv(out / "similarity.csv", index=False)
     overlay_figures(df, run, overlay, trips, sites, out / "figures")
     print(f"{len(episodes)} episodes, {n_conditions} conditions -> {out}")
