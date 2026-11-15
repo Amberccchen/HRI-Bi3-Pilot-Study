@@ -1,12 +1,12 @@
 """Qwen chat client over the vLLM OpenAI API: messages from prompt turns and images, samples, parsed plans.
 
 A Chat holds one conversation (system prompt, then user turns and the model's replies). A single
-query is a Chat with one ask(); a rolling conversation keeps asking and accept()s the reply it
+query is a Chat with one ask(). A rolling conversation keeps asking and accept()s the reply it
 wants to continue from. Per sample the client returns the parsed plan (None when the reply is not
 a valid plan), the raw reply, the reasoning text, the finish reason, token counts and latency.
 
 What the reply must look like (JSON key, example, validity checks, the start of a reply) comes from the PromptBuilder of the
-output mode, so the client has no per-mode branches. Reply format choices and their measurements: TRACKER.md, Phase 3.
+output mode, so the client has no per-mode branches.
 """
 
 import base64
@@ -25,18 +25,18 @@ from traj_gen.scene import load_prompt
 BASE = "http://localhost:8000"
 MODEL = "Qwen/Qwen3.8-27B-FP8"
 MAX_IMAGES = 10  # the server's --limit-mm-per-prompt (hri-sim scripts/serve.sh)
-THINKING_EFFORT = "medium"  # the template's default "xhigh" never finished within 24000 tokens (8 of 8 runs); "low" was not shorter than medium
-THINK_MAX_TOKENS = 16384  # thinking + answer in one call: medium effort needs 1-6k tokens, text-only waypoints ~8k (8 of 12 were forced at 8192); beyond this the answer is forced. Server runs with MAX_LEN=65536 so long conversations still fit
-ANSWER_MAX_TOKENS = 1280  # longest allowed answer is 75 pairs (planners.MAX_PLAN_STEPS) at about 15 tokens per pair = 1125; also the cap for a forced answer
+THINKING_EFFORT = "medium"  # the template's default "xhigh" does not finish within 24000 tokens (8 of 8 runs), and "low" is not shorter than medium
+THINK_MAX_TOKENS = 16384  # thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k (8 of 12 are forced at 8192). Beyond this the answer is forced. The server runs with MAX_LEN=65536, so long conversations still fit
+ANSWER_MAX_TOKENS = 1280  # longest allowed answer is 75 pairs (planners.MAX_PLAN_STEPS) at about 15 tokens per pair = 1125. Also the cap for a forced answer
 TIMEOUT_S = 3600  # a thinking reply of the full budget takes minutes on a busy server
-# Sampling from the model card (PLAN Decision 8); thinking mode and instruct (non-thinking) mode differ.
+# Sampling from the model card. Thinking mode and instruct (non-thinking) mode differ.
 THINKING_SAMPLING = {"temperature": 1.0, "top_p": 0.95, "top_k": 20}
 INSTRUCT_SAMPLING = {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "presence_penalty": 1.5}
 
 
 @dataclass
 class Sample:
-    value: np.ndarray | None  # the plan as an (k, 2) array in the output units; None = invalid reply
+    value: np.ndarray | None  # the plan as an (k, 2) array in the output units, None for an invalid reply
     content: str              # the reply text the plan was read from
     reasoning: str            # the model's thinking ("" without thinking)
     finish: str               # vLLM finish reason of the (last) call: "stop" or "length"
@@ -101,7 +101,7 @@ class Chat:
         return [{"role": m["role"], "content": [part(p) for p in m["parts"]]} for m in self.messages]
 
     def _call(self, extra: list[dict] | None = None, **kwargs) -> tuple[dict, float]:
-        """One chat completion for the conversation so far (+ extra trailing messages); returns choice with usage, and latency."""
+        """One chat completion for the conversation so far (+ extra trailing messages): the choice with its usage, and the latency."""
         c = self.client
         t0 = time.perf_counter()
         payload = {"model": MODEL, "messages": self._api_messages() + (extra or []),

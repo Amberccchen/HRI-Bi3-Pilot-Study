@@ -5,7 +5,7 @@ start_index, then one executed position per time step (so the other agents' repl
 is the others at that time). An episode ends at the first executed step within the agent's arrival
 radius of the goal, or at the end of the replay (the last index of the trip arrays).
 
-- SingleShotEpisode: one query at the start; the whole (retimed) plan is executed.
+- SingleShotEpisode: one query at the start, and the whole (retimed) plan is executed.
 - RollingEpisode: re-query every execute_s of executed motion, each time in a fresh chat.
 - ConversationEpisode: the same in one growing chat.
 - BaselineEpisode: single shot without a model (straight, replay), one folder per trip.
@@ -61,7 +61,7 @@ def load_trajectory(folder: Path) -> tuple[np.ndarray, dict[str, np.ndarray]]:
 
 
 class Episode:
-    """Shared machinery; subclasses decide when to query and how much of a plan to execute."""
+    """Shared machinery. Subclasses decide when to query and how much of a plan to execute."""
 
     def __init__(self, run: Path, exp, trip: dict, site: dict, framing: str | None, thinking: str | None, sample: int):
         self.exp, self.trip, self.site, self.framing, self.thinking, self.sample = exp, trip, site, framing, thinking, sample
@@ -99,7 +99,7 @@ class Episode:
         return chat, chat.client.builder.first(scene)
 
     def query(self, scene: Scene, retries: int) -> np.ndarray | None:
-        """Ask the model for a plan (in the output units); an invalid reply is sampled again up to `retries` times."""
+        """Ask the model for a plan (in the output units). An invalid reply is sampled again up to `retries` times."""
         chat, turn = self.open_turn(scene)
         images = self.planner.images(scene, turn.images)
         self.n_queries += 1
@@ -122,7 +122,7 @@ class Episode:
             "prompt_tokens": s.prompt_tokens, "completion_tokens": s.completion_tokens, "latency_s": s.latency_s})
 
     def plan(self, value: np.ndarray | None, scene: Scene, steps: int | None) -> np.ndarray:
-        """Positions for a reply, with the plan recorded; steps = how many plan steps will be executed (None = all), for the raw speeds."""
+        """Positions for a reply, with the plan recorded. steps is how many plan steps will be executed (None for all), for the raw speeds."""
         positions, raw = self.planner.positions(value, scene)
         self.plans.append({"query": self.n_queries - 1 if self.n_queries else None, "time_s": scene.time_s, "units": self.planner.units.name if self.planner.units else None,
                            "reply": None if value is None else value.tolist(), "positions_m": positions.tolist(),
@@ -132,7 +132,7 @@ class Episode:
         return positions
 
     def execute(self, positions: np.ndarray) -> bool:
-        """Append the positions to the track, up to the goal or the end of the replay; True when the episode is over."""
+        """Append the positions to the track, up to the goal or the end of the replay. Returns True when the episode is over."""
         take = positions[: len(self.trip["time"]) - len(self.track)]
         hit = np.flatnonzero(np.linalg.norm(take - self.goal, axis=1) <= self.arrival_radius)
         if hit.size:
@@ -144,7 +144,7 @@ class Episode:
         raise NotImplementedError
 
     def go(self) -> None:
-        """Run and save; a server or transport error becomes status error instead of stopping the whole run."""
+        """Run and save. A server or transport error becomes status error instead of stopping the whole run."""
         t0 = time.perf_counter()
         try:
             self.run()
@@ -208,7 +208,7 @@ class SingleShotEpisode(Episode):
 
 
 class BaselineEpisode(SingleShotEpisode):
-    """No model: the planner's positions are executed as they are; one folder per trip."""
+    """No model: the planner's positions are executed as they are, in one folder per trip."""
 
     @classmethod
     def folder_for(cls, run, exp_id, trip_id, framing, thinking, sample) -> Path:

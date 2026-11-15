@@ -5,8 +5,8 @@ controller and site, but defines only path efficiency precisely. The readings us
 
 - minimum distance: centre-to-centre distance between the agent's and each other agent's
   tracked position (what the mocap gives), minimised over time and the other agents. The paper
-  reports it in mm; these functions use metres.
-- velocity: the paper does not say which statistic; mean, median, max and std of the
+  reports it in mm, and these functions use metres.
+- velocity: the paper does not say which statistic. The mean, median, max and std of the
   agent's speed are all returned, with the mean as the likely match.
 - acceleration: "average acceleration". The mean magnitude of the agent's 2-D
   acceleration vector is the primary value, with the mean absolute change in speed

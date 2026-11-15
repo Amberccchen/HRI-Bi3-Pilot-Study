@@ -7,7 +7,7 @@
 - timeline.png: the whole episode on one map with colour = time (same colour scale for every agent),
   so a crossing point shows whether both were there at the same moment.
 
-Both are written into the episode folder, next to result.png. Read only the episode's own files
+Both are written into the episode folder, next to result.png. They read only the episode's own files
 and the trip it was run on, so they work on any finished episode (model or baseline).
 """
 

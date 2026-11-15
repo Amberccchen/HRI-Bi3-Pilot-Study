@@ -12,7 +12,7 @@ methods (to_units, max_steps, positions) say how it is prompted and how a reply 
   metric and saving code as the model conditions.
 
 positions() also returns the raw per-step speeds of the reply (before limiting) for the
-speed-violation metric; None for the baselines, which do not have a reply. The speed cap is the
+speed-violation metric, or None for the baselines, which do not have a reply. The speed cap is the
 planned agent's (trip["agent"]).
 """
 
@@ -30,7 +30,7 @@ from traj_gen.scene import DT, Metres, Pixels, Scene
 
 
 THINKING = ("nothink", "think")  # run option of the model conditions: Qwen thinking off, on
-MAX_PLAN_STEPS = 75  # 30 s: about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap; a longer plan could not be scored in a replay anyway
+MAX_PLAN_STEPS = 75  # 30 s, about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap. A longer plan could not be scored in a replay anyway
 METRES, PIXELS = Metres(), Pixels(bev_transform())
 
 
@@ -94,7 +94,7 @@ class QueryPlanner(Planner):
 
 
 class WaypointPlanner(QueryPlanner):
-    """Positions in metres; the speed limit retimes the path."""
+    """Positions in metres. The speed limit retimes the path."""
 
     name = "waypoints"
     template = "output_waypoints"

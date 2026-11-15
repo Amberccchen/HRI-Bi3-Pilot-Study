@@ -7,7 +7,7 @@ annotate_goals.py, and the Bi3 motion metrics of the planned agent's real path, 
 trajectories can be compared with what the controller did. All tracks and labels
 continue POST_S past the end of the trip (as far as the recording goes), so a
 generated robot that is slower than the real one still has people to be replayed
-against; end_index marks where the real trip ends and the metrics stop.
+against. end_index marks where the real trip ends and the metrics stop.
 
 Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average on a BASE_HZ grid,
 once per recording) and resampled to --hz on a grid anchored at the trip start, so the start state, the
@@ -18,7 +18,7 @@ LAAS is rotated 180 degrees so both sites have the shared two-station table on t
 
 Run from the repository root: python -m preprocessing.extract_trips
 
-Outputs (mocap-derived, kept outside this repository; read with bi3_derived.py):
+Outputs (mocap-derived, kept outside this repository, read with bi3_derived.py):
   <out>/site_frames.json   room frame, room size, robot footprint and stations per site
   <out>/trips.json         list of trips
   <out>/trips_summary.csv  one row per trip with the real path's metrics
@@ -44,7 +44,7 @@ TEST_TRIALS = {"laas": ["laas18", "laas19", "laas20"], "um": ["um16", "um17"]}
 DEFAULT_TRIALS = ["laas/laas18", "um/um13"]
 CONTROLLERS = ["blind", "cohan", "cv", "hst", "static"]
 SITE_FRAMES = {
-    # origin = centre of the occupied area; rotation (deg) applied after shifting
+    # origin is the centre of the occupied area, and rotation (deg) is applied after shifting.
     "laas": {"origin": [4.88, 15.62], "rotation_deg": 180.0, "room_m": 3.5,
              "robot": "PR2", "footprint_m": [0.668, 0.668]},
     "um": {"origin": [-0.23, 0.01], "rotation_deg": 0.0, "room_m": 3.5,

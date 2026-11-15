@@ -13,7 +13,7 @@ the planner's heading is unknown and the corners are not modelled), so:
   in the 133 trips with a full prompt history. They are unlikely to be real collisions, because both
   bodies are modelled as circles. Contact is also reported as the share of the episode's time steps
   in contact (contact_time) and as the number of separate contacts, a run of consecutive steps
-  counting once (contact_events; steps are 0.4 s apart, so a touch between two samples is missed).
+  counting once (contact_events). Steps are 0.4 s apart, so a touch between two samples is missed.
 - personal-space overlap: the share of the episode's time steps with the agent's body inside some
   other agent's personal space (a disk of the given radius around that agent's centre).
 - goal reached: the path gets within the arrival radius + GOAL_SLACK of the goal station. Bi3
@@ -25,7 +25,7 @@ the planner's heading is unknown and the corners are not modelled), so:
 - final distance to goal: distance of the last sample, also for paths that never arrive.
 - out of room: any sample outside the square room of side room_m.
 - stations: the agent's centre entering the box of a station that is not part of its goal (the stations
-  are obstacles the planner is told about; the real controllers never do this), and the closest
+  are obstacles the planner is told about, and the real controllers never do this), and the closest
   centre distance to such a station.
 - speed cap: for a plan whose raw (before speed limiting) per-step speeds are given,
   the fraction of steps above the speed cap and the largest raw speed.
@@ -40,8 +40,8 @@ import numpy as np
 from preprocessing.bi3_derived import label_members
 
 
-GOAL_SLACK = 0.15    # absorbs where real paths end relative to the goal at Bi3's goal switch: at most 0.602 m over all 144 trips
-STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station position is the robot's stopping point in front of the table
+GOAL_SLACK = 0.15    # absorbs where real paths end relative to the goal at Bi3's goal switch, at most 0.602 m over all 144 trips
+STATION_BOX_M = 0.2  # side of a station's box as drawn on the map. The station position is the robot's stopping point in front of the table.
 # Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (an unusable reply, which has
 # no metrics, is invalid too). contact: closeness to the other agents. efficiency: how the agent moves.
 METRIC_CLASS = {
@@ -87,7 +87,7 @@ def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float
 def traj_gen_metrics(time: np.ndarray, agent: np.ndarray, others: np.ndarray, goal: np.ndarray, agent_radius: float, other_radii: list[float],
                      personal_space_radii: list[float], arrival_radius: float, speed_cap: float, room_m: float, stations: np.ndarray,
                      raw_speed: np.ndarray | None = None) -> dict:
-    """All footprint and task metrics for one path; stations from other_stations(); raw_speed (steps,) only for model plans."""
+    """All footprint and task metrics for one path. stations comes from other_stations(), and raw_speed (steps,) is given only for model plans."""
     time, agent, others = np.asarray(time, float), np.asarray(agent, float), np.asarray(others, float)
     to_goal = np.linalg.norm(agent - np.asarray(goal, float), axis=1)
     arrived = np.flatnonzero(to_goal <= arrival_radius + GOAL_SLACK)

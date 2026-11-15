@@ -18,7 +18,7 @@ from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt
 
 
-FRAMINGS = ("neutral", "social", "social_body", "cautious")  # social_body: social + the centre distance the bodies need; cautious: social, stronger (waiting/detours are fine)
+FRAMINGS = ("neutral", "social", "social_body", "cautious")  # social_body is social plus the centre distance the bodies need. cautious is a stronger social prompt (waiting and detours are fine).
 
 
 @dataclass

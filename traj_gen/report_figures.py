@@ -1,14 +1,18 @@
 # coding-standard: noqa (write-up figures of the v1 run, not part of the pipeline)
-"""Figures for the write-up, one function per panel. Each panel answers one question and fixes the other factors; what was and was not
-run (the grid is not dense) belongs in the caption, so the figure only shows the compared conditions.
+"""Figures for the write-up of the robot episodes of a run, with one list of rows per panel. Each panel answers one question, fixes the
+other factors and shows only the compared conditions.
 
-The panels are stacked as the rows of one figure and share one layout: a row per condition, a column per metric. Dots are the mean over trips with a 95% bootstrap interval (hollow = thinking off,
-filled = on); the solid line is the straight line and the dashed line the real controllers. All values are absolute.
-- Panel A, perception ladder: single-shot waypoints, social prompt; each row adds input to the one above.
-- Panel B, output type: the map as input, social prompt, rolling replanning; waypoints, pixels or velocities.
-- Panel C, replanning horizon: the map as input, social prompt; single shot, rolling, every step (velocity only) or rolling in one conversation.
-- Panel D, prompt: the four framings, pooled over the three experiments that were run with all of them.
-Goal reached and speed are not drawn: thinking or replanning fixes them, so they go in the text and the speed table.
+The panels are stacked as the rows of one figure and share one layout: a row per condition, a column per metric. Dots are the mean
+over trips with a 95% bootstrap interval (hollow = thinking off, filled = on). The solid line is the straight line and the dashed
+line the real controllers. All values are absolute.
+- Panel A, perception ladder: single-shot waypoints, social prompt. Each row adds input to the one above.
+- Panel B, output type: the map as input, social prompt, rolling replanning. The rows are waypoints, pixels and velocities.
+- Panel C, replanning horizon: the map as input, social prompt. The rows are single shot, rolling, every step (velocity only) and rolling in one conversation.
+- Panel D, prompt: the four framings, pooled over PROMPT_EXPERIMENTS (ss_wp_bev, rh_wp_bev, rh_vel1_bev).
+Goal reached and speed are not drawn.
+
+Writes into <run>/report: figure_ladder_output_horizon_prompt_contact_time.png and ..._contact_events.png (each also as PDF), one
+per way of counting contact, and personal_space_sensitivity.csv, the robot's personal-space overlap at other person radii.
 """
 
 import argparse
@@ -30,7 +34,7 @@ STRAIGHT, REPLAY = "straight", "replay"  # experiment ids of the baselines
 MODEL_COLOUR = "#2a78d6"   # validated categorical slot 1: one hue, since the panels compare conditions of one model
 REAL_COLOUR = "#52514e"    # secondary ink grey: the reference, not a series
 THINKING = [("nothink", "thinking off", False), ("think", "thinking on", True)]  # (key, label, filled)
-# (metric, axis label, direction hint, scale); all absolute values, since the straight line's own values vary by trip
+# (metric, axis label, direction hint, scale). All are absolute values, since the straight line's own values vary by trip.
 CONTACT = {"time": ("contact_time", "contact\n(% of episode time)", "← less contact", 100), "events": ("contact_events", "contacts\n(per episode)", "← fewer contacts", 1)}
 OTHER_METRICS = [("personal_space_overlap", "personal-space overlap\n(% of episode time)", "← less intrusion", 100), ("path_efficiency", "path efficiency\n(1 = straight)", "straighter →", 1)]
 DOT_OFFSET = 0.17   # half the vertical gap between the thinking-off and thinking-on dots of a row (rows are 1 apart)
@@ -42,12 +46,12 @@ LADDER = [("text only", ["ss_wp_text"], "social"), ("+ map", ["ss_wp_bev"], "soc
           ("+ predicted pos", ["ss_wp_bev_pred"], "social")]
 # output type: rolling replanning every 2 s is the one horizon with waypoints, pixels and velocities
 OUTPUT_TYPES = [("waypoints", ["rh_wp_bev"], "social"), ("pixels", ["rh_px_bev"], "social"), ("* velocities", ["rh_velseq_bev"], "social")]
-# Row marker, put before the label and explained in the caption: * velocity outputs were never run single shot (only rolling every 2 s, every step and in
-# one conversation), and every step exists only for velocities.
+# Row marker, put before the label and explained in the caption: * velocity outputs have no single-shot experiment (only rolling every 2 s, every step
+# and in one conversation), and every step exists only for velocities.
 # horizon: waypoints, except the per-step row, which only exists for velocities
 HORIZONS = [("single shot", ["ss_wp_bev"], "social"), ("rolling", ["rh_wp_bev"], "social"), ("* one step (vel)", ["rh_vel1_bev"], "social"),
             ("rolling, convo", ["rh_wp_bev_conv"], "social")]
-PROMPT_EXPERIMENTS = ["ss_wp_bev", "rh_wp_bev", "rh_vel1_bev"]  # the experiments run with all four framings
+PROMPT_EXPERIMENTS = ["ss_wp_bev", "rh_wp_bev", "rh_vel1_bev"]  # the experiments pooled in the prompt panel, each needs all four framings
 PROMPTS = [(label, PROMPT_EXPERIMENTS, framing) for label, framing in
            [("neutral", "neutral"), ("social", "social"), ("social + size", "social_body"), ("cautious", "cautious")]]
 
@@ -92,7 +96,7 @@ def save(fig: Figure, path: Path) -> None:
 
 
 def stacked(by_cond: dict, panels: list[tuple[str, list]], metrics: list, path: Path) -> None:
-    """The panels as the rows of one figure; a metric's x axis is shared down the column, so the panels read on one scale."""
+    """The panels as the rows of one figure. A metric's x axis is shared down the column, so the panels read on one scale."""
     heights = [len(rows) for _, rows in panels]
     fig = Figure(figsize=(7.2, FIXED_IN + PANEL_IN * len(panels) + ROW_IN * sum(heights)), dpi=200, layout="constrained")
     grid = fig.subplots(len(panels), len(metrics), sharex="col", sharey="row", gridspec_kw={"height_ratios": heights})
@@ -107,7 +111,7 @@ def stacked(by_cond: dict, panels: list[tuple[str, list]], metrics: list, path: 
     save(fig, path)
 
 
-SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overlap: 0.15 is contact, 0.25 the one used, 0.20 the in-between
+SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overlap: 0.15 is contact, 0.25 the one in agents.py, 0.20 the in-between
 
 
 def sensitivity(run: Path, sites: dict) -> None:

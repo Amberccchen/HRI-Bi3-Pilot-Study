@@ -1,15 +1,15 @@
-"""Analysis of a trajectory generation run: tables, comparisons and figures (design: PLAN.md).
+"""Analysis of a trajectory generation run: tables, comparisons and figures.
 
-Reads every finished episode of the test trips under a run folder (experiments in the registry
-only, so smoke/ and _superseded*/ are ignored; a run still in progress is fine, missing
-conditions are simply absent) and writes <run>/analysis/:
+Reads every finished episode of the test trips under a run folder. Only folders of experiments in
+the registry are read, so other folders such as smoke/ are ignored. A run still in progress is fine,
+and missing conditions are simply absent. Writes into <run>/analysis/:
 
   episodes.csv          one row per episode: condition, trip, planned agent and its kind, status, metrics, queries, tokens, latency
   summary.csv           per planned-agent kind, condition (experiment x framing x thinking, plus the baselines) and
                         site (all / laas / um): status counts and episode-level rates and means, grouped by
                         metric class (invalid, contact, efficiency)
   paired_baselines.csv  every condition minus replay and minus straight on the same trips, per kind
-  comparisons.csv       the PLAN comparisons (neutral vs social, nothink vs think, ...) as differences, per kind
+  comparisons.csv       the condition comparisons (social - neutral prompt, think - nothink, bev - text input, ...) as differences, per kind
   figures/              conditions_<kind>_<thinking>.png, speed_violation_<kind>.png, trip_<id>.png (overlays)
 
 Robot and person episodes are never pooled: every table and figure is per planned-agent kind ("robot" or "human").
@@ -47,7 +47,7 @@ from traj_gen.prompting import FRAMINGS
 COND = ["experiment", "framing", "thinking"]  # a condition within one planned-agent kind
 KEY = ["kind", *COND]                         # a condition across kinds: robot and person episodes are never pooled
 N_BOOT = 2000   # bootstrap resamples of the trips: the interval's edges are stable to about 0.01 SD
-SEED = 20261022  # fixed so the intervals are reproducible; the run date, no other meaning
+SEED = 20261022  # fixed so the intervals are reproducible. The value is a date with no other meaning
 INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
         "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s"]
 STATUSES = ("ok", "invalid_reply", "error")
@@ -67,7 +67,7 @@ REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's pa
 PROMPT_DISK = {"robot": "circumscribed disk", "human": "disk"}  # the planned agent's disk in the prompts, by kind
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True)}  # (shape, filled) per prompt framing
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
-# validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
+# validated categorical slots 1-3 (dataviz reference palette, light surface). The baselines use neutral grey and violet.
 FAMILY_COLOUR = {"single shot": "#2a78d6", "rolling": "#eb6834", "conversation": "#1baf7a"}
 BASELINE_STYLE = {"replay": ("#52514e", "--"), "straight": ("#6250d6", ":")}
 INK, GRID = "#0b0b0b", "#e4e3df"
@@ -179,7 +179,7 @@ if unknown := ({e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs
 
 
 def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
-    """(comparison, scope, A condition, B condition); the difference reported is A - B. Scope = the factor the pairs are split by."""
+    """(comparison, scope, A condition, B condition), with the difference reported as A - B. The scope is the factor the pairs are split by."""
     models = [e for e in EXPERIMENTS if e not in BASELINES]
     by_experiment = EXPERIMENT_COMPARISONS | {"prediction - none": [(e, EXPERIMENTS[e].base) for e in models if EXPERIMENTS[e].predict]}
     pairs = []
@@ -221,7 +221,7 @@ def style(ax, xlabel: str) -> None:
 
 
 def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list, by_cond: dict, key, marker, title: str, legend: list) -> None:
-    """Rows = experiments, one panel per metric; one dot with a bootstrap interval per offset label, drawn as marker(label) = (shape, filled); baselines as vertical lines."""
+    """Rows are experiments, with one panel per metric. Each offset label gets one dot with a bootstrap interval, drawn as marker(label) = (shape, filled). Baselines are vertical lines."""
     fig = Figure(figsize=(max(3.4 * len(panels) + 1.6, 7.5), 0.36 * len(rows) * len(offsets) + 2.6), dpi=150)
     axes = fig.subplots(1, len(panels), sharey=True, squeeze=False)[0]
     for ax, (metric, label) in zip(axes, panels.items()):
@@ -319,7 +319,7 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
 
 
 def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
-    """Write the tables and figures of the run's episodes into <run>/analysis; trips and sites as returned by run.load_run."""
+    """Write the tables and figures of the run's episodes into <run>/analysis, with trips and sites as returned by run.load_run."""
     out = run / ANALYSIS_DIR
     (out / "figures").mkdir(parents=True, exist_ok=True)
     episodes = collect(run)

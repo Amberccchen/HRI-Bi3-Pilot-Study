@@ -1,10 +1,12 @@
-"""Command line for the Bi3 VLM trajectory generation experiments (design: PLAN.md).
+"""Command line for the Bi3 VLM trajectory generation experiments.
 Run from the repository root: python -m traj_gen.run --run <run folder> <command> ...
 
   select   choose the 16 test trips from --trips-dir and write <run>/test_trips.json and <run>/run.json
-  run      run experiments (resumable; one folder per episode, see episodes.py)
+  run      run experiments (resumable, one folder per episode, see episodes.py)
   analyze  tables and figures of a (partial) run into <run>/analysis (see analyze.py)
   animate  animation.gif and timeline.png (colour = time) in given episode folders (see animate.py)
+
+The write-up figures come from python -m traj_gen.report_figures --run <run folder>, after analyze.
 
 Run folders live outside the repository (they hold mocap-derived outputs):
 /persistent/experiments/HRI/bi3_traj_gen/<run>.
@@ -31,13 +33,13 @@ from traj_gen.scene import DT, PROMPT_HISTORY_STEPS
 
 
 STEP_TOLERANCE_S = 2e-3  # trip times are stored to 1 ms
-N_CLOSE = 5          # per site: smallest real min_distance among short trips (where social behaviour shows)
-N_TERCILES = 3       # per site: one trip from each duration tercile of the rest (easy, medium, long/robot-waiting)
-MAX_SHORT_S = 25.0   # "short" for the close-encounter stratum; longer trips are mostly the robot waiting
+N_CLOSE = 5          # per site, the trips with the smallest real min_distance among short trips (where social behaviour shows)
+N_TERCILES = 3       # per site, one trip from each duration tercile of the rest (easy, medium, long/robot-waiting)
+MAX_SHORT_S = 25.0   # "short" for the close-encounter stratum. Longer trips are mostly the robot waiting
 MIN_POST_S = 10.0    # human replay left after the real trip ends: trips at the end of a recording leave a slower plan nothing to be scored against
 MAX_PER_CONTROLLER = 2  # per site, so no controller dominates the test set
-CONCURRENCY = 32     # episodes in parallel: the server gives ~780 tok/s in total (up to 64 sequences), so 32 streams get ~24 tok/s each and more would only add waiting time; nothink episodes mostly wait on the server and use less
-SEED = 20261022      # fixed so the tercile picks are reproducible; the run date, no other meaning
+CONCURRENCY = 32     # episodes in parallel. The server gives ~780 tok/s in total (up to 64 sequences), so 32 streams get ~24 tok/s each and more would only add waiting time. Nothink episodes mostly wait on the server and use less
+SEED = 20261022      # fixed so the tercile picks are reproducible. The value is a date with no other meaning
 
 
 def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
@@ -124,12 +126,12 @@ def run(args: argparse.Namespace) -> None:
     try:
         for n, future in enumerate(as_completed(futures), 1):
             ep = futures[future]
-            future.result()  # go() catches server and transport errors; anything raised here is a bug and stops the run
+            future.result()  # go() catches server and transport errors, so anything raised here is a bug and stops the run
             print(f"[{n}/{len(todo)} {time.perf_counter() - t0:.0f}s] {ep.exp.id} {ep.framing} {ep.thinking} {ep.trip['id']} s{ep.sample}: {ep.status}", flush=True)
     except KeyboardInterrupt:
         pool.shutdown(wait=False, cancel_futures=True)
         print("interrupted; finished episodes are kept, rerun to resume", flush=True)
-        os._exit(130)  # running threads sit in blocking HTTP calls that can take minutes; they would hold the process open
+        os._exit(130)  # running threads sit in blocking HTTP calls that can take minutes, and they would hold the process open
 
 
 def analysis(args: argparse.Namespace) -> None:
@@ -158,7 +160,7 @@ def main() -> None:
     p = sub.add_parser("run", help="run experiments")
     p.add_argument("--experiments", nargs="+", choices=list(EXPERIMENTS), default=list(EXPERIMENTS), help="experiment ids (default: all)")
     p.add_argument("--framings", nargs="+", choices=FRAMINGS, default=list(FRAMINGS))
-    p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first (PLAN); run think afterwards")
+    p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
     p.add_argument("--samples", type=int, default=3, help="samples per trip and condition")
     p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS})")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
