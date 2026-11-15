@@ -129,9 +129,9 @@ class Scene:
     def stations_text(self, units: Metres) -> str:
         """Station positions, then one sentence per shared table."""
         stations = self.site["stations"]
-        lines = [f"station {k}: {units.pos_text(s['xy'])}" for k, s in stations.items() if len(label_members(k, stations)) == 1]
+        lines = [f"station {k}: {units.pos_text(s['xy'])}" for k, s in stations.items() if len(s["members"]) == 1]
         lines += [load_prompt("shared_table").format(a=a, b=b, pos=units.pos_text(s["xy"]))
-                  for k, s in stations.items() if len(label_members(k, stations)) == 2 for a, b in [s["members"]]]
+                  for k, s in stations.items() if len(s["members"]) == 2 for a, b in [s["members"]]]
         return "\n".join(lines)
 
     def person_text(self, p: dict, units: Metres, predict: bool) -> str:

@@ -22,7 +22,7 @@ from traj_gen.analyze import INK, ci, per_trip_means, scored, style
 from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, load_trajectory
 from traj_gen.experiments import BASELINES
 
-STRAIGHT, REPLAY = BASELINES  # registry order
+STRAIGHT, REPLAY = "straight", "replay"  # experiment ids of the baselines
 MODEL_COLOUR = "#2a78d6"   # validated categorical slot 1: one hue, since the panels compare conditions of one model
 REAL_COLOUR = "#52514e"    # secondary ink grey: the reference, not a series
 THINKING = [("nothink", "thinking off", False), ("think", "thinking on", True)]  # (key, label, filled)

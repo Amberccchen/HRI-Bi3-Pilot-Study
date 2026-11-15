@@ -19,8 +19,12 @@ class Experiment:
     images: tuple[str, ...]
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
-    predict: bool = False    # also give each person's constant-velocity position (text and map)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
+
+    @property
+    def predict(self) -> bool:
+        """Also give each person's constant-velocity position (text and map)."""
+        return self.base is not None
 
     @property
     def uses_model(self) -> bool:
@@ -43,6 +47,6 @@ _experiments = [
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]
-_experiments += [replace(e, id=f"{e.id}_pred", predict=True, base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
+_experiments += [replace(e, id=f"{e.id}_pred", base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
 EXPERIMENTS = {e.id: e for e in _experiments}
 BASELINES = tuple(e.id for e in _experiments if not e.uses_model)  # registry order

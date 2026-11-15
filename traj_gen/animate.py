@@ -24,7 +24,7 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, clearance_gap, inscribed_radius
 from preprocessing.bi3_derived import load_site_frames, load_trips
-from traj_gen.bev import EXTENT_M, LABEL, LABEL_PX, PERSON, REAL_PATH, ROBOT, bev_axes, draw_room, figure_png
+from traj_gen.bev import EXTENT_M, LABEL_PX, PERSON, PERSON_LABEL, REAL_PATH, ROBOT, bev_axes, draw_room, figure_png
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
 
@@ -34,7 +34,7 @@ CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time 
 
 
 def load_episode(folder: Path) -> dict:
-    """Everything a time view needs from an episode folder and its trip; humans is a list of (T, 2) tracks, gap the (T,) robot-person clearance gap."""
+    """Everything a time view needs from an episode folder and its trip. humans is a list of (T, 2) tracks, gap the (T,) robot-person clearance gap."""
     manifest = json.loads((folder / "manifest.json").read_text())
     trip = load_trips(id=manifest["trip"])[0]
     t, robot, humans = load_trajectory(folder)
@@ -80,7 +80,7 @@ def _frame(ep: dict, k: int) -> bytes:
 
 
 def animate(folder: Path, ep: dict, speed: float) -> Path:
-    """Write <folder>/animation.gif from load_episode(folder), played `speed` times faster than real time; the last frame is held."""
+    """Write <folder>/animation.gif from load_episode(folder), played `speed` times faster than real time, holding the last frame."""
     frames = [Image.open(io.BytesIO(_frame(ep, k))).convert("RGB") for k in range(len(ep["t"]))]
     for f in frames:
         f.thumbnail((GIF_PX, GIF_PX), Image.Resampling.LANCZOS)
@@ -101,7 +101,7 @@ def timeline(folder: Path, ep: dict) -> Path:
         ax.add_collection(LineCollection(np.stack([track[:-1], track[1:]], axis=1), colors=cmap(norm[:-1]), lw=lw, zorder=4))
         ax.scatter(*track.T, c=cmap(norm), marker=marker, s=30 if marker == "o" else 22, ec="k", lw=0.3, zorder=5)
     for h, track in enumerate(ep["humans"]):
-        ax.text(*track[0] + [0, 0.12], person_name(h), ha="center", fontsize=LABEL_PX * 0.7, color=LABEL, zorder=7)
+        ax.text(*track[0] + [0, 0.12], person_name(h), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
     ax.plot(*ep["robot"][0], marker="s", color="k", ms=8, zorder=6)
     cax = fig.add_axes([0.665, 0.924, 0.245, 0.012])  # x 0.6..1.7 m, y 1.86..1.92 m: the strip above the room's top wall, right of the title
     cbar = fig.colorbar(ScalarMappable(cmap=cmap), cax=cax, orientation="horizontal")

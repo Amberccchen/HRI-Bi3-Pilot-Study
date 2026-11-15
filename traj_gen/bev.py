@@ -34,7 +34,7 @@ TABLE_PAD_M = 0.12   # shared-table outline around its two stations
 LABEL_PX = 20        # label font size; readable at 896 px
 LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
 ROBOT, PERSON, GOAL, GRID, WALL, BOX = "#1f77b4", "#e66101", "#2ca02c", "#d9d9d9", "#222222", "#b8b8b8"
-REAL_PATH, LABEL = "#555555", "#7a3300"
+REAL_PATH, PERSON_LABEL = "#555555", "#7a3300"
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,7 @@ def draw_room(ax, site: dict, goal_xy: np.ndarray) -> None:
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
     stations = site["stations"]
     for k, s in stations.items():
-        if len(label_members(k, stations)) > 1:
+        if len(s["members"]) > 1:
             pts = np.array([stations[m]["xy"] for m in s["members"]])
             lo, hi = pts.min(axis=0) - (STATION_BOX_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_BOX_M / 2 + TABLE_PAD_M)
             ax.add_patch(Rectangle(lo, *(hi - lo), fill=False, ec=BOX, lw=2, ls="--", zorder=2))
@@ -137,7 +137,7 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
             for q in p["predicted"]:
                 ax.add_patch(Circle(q, PERSONAL_SPACE_RADIUS, fill=False, ec=PERSON, lw=2, zorder=5))
         ax.text(p["xy"][0], p["xy"][1] + PERSONAL_SPACE_RADIUS + 0.06, f"{p['name']} → {_label(p['goal'], scene.site['stations'])} then {_label(p['next_goal'], scene.site['stations'])}",
-                ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=LABEL, zorder=7,
+                ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7,
                 bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"t = {scene.time_s:.1f} s", ha="left", va="top", fontsize=LABEL_PX * 0.8, zorder=7)
     return figure_png(fig), BevTransform.from_axes(ax, SIZE_PX)
@@ -154,7 +154,7 @@ def _draw_people(ax, humans: list[np.ndarray]) -> None:
     for h, track in enumerate(humans):
         ax.plot(*track.T, "-o", color=PERSON, lw=2, ms=3, alpha=0.7, zorder=3, label="people" if h == 0 else None)
         ax.add_patch(Circle(track[-1], PERSONAL_SPACE_RADIUS, fc=PERSON, ec="k", alpha=0.4, zorder=5))
-        ax.text(*track[0] + [0, 0.12], person_name(h), ha="center", fontsize=LABEL_PX * 0.7, color=LABEL, zorder=7)
+        ax.text(*track[0] + [0, 0.12], person_name(h), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
 
 
 def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
