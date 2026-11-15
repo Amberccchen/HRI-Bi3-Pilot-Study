@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, PERSON_PROMPT_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
 from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt
 
@@ -64,8 +64,8 @@ class PromptBuilder:
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
-        u, r, person_radius = self.mode.units, prompt_radius(scene.agent, scene.site), prompt_radius("human0", scene.site)
-        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(person_radius), min_centre=u.len_text(r + person_radius), unit=u.name)
+        u, r = self.mode.units, prompt_radius(scene.agent, scene.site)
+        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name)
         parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 

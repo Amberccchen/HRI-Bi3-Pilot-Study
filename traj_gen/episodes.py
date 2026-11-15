@@ -11,8 +11,9 @@ radius of the goal, or at the end of the replay (the last index of the trip arra
 - BaselineEpisode: single shot without a model (straight, replay), one folder per trip.
 
 Status: ok, invalid_reply (an unusable reply: single shot at once, rolling after one retry),
-error (server or transport error; traceback saved). The files written per episode are listed in PLAN.md
-(Saved results); manifest.json comes last, so a folder with a manifest is a finished episode.
+error (server or transport error, with the traceback in the manifest). Each episode folder holds
+inputs/ (the images sent), trajectory.csv, plans.jsonl, queries.jsonl, result.png and manifest.json.
+manifest.json is written last, so a folder with a manifest is a finished episode.
 """
 
 import http.client

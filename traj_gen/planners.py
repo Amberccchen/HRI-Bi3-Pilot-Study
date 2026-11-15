@@ -8,12 +8,12 @@ methods (to_units, max_steps, positions) say how it is prompted and how a reply 
 - waypoints (metres): the speed limit keeps the path's shape and stretches its timing.
 - pixels: the same after mapping the BEV pixels to metres.
 - velocities: each clipped to the speed cap, then integrated.
-The speed cap is the planned agent's (trip["agent"]).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions.
 
 positions() also returns the raw per-step speeds of the reply (before limiting) for the
-speed-violation metric; None for the baselines, which do not have a reply.
+speed-violation metric; None for the baselines, which do not have a reply. The speed cap is the
+planned agent's (trip["agent"]).
 """
 
 from functools import cached_property

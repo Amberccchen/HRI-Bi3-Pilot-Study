@@ -107,7 +107,7 @@ def station_text(label: str, stations: dict) -> str:
 
 
 class Scene:
-    """State at index i of a trip; track is the (>= i + 1, 2) track of the planned agent (trip["agent"]) aligned with the trip arrays.
+    """State at index i of a trip. track is the (>= i + 1, 2) track of the planned agent (trip["agent"]) aligned with the trip arrays.
 
     others holds one dict per other agent, in the trip's tracks order: id, kind, position, history, velocity, speed,
     constant-velocity prediction, whether it stands at a station, its goal labels, and its distance from the planned agent.
@@ -158,7 +158,7 @@ class Scene:
         return text
 
     def text(self, units: Metres, predict: bool) -> str:
-        """The per-turn state block of the planned robot, with the other people; predict adds each person's constant-velocity positions."""
+        """The per-turn state block of the planned robot, with the other people. predict adds each person's constant-velocity positions."""
         return load_prompt("scene").format(
             time_s=f"{self.time_s:.1f}", robot_pos=units.pos_text(self.track[-1]), unit=units.name, dt=DT,
             hist_s=PROMPT_HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.history),

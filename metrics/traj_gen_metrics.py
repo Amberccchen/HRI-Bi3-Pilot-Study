@@ -3,11 +3,11 @@
 bi3_metrics.py scores motion with centre-to-centre distances, as the Bi3 paper does.
 Generated paths also need to be judged as navigation: does the agent's body hit another agent,
 does it intrude on their personal space, does it reach its goal, does it stay in the room. Every
-agent is a disk (the caller gives the radii; a robot's is its footprint's inscribed radius, since
+agent is a disk of a radius the caller gives (a robot's is its footprint's inscribed radius, since
 the planner's heading is unknown and the corners are not modelled), so:
 
 - clearance: centre distance minus both body radii, per other agent, minimised over the other
-  agents and time; negative means the bodies touch (contact). With a person body radius of 0.15 m,
+  agents and time. Negative means the bodies touch (contact). With a person body radius of 0.15 m,
   one real controller contact is measured, in trip laas_laas18_static_robot_02 (clearance -0.011 m). It
   is unlikely to be a real collision, because both bodies are modelled as circles. Contact is also
   reported as the share of the episode's time steps in contact (contact_time) and as the number of
@@ -28,8 +28,8 @@ the planner's heading is unknown and the corners are not modelled), so:
   the fraction of steps above the speed cap and the largest raw speed.
 
 Inputs are one executed path as arrays: time (T,) in seconds from trip start, agent
-(T, 2) and others (T, K, 2) in the room frame (metres), goal (2,); radii, arrival radius and
-speed cap per agent, room size and stations from site_frames.json.
+(T, 2) and others (T, K, 2) in the room frame (metres), goal (2,), the radii, arrival radius and
+speed cap per agent, and the room size and stations from site_frames.json.
 """
 
 import numpy as np
@@ -39,8 +39,8 @@ from preprocessing.bi3_derived import label_members
 
 GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end up to 0.60 m from the goal at the switch
 STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station position is the robot's stopping point in front of the table
-# Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (with an unusable reply,
-# which has no metrics); contact: closeness to the other agents; efficiency: how the agent moves; similarity: closeness to real people.
+# Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (an unusable reply, which has
+# no metrics, is invalid too). contact: closeness to the other agents. efficiency: how the agent moves.
 METRIC_CLASS = {
     **dict.fromkeys(["goal_reached", "final_distance_to_goal", "out_of_room", "station_crossing", "station_distance_min",
                      "speed_violation_rate", "raw_speed_max"], "invalid"),

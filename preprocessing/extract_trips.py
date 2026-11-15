@@ -80,7 +80,7 @@ def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
 
 
 def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: float, history_s: float) -> list[dict]:
-    """Trips of the robot in one recording, cut at its goal switches; stations are the site's (load_stations)."""
+    """Trips of the robot in one recording, cut at its goal switches, with stations the site's from load_stations."""
     frames = load_frames(site, trial, controller)
     cleaned = {agent: clean_track(f["time"], np.c_[f["x"], f["y"], f["theta"]]) for agent, f in frames.items()}
     robot = frames["robot"]
@@ -116,7 +116,7 @@ def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: floa
 
 
 def site_frames(stations: dict) -> dict:
-    """Room frame, robot footprint and room-frame stations per site; stations maps each site to load_stations(site)."""
+    """Room frame, robot footprint and room-frame stations per site, from stations mapping each site to load_stations(site)."""
     out = {}
     for site in SITES:
         frame = SITE_FRAMES[site]

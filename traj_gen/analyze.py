@@ -15,7 +15,7 @@ conditions are simply absent) and writes <run>/analysis/:
 Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only; goal_reached
 counts every episode, so one with an invalid reply counts as not reached. An episode is invalid when
 its reply is unusable, or its plan exceeds the speed cap in any step, does not reach the goal, leaves
-the room or crosses a station; the invalid rate is reported with the rate of each part. Paired differences and
+the room or crosses a station. The invalid rate is reported with the rate of each part. Paired differences and
 comparisons work on per-trip means (over the samples of the condition), so a trip is one
 observation and the intervals are percentile bootstrap intervals over trips (few trips: read them
 as rough). time_to_goal only exists for episodes that reached the goal.
@@ -244,7 +244,7 @@ def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> lis
 
 
 def condition_figures(by_cond: dict, speed_caps: list[float], fig_dir: Path) -> None:
-    """Dot plots per thinking mode and of the speed-cap violations; speed_caps are the planned agents' caps (m/s) in the run."""
+    """Dot plots per thinking mode and of the speed-cap violations, with speed_caps the planned agents' caps (m/s) in the run."""
     panels = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)", "path_efficiency": "path efficiency (1 = straight)"}
     baselines = any((b, "-", "-") in by_cond for b in BASELINES)
     for th in THINKING:

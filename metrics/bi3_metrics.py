@@ -8,7 +8,7 @@ controller and site, but defines only path efficiency precisely. The readings us
   reports it in mm; these functions use metres.
 - velocity: the paper does not say which statistic; mean, median, max and std of the
   agent's speed are all returned, with the mean as the likely match.
-- acceleration: "average acceleration"; the mean magnitude of the agent's 2-D
+- acceleration: "average acceleration". The mean magnitude of the agent's 2-D
   acceleration vector is the primary value, with the mean absolute change in speed
   (tangential acceleration) and the max also returned.
 - path efficiency: straight-line start-to-end distance divided by distance travelled.

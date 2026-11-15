@@ -1,9 +1,9 @@
 """Time views of finished episodes, for when paths cross or double back and a static path plot hides who was where when.
 
 - animation.gif: one frame per time step on the BEV axes. The planned agent and the other agents are
-  body disks to scale with short fading trails; the planned agent's real path at the same time is a
-  dashed ghost disk; the plan it is currently following (rolling episodes replan) is a thin line; the
-  frame title gives the time and the current clearance to the nearest other agent.
+  body disks to scale with short fading trails. The planned agent's real path at the same time is a
+  dashed ghost disk, and the plan it is currently following (rolling episodes replan) is a thin line.
+  The frame title gives the time and the current clearance to the nearest other agent.
 - timeline.png: the whole episode on one map with colour = time (same colour scale for every agent),
   so a crossing point shows whether both were there at the same moment.
 
