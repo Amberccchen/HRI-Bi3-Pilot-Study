@@ -8,8 +8,10 @@ the planner's heading is unknown and the corners are not modelled), so:
 
 - clearance: centre distance minus both body radii, per other agent, minimised over the other
   agents and time. Negative means the bodies touch (contact). With a person body radius of 0.15 m,
-  one real controller contact is measured, in trip laas_laas18_static_robot_02 (clearance -0.011 m). It
-  is unlikely to be a real collision, because both bodies are modelled as circles. Contact is also
+  two real controller contacts are measured on the 16 test trips of the v1 run, in trips
+  laas_laas18_static_robot_02 (clearance -0.008 m) and um_um13_static_robot_05 (-0.018 m), and three
+  in the 133 trips with a full prompt history. They are unlikely to be real collisions, because both
+  bodies are modelled as circles. Contact is also
   reported as the share of the episode's time steps in contact (contact_time) and as the number of
   separate contacts, a run of consecutive steps counting once (contact_events; steps are 0.4 s apart,
   so a touch between two samples is missed).
@@ -17,8 +19,9 @@ the planner's heading is unknown and the corners are not modelled), so:
   other agent's personal space (a disk of the given radius around that agent's centre).
 - goal reached: the path gets within the arrival radius + GOAL_SLACK of the goal station. Bi3
   switches goals at about the arrival radius on the raw mocap, but the cleaned room-frame real
-  paths end 0.49-0.60 m from the goal, so the slack keeps the real controllers from
-  being scored as failures. Time to goal is the first such sample.
+  paths end 0.48-0.60 m from the goal at their last sample, so the slack keeps the real controllers
+  from being scored as failures (2 of the 133 trips with a full prompt history end 0.601 and 0.602 m
+  away and are scored as not reached). Time to goal is the first such sample.
 - final distance to goal: distance of the last sample, also for paths that never arrive.
 - out of room: any sample outside the square room of side room_m.
 - stations: the agent's centre entering the box of a station that is not part of its goal (the stations
@@ -37,7 +40,7 @@ import numpy as np
 from preprocessing.bi3_derived import label_members
 
 
-GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end up to 0.60 m from the goal at the switch
+GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end 0.48-0.60 m from the goal at their last sample
 STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station position is the robot's stopping point in front of the table
 # Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (an unusable reply, which has
 # no metrics, is invalid too). contact: closeness to the other agents. efficiency: how the agent moves.
