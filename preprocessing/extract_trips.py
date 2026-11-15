@@ -10,7 +10,8 @@ generated robot that is slower than the real one still has people to be replayed
 against; end_index marks where the real trip ends and the metrics stop.
 
 Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average on a BASE_HZ grid,
-once per recording) and resampled to --hz. Coordinates are room-centred: the origin is the centre of the
+once per recording) and resampled to --hz on a grid anchored at the trip start, so the start state, the
+camera frame at the start and the real-path metrics share one time (time 0). Coordinates are room-centred: the origin is the centre of the
 area people and the robot actually occupy (about 3.5 x 3.5 m at both sites), and
 LAAS is rotated 180 degrees so both sites have the shared two-station table on the
 +x wall.
@@ -35,7 +36,7 @@ from metrics.bi3_metrics import bi3_metrics
 from preprocessing.bi3_derived import DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, load_frames, load_stations, moving_average, write_manifest
 
 
-OUT = DERIVED / "trips"
+OUT = DERIVED / "trips_v2"
 # Bi3's own train/val/test split by trial (fluentrobotics/Bi3 create_data_npys.py).
 TEST_TRIALS = {"laas": ["laas18", "laas19", "laas20"], "um": ["um16", "um17"]}
 # um13, not a UM test trial: um16/um17 have no overhead video, and the camera-input experiments need one.
@@ -79,6 +80,15 @@ def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
     return [str(labels[i]) for i in idx]
 
 
+def trip_grid(t0: float, t1: float, t_first: float, t_last: float, hz: float, history_s: float) -> tuple[np.ndarray, int, int]:
+    """Sample times of a trip from t0 to t1 in a recording spanning t_first..t_last: the grid t0 + k / hz, from up to history_s before t0
+    (not before t_first) to POST_S after t1 (not after t_last), the index of t0 and the index of the last sample not after t1."""
+    k_first = -min(int(np.floor(history_s * hz + 1e-9)), int(np.floor((t0 - t_first) * hz + 1e-9)))
+    k_last = int(np.floor((min(t_last, t1 + POST_S) - t0) * hz + 1e-9))
+    i0 = -k_first
+    return t0 + np.arange(k_first, k_last + 1) / hz, i0, i0 + int(np.floor((t1 - t0) * hz + 1e-9))
+
+
 def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: float, history_s: float) -> list[dict]:
     """Trips of the robot in one recording, cut at its goal switches, with stations the site's from load_stations."""
     frames = load_frames(site, trial, controller)
@@ -90,9 +100,7 @@ def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: floa
     trips = []
     for k, (s, e) in enumerate(zip(starts[:-1], starts[1:])):  # the last goal is never reached
         t0, t1 = time[s], time[e]
-        grid = np.arange(max(time[0], t0 - history_s), min(time[-1], t1 + POST_S) + 1e-9, 1 / hz)
-        i0 = int(np.searchsorted(grid, t0 - 1e-9))
-        i1 = int(np.searchsorted(grid, t1 + 1e-9)) - 1  # last sample not after t_end
+        grid, i0, i1 = trip_grid(t0, t1, time[0], time[-1], hz, history_s)
         tracks = {}
         for agent, (base, smoothed) in cleaned.items():
             xyt = np.stack([np.interp(grid, base, c) for c in smoothed.T], axis=1)
