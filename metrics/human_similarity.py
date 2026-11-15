@@ -91,6 +91,10 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, n_referen
     generated set's size and station mix, compared with the same real set. Giving every record the same
     stratum makes both resamplings unstratified.
 
+    When the generated set is close to the real set, each bootstrap draw adds sampling noise to W1, so the
+    bootstrap interval sits above W1 and can exclude it. In that range the reference interval is the
+    comparison that tells a real-like set from an unlike one.
+
     Args:
         generated: list of records from `trajectory_features`.
         real: list of records from `trajectory_features`, the real set compared with.
