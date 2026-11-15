@@ -118,8 +118,7 @@ def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
     room = site["room_m"]
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
     stations = site["stations"]
-    # The Bi3 paper puts the workstations along the perimeter of the square traversable workspace (Stratton et al., ICRA 2026, Sec. IV-A),
-    # so each box is centred on the room border, at the standing point moved perpendicular onto the nearest side.
+    # Each box is centred on the room border: the standing point moved perpendicular onto the nearest side.
     half = room / 2
     on_border, inward = {}, {}
     for k, s in stations.items():
