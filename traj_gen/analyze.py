@@ -164,7 +164,7 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# Experiment pairs (A, B) per comparison, the difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev.
+# Experiment pairs (A, B) per comparison. The difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev.
 EXPERIMENT_COMPARISONS = {
     "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
     "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
