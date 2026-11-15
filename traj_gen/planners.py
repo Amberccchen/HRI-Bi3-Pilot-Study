@@ -1,4 +1,4 @@
-"""Planners: turn a model reply into the robot's positions, one per time step from where it is now.
+"""Planners: turn a model reply into the planned agent's positions, one per time step from where it is now.
 
 A planner is made per episode from an experiments.Experiment. Model planners (QueryPlanner
 subclasses) also open the chats and render the images for the queries. Each subclass is one
@@ -8,6 +8,7 @@ methods (to_units, max_steps, positions) say how it is prompted and how a reply 
 - waypoints (metres): the speed limit keeps the path's shape and stretches its timing.
 - pixels: the same after mapping the BEV pixels to metres.
 - velocities: each clipped to the speed cap, then integrated.
+The speed cap is the planned agent's (trip["agent"]).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions.
 
@@ -19,7 +20,7 @@ from functools import cached_property
 
 import numpy as np
 
-from metrics.traj_gen_metrics import SPEED_CAP
+from traj_gen.agents import SPEED_CAP_M_S, agent_kind
 from traj_gen.bev import bev_transform, render_bev
 from traj_gen.camera import camera_frame
 from traj_gen.client import Chat, QwenClient
@@ -30,35 +31,37 @@ from traj_gen.scene import DT, Metres, Pixels, Scene
 
 THINKING = ("nothink", "think")  # run option of the model conditions: Qwen thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s: about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap; a longer plan could not be scored in a replay anyway
-STEP_M = SPEED_CAP * DT  # most the robot moves in one step
 METRES, PIXELS = Metres(), Pixels(bev_transform())
 
 
-def retime(start: np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Walk the path start -> points at most STEP_M per step, keeping its shape: (n, 2) positions and the plan's (len(points),) speeds in m/s."""
+def retime(start: np.ndarray, points: np.ndarray, step_m: float) -> tuple[np.ndarray, np.ndarray]:
+    """Walk the path start -> points at most step_m per step, keeping its shape: (n, 2) positions and the plan's (len(points),) speeds in m/s."""
     points = np.vstack([start, points])
     seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
     arc = np.concatenate([[0.0], np.cumsum(seg)])  # arclength of each plan point
-    reached = [0.0]  # arclength the robot has actually covered at each step: at most STEP_M more than the step before, never ahead of the plan
+    reached = [0.0]  # arclength the agent has actually covered at each step: at most step_m more than the step before, never ahead of the plan
     for target in arc[1:]:
-        reached.append(min(target, reached[-1] + STEP_M))
-    while reached[-1] < arc[-1]:  # the plan has ended but the robot is behind it
-        reached.append(min(arc[-1], reached[-1] + STEP_M))
+        reached.append(min(target, reached[-1] + step_m))
+    while reached[-1] < arc[-1]:  # the plan has ended but the agent is behind it
+        reached.append(min(arc[-1], reached[-1] + step_m))
     s = np.array(reached[1:])
     return np.stack([np.interp(s, arc, points[:, 0]), np.interp(s, arc, points[:, 1])], axis=1), seg / DT
 
 
 class Planner:
-    """Base: what an episode needs from a planner. name and units are None for the baselines, which have no output mode."""
+    """Base: what an episode needs from a planner. name and units are None for the baselines, which have no output mode.
+    speed_cap is the planned agent's (m/s), step_m the most it moves in one step."""
 
     name = None
     units = None
 
     def __init__(self, exp, trip: dict, framing: str | None, thinking: str | None):
         self.exp, self.trip, self.framing, self.thinking = exp, trip, framing, thinking
+        self.speed_cap = SPEED_CAP_M_S[agent_kind(trip["agent"])]
+        self.step_m = self.speed_cap * DT
 
     def positions(self, value: np.ndarray | None, scene: Scene) -> tuple[np.ndarray, np.ndarray | None]:
-        """(n, 2) robot positions in metres for steps 1..n after the scene's time, and the raw speeds (n_reply,) in m/s."""
+        """(n, 2) positions of the planned agent in metres for steps 1..n after the scene's time, and the raw speeds (n_reply,) in m/s."""
         raise NotImplementedError
 
 
@@ -79,7 +82,7 @@ class QueryPlanner(Planner):
 
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.robot)), self.exp.predict)
+        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
         return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property
@@ -101,7 +104,7 @@ class WaypointPlanner(QueryPlanner):
     example = [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)]
 
     def positions(self, value, scene):
-        return retime(scene.robot[-1], value)
+        return retime(scene.track[-1], value, self.step_m)
 
 
 class PixelPlanner(WaypointPlanner):
@@ -130,8 +133,8 @@ class VelocityPlanner(QueryPlanner):
 
     def positions(self, value, scene):
         speed = np.linalg.norm(value, axis=1)
-        clipped = value * (SPEED_CAP / np.maximum(speed, SPEED_CAP))[:, None]  # factor 1 at or below the cap
-        return scene.robot[-1] + np.cumsum(clipped * DT, axis=0), speed
+        clipped = value * (self.speed_cap / np.maximum(speed, self.speed_cap))[:, None]  # factor 1 at or below the cap
+        return scene.track[-1] + np.cumsum(clipped * DT, axis=0), speed
 
 
 class StepVelocityPlanner(VelocityPlanner):
@@ -149,11 +152,11 @@ class StraightPlanner(Planner):
     """Baseline: straight line to the goal at the speed cap."""
 
     def positions(self, value, scene):
-        return retime(scene.robot[-1], scene.goal_xy[None])[0], None
+        return retime(scene.track[-1], scene.goal_xy[None], self.step_m)[0], None
 
 
 class ReplayPlanner(Planner):
-    """Baseline: the real controller's path, as recorded."""
+    """Baseline: the planned agent's real path, as recorded."""
 
     def positions(self, value, scene):
         return real_path(self.trip)[1:], None  # the scene is at start_index, so the real path after it

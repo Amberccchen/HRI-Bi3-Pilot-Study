@@ -1,17 +1,17 @@
 """Episodes: one planner on one trip, executed against the replayed people, and everything saved.
 
-The robot track is aligned with the trip arrays: the real history up to start_index, then one
-executed position per time step (so the people's replay at the same index is the people at that
-time). An episode ends at the first executed step within GOAL_TOL of the goal, or at the end of
-the human replay (the last index of the trip arrays).
+The planned agent (trip["agent"]) has a track aligned with the trip arrays: its real history up to
+start_index, then one executed position per time step (so the other agents' replay at the same index
+is the others at that time). An episode ends at the first executed step within the agent's arrival
+radius of the goal, or at the end of the replay (the last index of the trip arrays).
 
 - SingleShotEpisode: one query at the start; the whole (retimed) plan is executed.
 - RollingEpisode: re-query every execute_s of executed motion, each time in a fresh chat.
 - ConversationEpisode: the same in one growing chat.
 - BaselineEpisode: single shot without a model (straight, replay), one folder per trip.
 
-Status: ok, invalid (single shot: unusable reply), failed (rolling: unusable reply after one
-retry), error (server or transport error; traceback saved). The files written per episode are listed in PLAN.md
+Status: ok, invalid_reply (an unusable reply: single shot at once, rolling after one retry),
+error (server or transport error; traceback saved). The files written per episode are listed in PLAN.md
 (Saved results); manifest.json comes last, so a folder with a manifest is a finished episode.
 """
 
@@ -25,8 +25,9 @@ from pathlib import Path
 import numpy as np
 
 from metrics.bi3_metrics import bi3_metrics
-from metrics.traj_gen_metrics import GOAL_TOL, other_stations, traj_gen_metrics
+from metrics.traj_gen_metrics import other_stations, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
+from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, SPEED_CAP_M_S, agent_kind, body_radius
 from traj_gen.bev import render_result
 from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
 from traj_gen.prompting import Turn
@@ -40,20 +41,22 @@ REPORT_DIR = "report"
 
 
 def real_path(trip: dict) -> np.ndarray:
-    """(n, 2) positions of the real robot from the trip's start to its end, in the room frame."""
-    return np.asarray(trip["robot"], float)[trip["start_index"]: trip["end_index"] + 1, :2]
+    """(n, 2) positions of the trip's planned agent, as recorded, from the trip's start to its end, in the room frame."""
+    return np.asarray(trip["tracks"][trip["agent"]], float)[trip["start_index"]: trip["end_index"] + 1, :2]
 
 
-def save_trajectory(folder: Path, times: np.ndarray, track: np.ndarray, humans: np.ndarray) -> None:
-    """Write <folder>/trajectory.csv from times (T,), the robot track (T, 2) and the people (T, H, 2)."""
-    header = "t,x,y" + "".join(f",h{h + 1}_x,h{h + 1}_y" for h in range(humans.shape[1]))
-    np.savetxt(folder / "trajectory.csv", np.column_stack([times, track, humans.reshape(len(humans), -1)]), delimiter=",", header=header, comments="", fmt="%.4f")
+def save_trajectory(folder: Path, times: np.ndarray, positions: dict[str, np.ndarray]) -> None:
+    """Write <folder>/trajectory.csv from times (T,) and {agent id: (T, 2) positions}, columns t, <id>_x, <id>_y in the dict's order."""
+    header = "t" + "".join(f",{agent}_x,{agent}_y" for agent in positions)
+    np.savetxt(folder / "trajectory.csv", np.column_stack([times, *positions.values()]), delimiter=",", header=header, comments="", fmt="%.4f")
 
 
-def load_trajectory(folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Read <folder>/trajectory.csv: times (T,), the robot track (T, 2) and the people (T, H, 2)."""
-    data = np.loadtxt(folder / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
-    return data[:, 0], data[:, 1:3], data[:, 3:].reshape(len(data), -1, 2)
+def load_trajectory(folder: Path) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Read <folder>/trajectory.csv: times (T,) and {agent id: (T, 2) positions} in column order."""
+    path = folder / "trajectory.csv"
+    columns = path.read_text().split("\n", 1)[0].split(",")[1:]
+    data = np.loadtxt(path, delimiter=",", skiprows=1, ndmin=2)
+    return data[:, 0], {columns[k].removesuffix("_x"): data[:, 1 + k: 3 + k] for k in range(0, len(columns), 2)}
 
 
 class Episode:
@@ -63,9 +66,11 @@ class Episode:
         self.exp, self.trip, self.site, self.framing, self.thinking, self.sample = exp, trip, site, framing, thinking, sample
         self.folder = self.folder_for(run, exp.id, trip["id"], framing, thinking, sample)
         self.planner = exp.planner(exp, trip, framing, thinking)
-        self.start = trip["start_index"]
-        self.goal = np.asarray(trip["robot_goal_xy"], float)
-        self.track = np.asarray(trip["robot"], float)[: self.start + 1, :2]
+        self.agent, self.start = trip["agent"], trip["start_index"]
+        self.goal = np.asarray(trip["goal_xy"], float)
+        self.arrival_radius = ARRIVAL_RADIUS_M[agent_kind(self.agent)]
+        self.track = np.asarray(trip["tracks"][self.agent], float)[: self.start + 1, :2]
+        self.others = [a for a in trip["tracks"] if a != self.agent]
         self.status, self.error = "ok", None
         self.plans, self.records, self.raw, self.n_queries = [], [], [], 0
         self.inputs: dict[str, bytes] = {}  # file name under inputs/ -> PNG bytes sent
@@ -128,7 +133,7 @@ class Episode:
     def execute(self, positions: np.ndarray) -> bool:
         """Append the positions to the track, up to the goal or the end of the replay; True when the episode is over."""
         take = positions[: len(self.trip["time"]) - len(self.track)]
-        hit = np.flatnonzero(np.linalg.norm(take - self.goal, axis=1) <= GOAL_TOL)
+        hit = np.flatnonzero(np.linalg.norm(take - self.goal, axis=1) <= self.arrival_radius)
         if hit.size:
             take = take[: hit[0] + 1]
         self.track = np.vstack([self.track, take])
@@ -151,18 +156,20 @@ class Episode:
         if n < 3:  # velocity and acceleration need a few samples (nothing executed after an invalid reply)
             return None
         sl = slice(self.start, self.start + n)
-        humans = np.stack([np.asarray(h, float)[sl, :2] for h in self.trip["humans"]], axis=1)
-        t, robot = np.asarray(self.trip["time"], float)[sl], self.track[self.start:]
+        others = np.stack([np.asarray(self.trip["tracks"][o], float)[sl, :2] for o in self.others], axis=1)
+        t, agent = np.asarray(self.trip["time"], float)[sl], self.track[self.start:]
         raw = np.concatenate(self.raw) if self.raw else None
-        return {**bi3_metrics(t, robot, humans), **traj_gen_metrics(
-            t, robot, humans, self.goal, self.site["footprint_m"], self.site["room_m"], other_stations(self.site, self.trip["robot_goal"]), raw)}
+        return {**bi3_metrics(t, agent, others), **traj_gen_metrics(
+            t, agent, others, self.goal, body_radius(self.agent, self.site), [body_radius(o, self.site) for o in self.others],
+            [PERSONAL_SPACE_RADIUS_M[agent_kind(o)] for o in self.others], self.arrival_radius, SPEED_CAP_M_S[agent_kind(self.agent)],
+            self.site["room_m"], other_stations(self.site, self.trip["goal"]), raw)}
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
         model = {"name": MODEL, "thinking": self.thinking == "think", "reasoning_effort": THINKING_EFFORT, "sampling": THINKING_SAMPLING if self.thinking == "think" else INSTRUCT_SAMPLING,
                  "max_tokens": THINK_MAX_TOKENS if self.thinking == "think" else ANSWER_MAX_TOKENS} if self.exp.uses_model else None
         return {
-            "trip": t["id"], "site": t["site"], "controller": t["controller"], "experiment": self.exp.id, "framing": self.framing,
+            "trip": t["id"], "site": t["site"], "controller": t["controller"], "agent": self.agent, "experiment": self.exp.id, "framing": self.framing,
             "thinking": self.thinking, "sample": self.sample, "images": list(self.exp.images), "output_mode": self.planner.name,
             "horizon": type(self).__name__, "execute_s": self.exp.execute_s, "model": model, "status": self.status, "error": self.error,
             "start_index": self.start, "steps_executed": len(self.track) - self.start - 1, "metrics": self.metrics(),
@@ -178,12 +185,12 @@ class Episode:
             (f / "inputs" / name).write_bytes(png)
         n = len(self.track) - a
         times = np.asarray(t["time"], float)[a: a + n]
-        humans = np.stack([np.asarray(h, float)[a: a + n, :2] for h in t["humans"]], axis=1)
-        save_trajectory(f, times, self.track[a:], humans)
+        others = {o: np.asarray(t["tracks"][o], float)[a: a + n, :2] for o in self.others}
+        save_trajectory(f, times, {agent: self.track[a:] if agent == self.agent else others[agent] for agent in t["tracks"]})
         for name, rows in (("plans.jsonl", self.plans), ("queries.jsonl", self.records)):
             (f / name).write_text("".join(json.dumps(r) + "\n" for r in rows))
         title = f"{self.exp.id} {self.framing or ''} {self.thinking or ''} {t['id']} {self.status}"
-        (f / "result.png").write_bytes(render_result(self.site, self.goal, self.track[a:], real_path(t), list(humans.transpose(1, 0, 2)), title))
+        (f / "result.png").write_bytes(render_result(self.site, self.agent, self.goal, self.track[a:], real_path(t), others, title))
         manifest = self.manifest(wall_s)
         manifest["files"] = sorted(str(p.relative_to(f)) for p in f.rglob("*") if p.is_file()) + ["manifest.json"]
         (f / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -194,7 +201,7 @@ class SingleShotEpisode(Episode):
         scene = self.scene()
         value = self.query(scene, retries=0)
         if value is None:
-            self.status = "invalid"
+            self.status = "invalid_reply"
             return
         self.execute(self.plan(value, scene, None))
 
@@ -221,7 +228,7 @@ class RollingEpisode(Episode):
             scene = self.scene()
             value = self.query(scene, retries=1)
             if value is None:
-                self.status = "failed"
+                self.status = "invalid_reply"
                 return
             positions = self.plan(value, scene, steps)[:steps]
             positions = np.vstack([positions, np.repeat(positions[-1:], steps - len(positions), axis=0)])  # a plan shorter than the window: hold the last position

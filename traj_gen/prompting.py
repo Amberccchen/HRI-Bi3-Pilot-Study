@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from metrics.traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, SPEED_CAP, robot_prompt_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
 from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt
 
@@ -41,19 +41,19 @@ class PromptBuilder:
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.example_text())
 
     def system(self, scene: Scene) -> str:
-        u, site = self.mode.units, scene.site
+        u, site, kind = self.mode.units, scene.site, agent_kind(scene.agent)
         frame = load_prompt(f"frame_{u.name}").format(image_px=SIZE_PX, **u.bounds(site["room_m"]))
         return load_prompt("system").format(
             room_side=u.len_text(site["room_m"]), unit=u.name, frame=frame, stations=scene.stations_text(u),
-            robot_radius=u.len_text(robot_prompt_radius(site["footprint_m"])), speed_cap=u.len_text(SPEED_CAP), dt=DT,
-            goal_tol=u.len_text(GOAL_TOL))
+            robot_radius=u.len_text(prompt_radius(scene.agent, site)), speed_cap=u.len_text(SPEED_CAP_M_S[kind]), dt=DT,
+            goal_tol=u.len_text(ARRIVAL_RADIUS_M[kind]))
 
     def captions(self, scene: Scene, kinds: tuple[str, ...]) -> str:
         """The "Attached images" block for the given kinds (empty without images)."""
         if not kinds:
             return ""
         fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt(f"grid_{self.mode.units.name}"), "hist_s": PROMPT_HISTORY_S,
-                  "goal_tol": self.mode.units.len_text(GOAL_TOL), "unit": self.mode.units.name}
+                  "goal_tol": self.mode.units.len_text(ARRIVAL_RADIUS_M[agent_kind(scene.agent)]), "unit": self.mode.units.name}
         items = []
         for n, k in enumerate(kinds, 1):
             caption = load_prompt(f"caption_{k}").format(n=n, **fields)
@@ -64,8 +64,8 @@ class PromptBuilder:
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
-        u, r = self.mode.units, robot_prompt_radius(scene.site["footprint_m"])
-        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSONAL_SPACE_RADIUS), min_centre=u.len_text(r + PERSONAL_SPACE_RADIUS), unit=u.name)
+        u, r, person_radius = self.mode.units, prompt_radius(scene.agent, scene.site), prompt_radius("human0", scene.site)
+        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(person_radius), min_centre=u.len_text(r + person_radius), unit=u.name)
         parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 

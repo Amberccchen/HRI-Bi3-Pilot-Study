@@ -6,13 +6,16 @@ conditions are simply absent) and writes <run>/analysis/:
 
   episodes.csv          one row per episode: condition, trip, status, metrics, queries, tokens, latency
   summary.csv           per condition (experiment x framing x thinking, plus the baselines) and site
-                        (all / laas / um): status counts and episode-level metric means
+                        (all / laas / um): status counts and episode-level rates and means, grouped by
+                        metric class (invalid, contact, efficiency)
   paired_baselines.csv  every condition minus replay and minus straight on the same trips
   comparisons.csv       the PLAN comparisons (neutral vs social, nothink vs think, ...) as differences
   figures/              conditions_<thinking>.png, speed_violation.png, trip_<id>.png (overlays)
 
 Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only; goal_reached
-counts every episode, so an invalid or failed one counts as not reached. Paired differences and
+counts every episode, so one with an invalid reply counts as not reached. An episode is invalid when
+its reply is unusable, or its plan exceeds the speed cap in any step, does not reach the goal, leaves
+the room or crosses a station; the invalid rate is reported with the rate of each part. Paired differences and
 comparisons work on per-trip means (over the samples of the condition), so a trip is one
 observation and the intervals are percentile bootstrap intervals over trips (few trips: read them
 as rough). time_to_goal only exists for episodes that reached the goal.
@@ -28,9 +31,10 @@ from matplotlib.figure import Figure
 from matplotlib.image import imread
 from matplotlib.lines import Line2D
 
-from metrics.traj_gen_metrics import SPEED_CAP
+from metrics.traj_gen_metrics import METRIC_CLASS
 from preprocessing.bi3_derived import SITES
-from traj_gen.bev import GOAL, PERSON, REAL_PATH, ROBOT, render_overlay
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
+from traj_gen.bev import GOAL, KIND_COLOUR, KIND_LEGEND, REAL_PATH, render_overlay
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -39,14 +43,20 @@ from traj_gen.prompting import FRAMINGS
 KEY = ["experiment", "framing", "thinking"]
 N_BOOT = 2000   # bootstrap resamples of the trips: the interval's edges are stable to about 0.01 SD
 SEED = 20261022  # fixed so the intervals are reproducible; the run date, no other meaning
-INFO = ["trip", "site", "controller", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
+INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
         "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s"]
-SKIP = {"min_distance_per_person", "min_distance_index", "min_distance_person"}  # per-person detail, not an episode-level number
+STATUSES = ("ok", "invalid_reply", "error")
+SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other"}  # per-agent detail, not an episode-level number
+METRICS = [m for m in METRIC_CLASS if m not in SKIP]  # episode-level metric columns, present (NaN when absent) in every episode table
 RATES = ["goal_reached", "contact_time", "personal_space_overlap", "out_of_room", "station_crossing"]
 MEANS = ["contact_events", "min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal", "station_distance_min"]
+CLASS_ORDER = ("invalid", "contact", "efficiency")
 PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
+OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
+OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
+REAL_PATH_LABEL = {"robot": "real controller's logged path", "human": "person's logged path"}  # grey dashed line, by the planned agent's kind
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True)}  # (shape, filled) per prompt framing
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
@@ -63,19 +73,25 @@ def collect(run: Path) -> pd.DataFrame:
         for path in sorted((run / exp).glob("**/manifest.json")):
             m = json.loads(path.read_text())
             if m["trip"] in strata:
+                unknown = set(m["metrics"] or {}) - set(METRIC_CLASS)
+                if unknown:
+                    raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
                 metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
                 rows.append({"experiment": exp, "framing": m["framing"] or "-", "thinking": m["thinking"] or "-", "folder": str(path.parent.relative_to(run)),
-                             **{k: m.get(k) for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
-    return pd.DataFrame(rows)
+                             **{k: m[k] for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
+    return pd.DataFrame(rows, columns=[*KEY, "folder", *INFO, *METRICS])
 
 
 def scored(episodes: pd.DataFrame) -> pd.DataFrame:
-    """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached."""
+    """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached.
+    Adds speed_cap_violated (a raw plan speed above the cap) and invalid (any part of the invalid class), both 0/1 per episode."""
     df = episodes.copy()
-    metric_cols = [c for c in df.columns if c in RATES + MEANS + ["clearance_min"]]
     df[RATES] = df[RATES].astype(float)  # before the NaN assignment: pandas refuses NaN into a bool column
-    df.loc[df.status != "ok", metric_cols] = np.nan
+    df.loc[df.status != "ok", RATES + MEANS + ["clearance_min"]] = np.nan
     df["goal_reached"] = df.goal_reached.fillna(0.0)
+    df["speed_cap_violated"] = (df.speed_violation_rate > 0).astype(float)  # NaN (no reply to score: baselines, unusable replies) is not a violation
+    df["invalid"] = ((df.status == "invalid_reply") | (df.speed_cap_violated == 1) | (df.goal_reached == 0)
+                     | (df.out_of_room == 1) | (df.station_crossing == 1)).astype(float)
     return df
 
 
@@ -92,10 +108,14 @@ def ci(values) -> tuple[float, float, float]:
 def summary(df: pd.DataFrame) -> pd.DataFrame:
     def one(g: pd.DataFrame) -> pd.Series:
         calls = g.samples.sum()
+        by_class = {cls: {} for cls in CLASS_ORDER}
+        by_class["invalid"] |= {"invalid": g.invalid.mean(), "invalid_reply_rate": (g.status == "invalid_reply").mean(), "speed_cap_violated": g.speed_cap_violated.mean()}
+        for c in RATES + MEANS:
+            by_class[METRIC_CLASS[c]][c] = g[c].mean()
+        by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
-            "n": len(g), **{s: (g.status == s).sum() for s in ("ok", "invalid", "failed", "error")},
-            **{c: g[c].mean() for c in RATES}, "clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median(),
-            **{c: g[c].mean() for c in MEANS}, "queries_per_episode": g.queries.mean(), "retries": g.retries.sum(), "forced_answers": g.forced_answers.sum(),
+            "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},
+            "queries_per_episode": g.queries.mean(), "retries": g.retries.sum(), "forced_answers": g.forced_answers.sum(),
             "tokens_per_query": g.completion_tokens.sum() / calls if calls else np.nan, "latency_s_per_query": g.query_latency_s.sum() / calls if calls else np.nan})
 
     parts = [df.groupby(KEY, sort=False).apply(one, include_groups=False).assign(site="all")]
@@ -223,7 +243,8 @@ def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> lis
     return handles
 
 
-def condition_figures(by_cond: dict, fig_dir: Path) -> None:
+def condition_figures(by_cond: dict, speed_caps: list[float], fig_dir: Path) -> None:
+    """Dot plots per thinking mode and of the speed-cap violations; speed_caps are the planned agents' caps (m/s) in the run."""
     panels = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)", "path_efficiency": "path efficiency (1 = straight)"}
     baselines = any((b, "-", "-") in by_cond for b in BASELINES)
     for th in THINKING:
@@ -235,20 +256,21 @@ def condition_figures(by_cond: dict, fig_dir: Path) -> None:
                      legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
     rows = [e for e in present(by_cond) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
-        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP:g} m/s"}, rows, ["nothink", "think"], by_cond,
+        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": f"share of plan steps above {' / '.join(f'{c:g}' for c in speed_caps)} m/s"}, rows, ["nothink", "think"], by_cond,
                  lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
-    legend = [Line2D([], [], color=REAL_PATH, ls="--", label="real path"), Line2D([], [], color=GOAL, ls=":", label="straight line"),
-              Line2D([], [], color=PERSON, marker="o", ms=4, label="people"), Line2D([], [], color=ROBOT, marker="o", ms=4, label="model samples (disk = final robot position)")]
+    """trip_<id>.png per trip: the samples of each experiment (rows) and condition (columns) drawn by render_overlay, with a legend below that fits the figure width."""
     for trip_id, d in df[df.experiment.isin(experiments)].groupby("trip"):
         trip = trips[trip_id]
-        a, goal = trip["start_index"], np.asarray(trip["robot_goal_xy"], float)
+        site, agent = sites[trip["site"]], trip["agent"]
+        kind, a, goal = agent_kind(agent), trip["start_index"], np.asarray(trip["goal_xy"], float)
         real = real_path(trip)
         shown = [e for e in experiments if e in set(d.experiment)]
         cols = [c for c in sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (THINKING.index(c[0]), FRAMINGS.index(c[1])))]
-        fig = Figure(figsize=(4.2 * len(cols), 4.2 * len(shown) + 0.9), dpi=110)
+        width = OVERLAY_PANEL_IN * len(cols)
+        fig = Figure(figsize=(width, OVERLAY_PANEL_IN * len(shown) + 0.4), dpi=110)
         axes = fig.subplots(len(shown), len(cols), squeeze=False)
         for ax in axes.flat:
             ax.axis("off")
@@ -257,16 +279,26 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
                 g = d[(d.experiment == exp) & (d.thinking == th) & (d.framing == fr)]
                 if g.empty:
                     continue
-                paths = [load_trajectory(run / f)[1] for f in g.folder]
+                paths = [load_trajectory(run / f)[1][agent] for f in g.folder]
                 end = max(len(real), *map(len, paths))
-                humans = [np.asarray(h, float)[a: a + end, :2] for h in trip["humans"]]
+                others = {o: np.asarray(track, float)[a: a + end, :2] for o, track in trip["tracks"].items() if o != agent}
                 title = f"{exp} {fr} {th}: {int((g.status == 'ok').sum())}/{len(g)} ok"
-                png = render_overlay(sites[trip["site"]], goal, paths, real, humans, title)
+                png = render_overlay(site, agent, goal, paths, real, others, title)
                 axes[i, j].imshow(imread(io.BytesIO(png), format="png"))
+        other_kinds = dict.fromkeys(agent_kind(o) for o in trip["tracks"] if o != agent)
+        legend = [Line2D([], [], color=REAL_PATH, ls="--", label=REAL_PATH_LABEL[kind]), Line2D([], [], color=GOAL, ls=":", label="straight line"),
+                  Line2D([], [], color=GOAL, marker="*", ls="", ms=10, label="goal"),
+                  Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"arrival radius ({ARRIVAL_RADIUS_M[kind]:g} m)"),
+                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{KIND_LEGEND[k]} (disk = final position)") for k in other_kinds],
+                  Line2D([], [], color=KIND_COLOUR[kind], marker="o", ms=4, label="model samples"),
+                  Line2D([], [], color=KIND_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.3, mec="k",
+                         label=f"final {kind} position (disk of radius {prompt_radius(agent, site):g} m, as in the prompt)"),
+                  Line2D([], [], color="k", marker="s", ls="", ms=7, label="start")]
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
-        fig.legend(handles=legend, loc="lower center", ncol=4, fontsize=9, frameon=False)
-        fig.tight_layout(rect=(0, 0.04, 1, 0.97))
-        fig.savefig(fig_dir / f"trip_{trip_id}.png")
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
+        ncol = int(min(4, max(1, width // OVERLAY_LEGEND_COLUMN_IN)))
+        fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, fontsize=9, frameon=False)
+        fig.savefig(fig_dir / f"trip_{trip_id}.png", bbox_inches="tight")  # the tight box takes in the legend below the panels and the title
 
 
 def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
@@ -280,6 +312,6 @@ def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
     by_cond = per_trip_means(df)
     paired_baselines(by_cond).to_csv(out / "paired_baselines.csv", index=False)
     comparisons(by_cond).to_csv(out / "comparisons.csv", index=False)
-    condition_figures(by_cond, out / "figures")
+    condition_figures(by_cond, sorted({SPEED_CAP_M_S[agent_kind(trips[t]["agent"])] for t in episodes.trip.unique()}), out / "figures")
     overlay_figures(df, run, overlay, trips, sites, out / "figures")
     print(f"{len(episodes)} episodes, {len(by_cond)} conditions -> {out}")

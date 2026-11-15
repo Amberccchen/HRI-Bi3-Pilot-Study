@@ -94,7 +94,7 @@ def select(args: argparse.Namespace) -> None:
         if (args.run / name).exists():
             raise ValueError(f"{args.run / name} exists: select into a new run folder")
     rng = np.random.default_rng(SEED)
-    by_id = {t["id"]: t for t in load_trips(args.trips_dir)}
+    by_id = {t["id"]: t for t in load_trips(args.trips_dir, agent="robot")}
     chosen = [c for site in SITES for c in select_trips([t for t in by_id.values() if t["site"] == site], rng)]
     args.run.mkdir(parents=True, exist_ok=True)
     (args.run / TEST_TRIPS).write_text(json.dumps(chosen, indent=2) + "\n")

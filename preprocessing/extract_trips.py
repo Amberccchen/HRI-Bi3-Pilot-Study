@@ -1,16 +1,16 @@
-"""Cut robot station-to-station trips out of Bi3 into compact, room-centred samples.
+"""Cut station-to-station trips of a planned agent out of Bi3 into compact, room-centred samples.
 
-A trip starts when the robot is given a new goal station and ends when it is given
-the next one (on reaching the goal). Each trip keeps a short history before the
-start, the robot's real path, both participants' tracks and their goal labels from
-annotate_goals.py, and the Bi3 motion metrics of the real path, so generated
+Robot trips: a trip starts when the robot is given a new goal station and ends when it is given
+the next one (on reaching the goal). Each trip names its planned agent and keeps a short history
+before the start, every agent's track (the robot and the participants) with its labels from
+annotate_goals.py, and the Bi3 motion metrics of the planned agent's real path, so generated
 trajectories can be compared with what the controller did. All tracks and labels
 continue POST_S past the end of the trip (as far as the recording goes), so a
 generated robot that is slower than the real one still has people to be replayed
 against; end_index marks where the real trip ends and the metrics stop.
 
-Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average) and
-resampled to --hz. Coordinates are room-centred: the origin is the centre of the
+Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average on a BASE_HZ grid,
+once per recording) and resampled to --hz. Coordinates are room-centred: the origin is the centre of the
 area people and the robot actually occupy (about 3.5 x 3.5 m at both sites), and
 LAAS is rotated 180 degrees so both sites have the shared two-station table on the
 +x wall.
@@ -32,8 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from metrics.bi3_metrics import bi3_metrics
-from preprocessing.bi3_derived import (DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, load_frames, load_stations, load_video_sync,
-                                       moving_average, write_manifest)
+from preprocessing.bi3_derived import DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, load_frames, load_stations, moving_average, write_manifest
 
 
 OUT = DERIVED / "trips"
@@ -66,16 +65,13 @@ def to_room_theta(site: str, theta: np.ndarray) -> np.ndarray:
     return np.angle(np.exp(1j * (np.asarray(theta) + np.radians(SITE_FRAMES[site]["rotation_deg"]))))
 
 
-def clean_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    """Drop repeated samples, smooth on a BASE_HZ grid, then interpolate onto grid."""
+def clean_track(time: np.ndarray, xyt: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Drop repeated samples and smooth on a BASE_HZ grid: the grid (n,) and the smoothed [x, y, unwrapped theta] on it (n, 3)."""
     keep = np.r_[True, np.any(np.diff(xyt[:, :2], axis=0) != 0, axis=1)]
     t, p = time[keep], xyt[keep]
     base = np.arange(time[0], time[-1] + 1e-9, 1 / BASE_HZ)
     cols = [np.interp(base, t, p[:, 0]), np.interp(base, t, p[:, 1]), np.interp(base, t, np.unwrap(p[:, 2]))]
-    smoothed = moving_average(np.stack(cols, axis=1), max(1, int(round(SMOOTH_S * BASE_HZ))))
-    out = np.stack([np.interp(grid, base, c) for c in smoothed.T], axis=1)
-    out[:, 2] = np.angle(np.exp(1j * out[:, 2]))
-    return out
+    return base, moving_average(np.stack(cols, axis=1), max(1, int(round(SMOOTH_S * BASE_HZ))))
 
 
 def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
@@ -83,13 +79,12 @@ def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
     return [str(labels[i]) for i in idx]
 
 
-def trips_for(site: str, trial: str, controller: str, hz: float, history_s: float) -> list[dict]:
-    robot = load_frames(site, trial, controller, agent="robot")
-    humans = [load_frames(site, trial, controller, agent=f"human{h}") for h in range(2)]
-    time = robot["time"]
-    stations = load_stations(site)
-    offset = load_video_sync().get((site, trial, controller))
-    goal = robot["goal"]
+def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: float, history_s: float) -> list[dict]:
+    """Trips of the robot in one recording, cut at its goal switches; stations are the site's (load_stations)."""
+    frames = load_frames(site, trial, controller)
+    cleaned = {agent: clean_track(f["time"], np.c_[f["x"], f["y"], f["theta"]]) for agent, f in frames.items()}
+    robot = frames["robot"]
+    time, goal = robot["time"], robot["goal"]
     switches = np.flatnonzero(goal[1:] != goal[:-1]) + 1
     starts = np.r_[0, switches]
     trips = []
@@ -98,39 +93,35 @@ def trips_for(site: str, trial: str, controller: str, hz: float, history_s: floa
         grid = np.arange(max(time[0], t0 - history_s), min(time[-1], t1 + POST_S) + 1e-9, 1 / hz)
         i0 = int(np.searchsorted(grid, t0 - 1e-9))
         i1 = int(np.searchsorted(grid, t1 + 1e-9)) - 1  # last sample not after t_end
-        r = clean_track(time, np.c_[robot["x"], robot["y"], robot["theta"]], grid)
-        hs = [clean_track(h["time"], np.c_[h["x"], h["y"], h["theta"]], grid) for h in humans]
-        r_room = np.c_[to_room(site, r[:, :2]), to_room_theta(site, r[:, 2])]
-        h_room = [np.c_[to_room(site, h[:, :2]), to_room_theta(site, h[:, 2])] for h in hs]
+        tracks = {}
+        for agent, (base, smoothed) in cleaned.items():
+            xyt = np.stack([np.interp(grid, base, c) for c in smoothed.T], axis=1)
+            tracks[agent] = np.c_[to_room(site, xyt[:, :2]), to_room_theta(site, np.angle(np.exp(1j * xyt[:, 2])))]
         path = slice(i0, i1 + 1)
-        metrics = bi3_metrics(grid[path], r_room[path, :2], np.stack([h[path, :2] for h in h_room], axis=1))
+        others = np.stack([track[path, :2] for agent, track in tracks.items() if agent != "robot"], axis=1)
+        metrics = bi3_metrics(grid[path], tracks["robot"][path, :2], others)
         g = str(goal[s])
         trips.append({
-            "id": f"{site}_{trial}_{controller}_{k:02d}",
-            "site": site, "trial": trial, "controller": controller, "trip": k,
+            "id": f"{site}_{trial}_{controller}_robot_{k:02d}",
+            "site": site, "trial": trial, "controller": controller, "agent": "robot", "trip": k,
             "t_start": round(float(t0), 3), "t_end": round(float(t1), 3), "duration_s": round(float(t1 - t0), 3),
-            "video_offset_s": offset,
             "start_index": i0, "end_index": i1,
-            "robot_goal": g, "robot_goal_xy": to_room(site, stations[g]["xy"]).round(3).tolist(),
-            "robot_next_goal": str(robot["next_goal"][s]),
+            "goal": g, "goal_xy": to_room(site, stations[g]["xy"]).round(3).tolist(), "next_goal": str(robot["next_goal"][s]),
             "time": np.round(grid - t0, 3).tolist(),
-            "robot": np.round(r_room, 3).tolist(),
-            "humans": [np.round(h, 3).tolist() for h in h_room],
-            "human_state": [labels_at(h["time"], h["state"], grid) for h in humans],
-            "human_goal": [labels_at(h["time"], h["goal"], grid) for h in humans],
-            "human_next_goal": [labels_at(h["time"], h["next_goal"], grid) for h in humans],
+            "tracks": {agent: np.round(track, 3).tolist() for agent, track in tracks.items()},
+            "labels": {agent: {key: labels_at(f["time"], f[key], grid) for key in ("state", "goal", "next_goal")} for agent, f in frames.items()},
             "real_metrics": {k2: (round(v, 4) if isinstance(v, float) else v) for k2, v in metrics.items()},
         })
     return trips
 
 
-def site_frames() -> dict:
+def site_frames(stations: dict) -> dict:
+    """Room frame, robot footprint and room-frame stations per site; stations maps each site to load_stations(site)."""
     out = {}
     for site in SITES:
         frame = SITE_FRAMES[site]
-        stations = {k: {"members": v["members"], "xy": to_room(site, v["xy"]).round(3).tolist()}
-                    for k, v in load_stations(site).items()}
-        out[site] = {**frame, "stations": stations}
+        room_stations = {k: {"members": v["members"], "xy": to_room(site, v["xy"]).round(3).tolist()} for k, v in stations[site].items()}
+        out[site] = {**frame, "stations": room_stations}
     return out
 
 
@@ -147,11 +138,13 @@ def main() -> None:
         site, trial = item.split("/")
         if trial not in TEST_TRIALS[site]:
             print(f"note: {item} is not in Bi3's test split {TEST_TRIALS[site]}")
-    trips = [t for item in args.trials for c in args.controllers for t in trips_for(*item.split("/"), c, args.hz, args.history_s)]
+    stations = {site: load_stations(site) for site in SITES}
+    trips = [t for item in args.trials for site, trial in [item.split("/")] for c in args.controllers
+             for t in robot_trips(site, trial, c, stations[site], args.hz, args.history_s)]
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "site_frames.json").write_text(json.dumps(site_frames(), indent=2) + "\n")
+    (args.out / "site_frames.json").write_text(json.dumps(site_frames(stations), indent=2) + "\n")
     (args.out / "trips.json").write_text(json.dumps(trips) + "\n")
-    summary = [{k: t[k] for k in ("id", "site", "trial", "controller", "trip", "t_start", "duration_s", "robot_goal", "robot_next_goal")}
+    summary = [{k: t[k] for k in ("id", "site", "trial", "controller", "agent", "trip", "t_start", "duration_s", "goal", "next_goal")}
                | {k: v for k, v in t["real_metrics"].items() if not isinstance(v, list)} for t in trips]
     with open(args.out / "trips_summary.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary[0]))
@@ -161,9 +154,10 @@ def main() -> None:
               "SITE_FRAMES": SITE_FRAMES, "trials": args.trials, "controllers": args.controllers}
     write_manifest(args.out / "manifest.json", params, {
         "trips": len(trips),
-        "fields": "time is seconds from trip start (negative = history); start_index and end_index are the first and last (inclusive) sample of the trip, samples after end_index are POST_S replay padding; "
-                  "robot and humans[h] rows are [x, y, theta] in the room frame; human_* lists hold per-sample goal labels "
-                  "(keys of site_frames stations); real_metrics are bi3_metrics of the real robot path from start_index to end_index",
+        "fields": "agent is the planned agent of the trip; goal, goal_xy and next_goal are its goal label at the start, the goal's room-frame position and its next goal label; "
+                  "time is seconds from trip start (negative = history); start_index and end_index are the first and last (inclusive) sample of the trip, samples after end_index are POST_S replay padding; "
+                  "tracks[agent id] rows are [x, y, theta] in the room frame for every agent (robot, human0, ...); labels[agent id] holds per-sample state, goal and next_goal labels "
+                  "(goals are keys of site_frames stations; the robot's state is empty); real_metrics are bi3_metrics of the planned agent's real path against all other agents from start_index to end_index",
     })
     print(f"{len(trips)} trips from {len(args.trials)} trials x {len(args.controllers)} controllers -> {args.out}")
 

@@ -11,7 +11,7 @@ the scripts.
     from preprocessing.bi3_derived import load_video_sync, video_time, load_stations, load_visits, load_frames
     video_time("laas", "laas1", "cohan", 63.2)        # seconds into laas1/cohan.mp4
     load_stations("laas")["0/1"]                        # {"members": ["0", "1"], "xy": [...]}
-    frames = load_frames("laas", "laas1", "cohan", agent="human0")
+    frames = load_frames("laas", "laas1", "cohan")["human0"]
     frames["goal"][1000], frames["next_goal"][1000]     # e.g. "5", "0/1"
 """
 
@@ -117,11 +117,13 @@ def load_visits(site: str, trial: str, controller: str) -> list[dict]:
     return rows
 
 
-def load_frames(site: str, trial: str, controller: str, agent: str) -> dict:
-    """Per-sample labels of one agent ("robot", "human0" or "human1") as column arrays."""
+def load_frames(site: str, trial: str, controller: str) -> dict[str, dict]:
+    """Per-sample positions and labels of every agent of a recording: {agent id: column arrays}, agent ids ("robot", "human0", ...) in file order."""
     rows = _read_csv(DERIVED / GOALS_DIR / site / trial / f"{controller}_frames.csv", FRAME_TYPES)
-    rows = [r for r in rows if r["agent"] == agent]
-    return {key: np.array([r[key] for r in rows]) for key in rows[0]}
+    by_agent = {}
+    for r in rows:
+        by_agent.setdefault(r["agent"], []).append(r)
+    return {agent: {key: np.array([r[key] for r in agent_rows]) for key in agent_rows[0]} for agent, agent_rows in by_agent.items()}
 
 
 def load_site_frames(trips_dir: Path) -> dict:
@@ -130,6 +132,6 @@ def load_site_frames(trips_dir: Path) -> dict:
 
 
 def load_trips(trips_dir: Path, **match) -> list[dict]:
-    """Robot trips from the trips folder written by extract_trips.py, optionally filtered, e.g. load_trips(trips_dir, site="um", controller="cohan")."""
+    """Trips (each for one planned agent, trip["agent"]) from the trips folder written by extract_trips.py, optionally filtered, e.g. load_trips(trips_dir, agent="robot", site="um")."""
     trips = json.loads((trips_dir / "trips.json").read_text())
     return [t for t in trips if all(t[k] == v for k, v in match.items())]
