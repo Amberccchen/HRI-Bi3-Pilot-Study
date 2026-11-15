@@ -24,7 +24,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from metrics.traj_gen_metrics import clearance_metrics
-from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radius
+from traj_gen.agents import body_radii, body_radius
 from traj_gen.analyze import INK, ci, per_trip_means, scored, style
 from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
 from traj_gen.experiments import BASELINES
@@ -128,8 +128,8 @@ def sensitivity(run: Path, sites: dict) -> None:
                 _, positions = load_trajectory(run / ep.folder)
                 track, site = positions.pop(ep.agent), sites[ep.site]
                 overlap.append(clearance_metrics(track, np.stack(list(positions.values()), axis=1), body_radius(ep.agent, site),
-                                                 [body_radius(o, site) for o in positions],
-                                                 [radius if agent_kind(o) == "human" else PERSONAL_SPACE_RADIUS_M[agent_kind(o)] for o in positions])["personal_space_overlap"])
+                                                 body_radii(positions, site),
+                                                 [radius] * len(positions))["personal_space_overlap"])
             per_trip = pd.Series(overlap, index=episodes[mask].trip.values).groupby(level=0).mean()
             rows.append({"group": name, "person_radius_m": radius, "overlap_pct": 100 * per_trip.mean()})
     pd.DataFrame(rows).pivot(index="group", columns="person_radius_m", values="overlap_pct").round(0).to_csv(run / REPORT_DIR / "personal_space_sensitivity.csv")

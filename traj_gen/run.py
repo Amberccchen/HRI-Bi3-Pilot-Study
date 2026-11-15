@@ -135,8 +135,8 @@ def run(args: argparse.Namespace) -> None:
 
 
 def analysis(args: argparse.Namespace) -> None:
-    _, _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
-    analyze(args.run, args.overlay, trips, sites)
+    _, chosen, trips, sites = load_run(args.run, args.trips or args.run / TEST_TRIPS)
+    analyze(args.run, args.overlay, chosen, trips, sites)
 
 
 def animate_episodes(args: argparse.Namespace) -> None:
@@ -166,6 +166,7 @@ def main() -> None:
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
     p.set_defaults(func=run)
     p = sub.add_parser("analyze", help="summary tables and figures")
+    p.add_argument("--trips", type=Path, help=f"trip list the run was made with (default: <run>/{TEST_TRIPS})")
     p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
     p = sub.add_parser("animate", help="animation.gif and timeline.png for finished episodes")

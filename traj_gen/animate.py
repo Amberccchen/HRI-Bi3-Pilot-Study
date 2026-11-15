@@ -23,7 +23,7 @@ from matplotlib.patches import Circle
 from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
-from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radius
+from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
 from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, REAL_PATH, bev_axes, draw_room, figure_png
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
@@ -43,7 +43,7 @@ def load_episode(folder: Path, trips: dict, sites: dict) -> dict:
     track = positions.pop(agent)
     site = sites[trip["site"]]
     plans = [json.loads(line) for line in (folder / "plans.jsonl").read_text().splitlines()]
-    gap = clearance_gap(track, np.stack(list(positions.values()), axis=1), body_radius(agent, site), [body_radius(o, site) for o in positions])
+    gap = clearance_gap(track, np.stack(list(positions.values()), axis=1), body_radius(agent, site), body_radii(positions, site))
     return {"manifest": manifest, "site": site, "agent": agent, "goal": np.asarray(trip["goal_xy"], float), "t": t, "track": track,
             "others": positions, "gap": gap, "real": real_path(trip), "plans": plans}
 

@@ -32,7 +32,7 @@ Use [`preprocessing/bi3_derived.py`](preprocessing/bi3_derived.py) to read these
 - `load_trips(trips_dir, **match)` for the trips, optionally filtered by field, for example `load_trips(trips_dir, agent="robot", site="um")`.
 - `load_site_frames(trips_dir)` for the room frame, robot footprint and room-frame stations per site.
 
-Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw dataset is not under the repository root. Each script writes a manifest with its output (`goals/manifest.json`, `video_sync.manifest.json`, `trips_v2/manifest.json`) recording the git commit of the code, whether `preprocessing/`, `metrics/` or `traj_gen/` had uncommitted changes (`git_dirty`), and the parameters, so teammates can confirm they share the same labels. The `goals/` and `video_sync` outputs now under `/persistent/data/Bi3_derived` were written by an earlier version, whose manifests record the script's SHA-256, the branch and the commit instead.
+Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw dataset is not under the repository root. Each script writes a manifest with its output (`goals/manifest.json`, `video_sync.manifest.json`, `trips_v2/manifest.json`) recording the git commit of the code, whether `preprocessing/`, `metrics/` or `traj_gen/` had uncommitted changes (`git_dirty`), and the parameters, so teammates can confirm they share the same labels.
 
 ## Trajectory generation
 

@@ -28,7 +28,7 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import other_stations, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
-from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, SPEED_CAP_M_S, agent_kind, body_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius
 from traj_gen.bev import render_result
 from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
 from traj_gen.prompting import Turn
@@ -161,7 +161,7 @@ class Episode:
         t, agent = np.asarray(self.trip["time"], float)[sl], self.track[self.start:]
         raw = np.concatenate(self.raw) if self.raw else None
         return {**bi3_metrics(t, agent, others), **traj_gen_metrics(
-            t, agent, others, self.goal, body_radius(self.agent, self.site), [body_radius(o, self.site) for o in self.others],
+            t, agent, others, self.goal, body_radius(self.agent, self.site), body_radii(self.others, self.site),
             [PERSONAL_SPACE_RADIUS_M[agent_kind(o)] for o in self.others], self.arrival_radius, SPEED_CAP_M_S[agent_kind(self.agent)],
             self.site["room_m"], other_stations(self.site, self.trip["goal"]), raw)}
 

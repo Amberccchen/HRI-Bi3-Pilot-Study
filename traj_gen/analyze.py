@@ -1,6 +1,6 @@
 """Analysis of a trajectory generation run: tables, comparisons and figures.
 
-Reads every finished episode of the test trips under a run folder. Only folders of experiments in
+Reads every finished episode under a run folder, whose trips must all be in the trip list (default <run>/test_trips.json, as for `run`). Only folders of experiments in
 the registry are read, so other folders such as smoke/ are ignored. A run still in progress is fine,
 and missing conditions are simply absent. Writes into <run>/analysis/:
 
@@ -73,20 +73,24 @@ BASELINE_STYLE = {"replay": ("#52514e", "--"), "straight": ("#6250d6", ":")}
 INK, GRID = "#0b0b0b", "#e4e3df"
 
 
-def collect(run: Path) -> pd.DataFrame:
-    """One row per finished episode of the test trips."""
-    strata = {c["id"]: c["stratum"] for c in json.loads((run / TEST_TRIPS).read_text())}
-    rows = []
+def collect(run: Path, chosen: list[dict]) -> pd.DataFrame:
+    """One row per finished episode of the chosen trips (id and stratum each). Raises ValueError when the run folder holds episodes of other trips."""
+    strata = {c["id"]: c["stratum"] for c in chosen}
+    rows, other_trips = [], set()
     for exp in EXPERIMENTS:
         for path in sorted((run / exp).glob("**/manifest.json")):
             m = json.loads(path.read_text())
-            if m["trip"] in strata:
-                unknown = set(m["metrics"] or {}) - set(METRIC_CLASS)
-                if unknown:
-                    raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
-                metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
-                rows.append({"kind": agent_kind(m["agent"]), "experiment": exp, "framing": m["framing"] or "-", "thinking": m["thinking"] or "-",
-                             "folder": str(path.parent.relative_to(run)), **{k: m[k] for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
+            if m["trip"] not in strata:
+                other_trips.add(m["trip"])
+                continue
+            unknown = set(m["metrics"] or {}) - set(METRIC_CLASS)
+            if unknown:
+                raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
+            metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
+            rows.append({"kind": agent_kind(m["agent"]), "experiment": exp, "framing": m["framing"] or "-", "thinking": m["thinking"] or "-",
+                         "folder": str(path.parent.relative_to(run)), **{k: m[k] for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
+    if other_trips:
+        raise ValueError(f"{run} holds episodes of trips that are not in the trip list: {sorted(other_trips)}. Pass the trip list the run was made with (--trips)")
     return pd.DataFrame(rows, columns=[*KEY, "folder", *INFO, *METRICS])
 
 
@@ -318,11 +322,11 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         fig.savefig(fig_dir / f"trip_{trip_id}.png", bbox_inches="tight")  # the tight box takes in the legend below the panels and the title
 
 
-def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
-    """Write the tables and figures of the run's episodes into <run>/analysis, with trips and sites as returned by run.load_run."""
+def analyze(run: Path, overlay: list[str], chosen: list[dict], trips: dict, sites: dict) -> None:
+    """Write the tables and figures of the run's episodes into <run>/analysis, with the trip list, trips and sites as returned by run.load_run."""
     out = run / ANALYSIS_DIR
     (out / "figures").mkdir(parents=True, exist_ok=True)
-    episodes = collect(run)
+    episodes = collect(run, chosen)
     episodes.to_csv(out / "episodes.csv", index=False)
     df = scored(episodes)
     summary(df).to_csv(out / "summary.csv", index=False)
