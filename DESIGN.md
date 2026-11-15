@@ -35,7 +35,7 @@ These definitions are shared by every study in the repository.
 
 ### Tables are not modelled as obstacles
 - **Definition.** No table or furniture geometry enters the metrics. Stations are points, and the boxes on the maps mark where people go, not furniture. *Source:* design choice. The data give a station only as the robot's stopping point and the people's standing positions, so a table outline would be invented, and a free-space map built from the tracks adds machinery the study does not need. This is also why station crossing is not scored (Section 2).
-- **Limitation.** The robot's system prompt still says that nobody passes through a station, so the model is told a constraint that is not scored.
+- **Prompt guidance kept.** The robot's system prompt says that nobody passes through a station or leaves the room. It stays as general guidance not to hug the perimeter or pass through stations, without relying on exact station geometry. It is not scored. *Source:* design choice.
 
 ### Visit detection and goal labels
 - **Visit.** A person's visit to a station is a turnaround of at least 100° (direction change between the 0.4 m of path before and after a sample) within 1.0 m of a station, located at the closest approach of the turning run. Turnarounds at one station less than 2 s apart merge. The visit spans the contiguous run of samples within the visit's own closest approach plus 0.15 m (`t_arrive` to `t_leave`). *Source:* design choice, because participants shuttle blocks between stations and Bi³ records only the robot's goals. *Code:* `preprocessing/annotate_goals.py:detect_visits`, `TURN_MIN_DEG`, `TURN_LOOK_M`, `VISIT_RADIUS_M`, `MERGE_S`, `AT_STATION_SLACK_M`.
@@ -142,6 +142,11 @@ All metrics score one executed path of the planned agent against the other agent
 ### Figure scheme
 - **Definition.** Colour says who controls an agent (purple the VLM, blue the logged robot, orange a logged person), and marker shape says what it is (square robot, triangle person). Final-position disks in analysis figures are drawn at the scoring radius. Maps given to the model keep the prompt radii. *Source:* design choice. *Code:* `traj_gen/bev.py:VLM_COLOUR`, `KIND_COLOUR`, `KIND_MARKER`, `render_result`, `render_overlay`, `trajectory_legend`.
 
+### Generation test set
+- **Robot.** The 16 robot trips of the first robot-generation run are the current robot test set, kept for comparability with that run: 8 from `laas18` and 8 from `um13`, per site 5 close-encounter trips (smallest real minimum distance among trips up to 25 s) and one from each duration tercile of the rest, at most 2 per controller, with at least 10 s of replay after the trip. Ids, in trips_v2 form: `laas_laas18_static_robot_02`, `_static_robot_15`, `_hst_robot_04`, `_blind_robot_16`, `_blind_robot_17`, `_hst_robot_05`, `_cv_robot_07`, `_cv_robot_11`, and `um_um13_static_robot_05`, `_cohan_robot_09`, `_static_robot_04`, `_cv_robot_10`, `_hst_robot_06`, `_blind_robot_04`, `_cv_robot_08`, `_hst_robot_03`. *Source:* design choice. *Code:* `traj_gen/run.py:select` (rule).
+- **Not reselected.** Running `select` on the anchored trips picks 5 different trips, because the rule ranks by real minimum distance and duration, which moved with the trip start. The set above is passed as a trip list instead.
+- **Person.** Not fixed yet. The checking pilots used 2 close-encounter and 2 random person trips per site from `laas18` and `um13` (`select-human`). The person test set is chosen when the full pilot is scoped. *Code:* `traj_gen/run.py:select_human`.
+
 ### Run folders and provenance
 - **Definition.** `select` writes `run.json` with the trips folder and the code's git commit. `run` refuses to add episodes when the code is at another commit or has uncommitted changes, so a run folder's episodes come from one commit. Each episode manifest records its status, metrics and the commit. Each preprocessing output has a manifest with the commit, a dirty flag and its parameters. *Source:* design choice: the commit identifies the code. *Code:* `preprocessing/bi3_derived.py:provenance`, `write_manifest`, `traj_gen/run.py:select`, `run`.
 
@@ -154,4 +159,4 @@ This section will hold the definitions used by the rating-prediction work.
 - **Robot and site are confounded.** Robot morphology and culture differ together across the two sites, so site differences cannot be attributed to either. *Source:* Bi³ paper, Sec. VII.
 - **Disk bodies.** Contacts are measured between circles, so a contact is not a measured collision, and the robot's corners are not modelled.
 - **Exploratory scoring.** The metrics, radii and thresholds here are exploratory, not validated against the Bi³ ratings.
-- **Tables are not scored.** Stations are points, and passing through a table is neither modelled nor scored, although the prompts forbid it.
+- **Tables are not scored.** Stations are points, and passing through a table is neither modelled nor scored. The robot prompt still asks the model not to pass through stations, as general guidance.
