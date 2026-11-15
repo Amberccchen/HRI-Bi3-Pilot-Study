@@ -1,1 +1,2 @@
 Your task: walk from where you are to your goal station, as you would in this study. The other participant and the robot are in the room.
+The robot is a disk of radius {robot_radius} {unit} and the other participant takes up about a disk of radius {person_radius} {unit}. You cannot walk through either of them.

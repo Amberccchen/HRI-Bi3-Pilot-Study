@@ -21,7 +21,7 @@ from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, 
 
 
 # Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
-# the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would.
+# the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
 FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participant": "human"}
 TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that differ by the planned agent's kind
 
@@ -75,7 +75,7 @@ class PromptBuilder:
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
-        u, r = self.mode.units, prompt_radius(scene.agent, scene.site)
+        u, r = self.mode.units, prompt_radius("robot", scene.site)
         task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name)
         parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))

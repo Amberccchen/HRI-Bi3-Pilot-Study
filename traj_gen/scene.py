@@ -145,15 +145,15 @@ class Scene:
         return "\n".join(lines)
 
     def other_text(self, p: dict, units: Metres, predict: bool) -> str:
-        """One other agent's line. A planned robot is told each person's goals. A planned person is told what a participant can
-        see: the others' positions and motion, and the station a person stands at, but no one's goals."""
+        """One other agent's line: position, motion and goals (the robot's goal only, as a station name)."""
         human_planned = agent_kind(self.agent) == "human"
         fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
                   "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),
                   "hist_s": PROMPT_HISTORY_S, "dt": DT}
         if p["kind"] == "robot":
             name = "the robot"
-            text = load_prompt("robot_other_human").format(radius=units.len_text(prompt_radius(p["id"], self.site)), **fields)
+            text = load_prompt("robot_other_human").format(radius=units.len_text(prompt_radius(p["id"], self.site)),
+                                                           goal=station_text(p["goal"], self.site["stations"]), **fields)
         else:
             name = person_name(p["id"])
             activity = f"standing at {station_text(p['goal'], self.site['stations'])}" if p["standing"] else "walking"
