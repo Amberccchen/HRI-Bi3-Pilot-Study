@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from metrics.human_similarity import FEATURE_NAMES, STEP_S, feature_distances, trajectory_features
+from traj_gen.analyze import move_features
 
 FAR = np.array([100.0, 100.0])  # another agent too far away to matter
 
@@ -12,9 +13,9 @@ def features(xy, stratum="all", min_displacement_m=0.15):
     return trajectory_features(xy, far, far, stratum, "rec", min_displacement_m=min_displacement_m)
 
 
-def record(stratum="all", recording="rec", **samples):
+def record(stratum="all", trial="rec", **samples):
     """A per-trajectory record with the given samples, and one zero sample for every other feature."""
-    out = {"stratum": stratum, "recording": recording}
+    out = {"stratum": stratum, "trial": trial}
     for name in FEATURE_NAMES:
         out[name] = np.asarray(samples.get(name, [0.0]), dtype=float)
     return out
@@ -93,40 +94,50 @@ def test_bootstrap_resamples_trajectories_not_samples():
     assert high == pytest.approx(0.5)
 
 
-def test_reference_draws_one_other_recording_against_the_real_set_without_it():
-    # Recording A moves at 0 and B at 1, and the real set is both. Each draw compares one recording with the other,
-    # so every reference W1 is 1. Comparing a recording with a real set that still holds its own moves gives 0.5.
-    # Recording G, which the generated set comes from, must never be drawn: its moves at 5 would give W1 above 1.
-    generated = [record(speed=[0.0], recording="G")]
-    a = [record(speed=[0.0], recording=("um", "um1", "cv")) for _ in range(3)]  # labels as analyze gives them: tuples
-    b = [record(speed=[1.0], recording=("um", "um2", "cv")) for _ in range(3)]
-    g = [record(speed=[5.0], recording="G")]
+def test_reference_draws_one_other_trial_against_the_real_set_without_it():
+    # Trial A moves at 0 and B at 1, and the real set is both. Each draw compares one trial with the other,
+    # so every reference W1 is 1. Comparing a trial with a real set that still holds its own moves gives 0.5.
+    # Trial G, which the generated set comes from, must never be drawn: its moves at 5 would give W1 above 1.
+    generated = [record(speed=[0.0], trial="G")]
+    a = [record(speed=[0.0], trial=("um", "um1")) for _ in range(3)]  # labels as analyze gives them: (site, trial)
+    b = [record(speed=[1.0], trial=("um", "um2")) for _ in range(3)]
+    g = [record(speed=[5.0], trial="G")]
     out = compare(generated, a + b, a + b + g)["speed"]
     assert out.n_reference_used == 2
     assert out.reference_median == pytest.approx(1.0)
     assert out.reference_interval == pytest.approx((1.0, 1.0))  # min and max of two draws
 
 
-def test_reference_matches_the_generated_station_mix_within_a_recording():
-    # Recording A has three moves of stratum "a" at 0 and three of "b" at 5. The generated set has two moves of "a",
+def test_reference_matches_the_generated_station_mix_within_a_trial():
+    # Trial A has three moves of stratum "a" at 0 and three of "b" at 5. The generated set has two moves of "a",
     # so A's draw is two of its "a" moves, which are at 0 like the real set: W1 0. Drawing A's moves regardless of
     # stratum would bring in moves at 5.
-    generated = [record("a", speed=[0.0], recording="G") for _ in range(2)]
-    real = [record("a", speed=[0.0], recording="R") for _ in range(4)]
-    pool = [record("a", speed=[0.0], recording="A") for _ in range(3)] + [record("b", speed=[5.0], recording="A") for _ in range(3)]
+    generated = [record("a", speed=[0.0], trial="G") for _ in range(2)]
+    real = [record("a", speed=[0.0], trial="R") for _ in range(4)]
+    pool = [record("a", speed=[0.0], trial="A") for _ in range(3)] + [record("b", speed=[5.0], trial="A") for _ in range(3)]
     out = compare(generated, real, pool)["speed"]
     assert out.reference_median == pytest.approx(0.0, abs=1e-12)
     assert out.reference_moves_median == 2
 
 
 def test_draws_without_samples_of_a_feature_are_skipped_for_that_feature_only():
-    # Recording B's moves have no turning angle (too short), so B's draw has no turning sample: it is skipped for
+    # Trial B's moves have no turning angle (too short), so B's draw has no turning sample: it is skipped for
     # turning and still used for speed. A generated set without any turning sample has no turning W1.
-    generated = [record(speed=[1.0], turning_angle=[], recording="G")]
-    real = [record(speed=[1.0], turning_angle=[10.0], recording="R")]
-    pool = [record(speed=[1.0], turning_angle=[10.0], recording="A"), record(speed=[2.0], turning_angle=[], recording="B")]
+    generated = [record(speed=[1.0], turning_angle=[], trial="G")]
+    real = [record(speed=[1.0], turning_angle=[10.0], trial="R")]
+    pool = [record(speed=[1.0], turning_angle=[10.0], trial="A"), record(speed=[2.0], turning_angle=[], trial="B")]
     out = compare(generated, real, pool, n_draws=50)
     assert out["speed"].n_reference_used == 2 and out["turning_angle"].n_reference_used == 1
     assert out["speed"].reference_interval == pytest.approx((0.0, 1.0))
     assert np.isnan(out["turning_angle"].w1) and out["turning_angle"].n_bootstrap_used == 0
     assert out["speed"].n_bootstrap_used == 50
+
+
+def test_moves_of_one_participant_pair_share_a_trial_label_across_controllers():
+    # One trial is one participant pair that ran every controller. Labelling moves by recording (trial and controller)
+    # would split the pair into several reference draws and compare a pair's moves with the same pair's other runs.
+    def trip(controller):
+        return {"agent": "human0", "start_goal": "0", "goal": "1", "site": "um", "trial": "um1", "controller": controller}
+
+    positions = {"human0": np.zeros((5, 2)), "robot": np.ones((5, 2)), "human1": np.ones((5, 2))}
+    assert move_features(trip("cv"), positions, 4)["trial"] == move_features(trip("hst"), positions, 4)["trial"] == ("um", "um1")

@@ -10,10 +10,10 @@ the other person. Distances are between body centres.
 
 Two sets are compared per feature by the Wasserstein-1 distance (W1) in the feature's units. Each W1 comes
 with a bootstrap interval over trajectories and with a real-against-real reference: the W1 of the moves of one
-other recording (one trial and controller, so other participants), matched to the generated set's station mix as
-far as that recording allows, to the same real set, over every such recording. A generated set comes from a few
-recordings, so a reference of real moves drawn independently across recordings would leave out how much people
-differ between recordings.
+other trial (one participant pair, which ran all five controllers), matched to the generated set's station mix as
+far as that trial allows, to the same real set without that trial, over every such trial. A generated set comes from
+a few trials, so a reference of real moves drawn independently across trials would leave out how much participant
+pairs differ from one another.
 """
 
 from dataclasses import dataclass
@@ -28,7 +28,7 @@ TURN_WINDOW_STEPS = 2  # turning angles compare displacements over 2 steps, 0.8 
 FEATURE_NAMES = ("speed", "turning_angle", "min_distance_robot", "min_distance_human")
 
 
-def trajectory_features(xy, robot_xy, other_human_xy, stratum, recording, *, min_displacement_m):
+def trajectory_features(xy, robot_xy, other_human_xy, stratum, trial, *, min_displacement_m):
     """Per-feature samples of one trajectory.
 
     Args:
@@ -37,13 +37,13 @@ def trajectory_features(xy, robot_xy, other_human_xy, stratum, recording, *, min
         other_human_xy: (T, 2) positions of the other person at the same times.
         stratum: hashable label of the move, the (start station, goal station) pair. Resampling in
             `feature_distances` stays within strata.
-        recording: hashable label of the recording the move comes from (site, trial and controller), which
+        trial: hashable label of the trial the move comes from (site and trial: one participant pair), which
             `feature_distances` draws reference sets by.
         min_displacement_m: a turning angle is kept only when both of its 0.8 s displacements are at least
             this long. Shorter displacements are near-stationary and their direction is noise.
 
     Returns:
-        dict with "stratum", "recording" and one sample array per name in FEATURE_NAMES: "speed" (T-1,) in m/s,
+        dict with "stratum", "trial" and one sample array per name in FEATURE_NAMES: "speed" (T-1,) in m/s,
         "turning_angle" (K,) in degrees in [0, 180] with K <= T-4, "min_distance_robot" (1,) and
         "min_distance_human" (1,) in metres.
     """
@@ -69,7 +69,7 @@ def trajectory_features(xy, robot_xy, other_human_xy, stratum, recording, *, min
 
     return {
         "stratum": stratum,
-        "recording": recording,
+        "trial": trial,
         "speed": speed,
         "turning_angle": turning_angle,
         "min_distance_robot": np.array([np.linalg.norm(xy - robot_xy, axis=1).min()]),
@@ -83,13 +83,13 @@ class FeatureDistance:
 
     w1: float  # NaN when either set has no sample of the feature
     w1_interval: tuple[float, float]  # bootstrap 2.5 and 97.5 percentiles over the draws used
-    reference_median: float  # median over reference recordings of the W1 of their matched moves to the real set
-    reference_interval: tuple[float, float]  # 2.5 and 97.5 percentiles over reference recordings, or min and max below MIN_PERCENTILE_DRAWS
+    reference_median: float  # median over reference trials of the W1 of their matched moves to the real set
+    reference_interval: tuple[float, float]  # 2.5 and 97.5 percentiles over reference trials, or min and max below MIN_PERCENTILE_DRAWS
     n_generated: int
     n_real: int
     n_bootstrap_used: int  # bootstrap draws with samples of the feature in both resampled sets
-    n_reference_used: int  # reference recordings with samples of the feature in their matched moves
-    reference_moves_median: float  # median number of moves in a reference recording's matched set
+    n_reference_used: int  # reference trials with samples of the feature in their matched moves
+    reference_moves_median: float  # median number of moves in a reference trial's matched set
 
 
 MIN_PERCENTILE_DRAWS = 40  # fewer reference draws than this: the interval is their min and max, as 2.5 percentiles of so few are not estimated
@@ -99,10 +99,10 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
     """Compare a generated set of trajectories with a real set, feature by feature.
 
     W1 is computed between the samples of all trajectories of each set, pooled. The bootstrap resamples
-    trajectories with replacement within each stratum, in both sets. The reference has one draw per recording of
+    trajectories with replacement within each stratum, in both sets. The reference has one draw per trial of
     `reference_pool` that none of the generated trajectories comes from: from each stratum of the generated set,
-    as many of that recording's trajectories as the generated set has there, or all it has if fewer, without
-    replacement, and their W1 to `real` without that recording's own trajectories. A draw (bootstrap or
+    as many of that trial's trajectories as the generated set has there, or all it has if fewer, without
+    replacement, and their W1 to `real` without that trial's own trajectories. A draw (bootstrap or
     reference) whose pooled samples of a feature are empty in either set is skipped for that feature only, and
     the draws used are counted.
 
@@ -113,7 +113,7 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
     Args:
         generated: list of records from `trajectory_features`.
         real: list of records from `trajectory_features`, the real set compared with.
-        reference_pool: list of real records whose recordings the reference draws come from.
+        reference_pool: list of real records whose trials the reference draws come from.
         n_bootstrap: number of bootstrap draws for the W1 interval.
         rng: numpy Generator for all draws.
 
@@ -137,17 +137,17 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
 
     bootstrap_draws = [(resample(generated_strata), resample(real_strata)) for _ in range(n_bootstrap)]
 
-    generated_recordings = {record["recording"] for record in generated}
-    real_recording = [record["recording"] for record in real]
-    reference_draws = []  # (indices into reference_pool, indices into real) per recording
-    for recording, idx in indices_by(reference_pool, "recording").items():
-        if recording in generated_recordings:
+    generated_trials = {record["trial"] for record in generated}
+    real_trial = [record["trial"] for record in real]
+    reference_draws = []  # (indices into reference_pool, indices into real) per trial
+    for trial, idx in indices_by(reference_pool, "trial").items():
+        if trial in generated_trials:
             continue
         own_strata = indices_by([reference_pool[i] for i in idx], "stratum")
         chosen = [idx[rng.choice(own_strata[stratum], size=min(len(want), len(own_strata[stratum])), replace=False)]
                   for stratum, want in generated_strata.items() if stratum in own_strata]
         if chosen:
-            reference_draws.append((np.concatenate(chosen), np.array([i for i, r in enumerate(real_recording) if r != recording], dtype=int)))
+            reference_draws.append((np.concatenate(chosen), np.array([i for i, r in enumerate(real_trial) if r != trial], dtype=int)))
 
     def flatten(records, name):
         lengths = np.array([len(record[name]) for record in records])

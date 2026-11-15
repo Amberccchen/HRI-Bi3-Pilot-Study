@@ -13,6 +13,8 @@ and missing conditions are simply absent. Writes into <run>/analysis/:
   similarity.csv        planned people only: per condition, site and feature, the W1 of the generated moves to real moves
                         (human_similarity.feature_distances), against the site's pool of real moves and against the real
                         moves of the same test trips
+  similarity_pool.csv   planned people only: per site, the person trips in the trips folder, the trips in the real pool, and the trips left
+                        out because they start inside the arrival radius or have no move
   figures/              conditions_<kind>_<thinking>.png, speed_violation_<kind>.png, trip_<id>.png (overlays)
 
 Robot and person episodes are never pooled: every table and figure is per planned-agent kind ("robot" or "human").
@@ -32,9 +34,10 @@ Similarity. A move is the part of a path from the trip start to move_end_index (
 generated paths of ok episodes and for the real paths alike, so a replay episode's move is its trip's real move. Episodes
 without a move (not ok, or the goal not reached) are left out and counted. The real moves are every person trip of the site in
 the run's trips folder that reaches its goal and does not start within the arrival radius (as select requires), stratified by
-(start station, goal station). Against the site pool, the real set is the site's moves from recordings other than the generated
-moves' recordings. Against the same trips, it is the test trips' real moves. In both, the reference draws are the site's other
-recordings (feature_distances), and their number is reported with each row.
+(start station, goal station). A trial is one participant pair, which ran all five controllers. Against the site pool, the real
+set is the site's moves from trials other than the generated moves' trials. Against the same trips, it is the test trips' real
+moves. In both, the reference draws are the site's other trials (feature_distances), and their number is reported with each
+row. similarity_pool.csv lists per site the trips in the pool and the person trips left out of it.
 """
 
 import io
@@ -47,7 +50,7 @@ from matplotlib.figure import Figure
 from matplotlib.image import imread
 from matplotlib.lines import Line2D
 
-from metrics.human_similarity import feature_distances, trajectory_features
+from metrics.human_similarity import MIN_PERCENTILE_DRAWS, feature_distances, trajectory_features
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind
@@ -137,6 +140,13 @@ def ci(values) -> tuple[float, float, float]:
     return float(v.mean()), *map(float, np.percentile(means, [2.5, 97.5]))
 
 
+def metric_class(metric: str, kind: str) -> str:
+    """The summary class of a metric for a planned-agent kind. Station crossings are invalid for a kind where they break a rule, and contact otherwise."""
+    if metric in ("station_crossing", "station_distance_min") and not STATION_CROSSING_INVALID[kind]:
+        return "contact"
+    return METRIC_CLASS[metric]
+
+
 def summary(df: pd.DataFrame) -> pd.DataFrame:
     def one(g: pd.DataFrame) -> pd.Series:
         calls = g.samples.sum()
@@ -144,7 +154,7 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
         by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
             if c != "out_of_room" and not (c == "station_crossing" and g.invalid_station.notna().any()):  # reported as their invalid parts, over all episodes
-                by_class[METRIC_CLASS[c]][c] = g[c].mean()
+                by_class[metric_class(c, g.kind.iloc[0])][c] = g[c].mean()
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
             "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},
@@ -332,34 +342,46 @@ def move_features(trip: dict, positions: dict[str, np.ndarray], end: int) -> dic
     agent = trip["agent"]
     other = next(a for a in positions if a not in (agent, "robot"))
     return trajectory_features(positions[agent][: end + 1], positions["robot"][: end + 1], positions[other][: end + 1], (trip["start_goal"], trip["goal"]),
-                               (trip["site"], trip["trial"], trip["controller"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
+                               (trip["site"], trip["trial"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
 
 
-def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.DataFrame:
-    """One row per person condition, site, comparison and feature: the FeatureDistance of the generated moves to the real moves."""
-    rng = np.random.default_rng(SEED)
+def real_pool(trips: dict, sites: dict) -> tuple[dict, pd.DataFrame]:
+    """The real moves of the person trips that reach their goal and do not start within the arrival radius, as ({site: {trip id: move features}}, per-site counts of the trips pooled and left out)."""
     radius = ARRIVAL_RADIUS_M["human"]
-    pool = {site: {} for site in SITES}  # {site: {trip id: move features}} of the person trips that reach their goal and do not start within the arrival radius
+    pool = {site: {} for site in SITES}
+    counts = {site: {"person_trips": 0, "start_inside_arrival_radius": 0, "without_move": 0} for site in SITES}
     for trip in trips.values():
         if agent_kind(trip["agent"]) != "human":
             continue
+        counts[trip["site"]]["person_trips"] += 1
         a, b = trip["start_index"], trip["end_index"] + 1
         positions = {agent: np.asarray(track, float)[a:b, :2] for agent, track in trip["tracks"].items()}
         goal = np.asarray(trip["goal_xy"], float)
         if np.linalg.norm(positions[trip["agent"]][0] - goal) <= radius:
+            counts[trip["site"]]["start_inside_arrival_radius"] += 1
             continue
         end = move_end_index(positions[trip["agent"]], goal, radius, sites[trip["site"]], trip["goal"])
-        if end is not None:
+        if end is None:
+            counts[trip["site"]]["without_move"] += 1
+        else:
             pool[trip["site"]][trip["id"]] = move_features(trip, positions, end)
+    table = pd.DataFrame([{"site": site, **c, "pooled_trips": len(pool[site]), "pooled_trials": len({m["trial"] for m in pool[site].values()})}
+                          for site, c in counts.items()])
+    return pool, table
+
+
+def similarity(df: pd.DataFrame, run: Path, trips: dict, pool: dict) -> pd.DataFrame:
+    """One row per person condition, site, comparison and feature: the FeatureDistance of the generated moves to the real moves, with the real pool from real_pool."""
+    rng = np.random.default_rng(SEED)
     rows = []
     for (*cond, site), d in df[df.kind == "human"].groupby([*COND, "site"], sort=False):
         ok = d[(d.status == "ok") & d.move_end_index.notna()]
         generated = [move_features(trips[r.trip], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
         if not generated:
             continue
-        recordings = {m["recording"] for m in generated}
+        generated_trials = {m["trial"] for m in generated}
         moves = list(pool[site].values())
-        comparisons = {"site pool": [m for m in moves if m["recording"] not in recordings],
+        comparisons = {"site pool": [m for m in moves if m["trial"] not in generated_trials],
                        "same trips": [pool[site][t] for t in sorted(set(d.trip) & set(pool[site]))]}
         for comparison, real in comparisons.items():
             distances = feature_distances(generated, real, moves, n_bootstrap=SIMILARITY_DRAWS, rng=rng)
@@ -367,7 +389,8 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.Data
                 rows.append({**dict(zip(COND, cond)), "site": site, "comparison": comparison, "feature": feature, "w1": fd.w1,
                              "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
                              "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
-                             "n_reference_recordings": fd.n_reference_used, "reference_moves_median": fd.reference_moves_median,
+                             "reference_interval": "percentiles 2.5-97.5" if fd.n_reference_used >= MIN_PERCENTILE_DRAWS else "min-max",
+                             "n_reference_trials": fd.n_reference_used, "reference_moves_median": fd.reference_moves_median,
                              "n_bootstrap_used": fd.n_bootstrap_used, "n_generated": fd.n_generated, "n_real": fd.n_real,
                              "n_episodes": len(d), "n_without_move": len(d) - len(ok)})
     return pd.DataFrame(rows)
@@ -391,6 +414,8 @@ def analyze(run: Path, overlay: list[str], chosen: list[dict], trips: dict, site
     pd.concat(paired).to_csv(out / "paired_baselines.csv", index=False)
     pd.concat(compared).to_csv(out / "comparisons.csv", index=False)
     if (df.kind == "human").any():
-        similarity(df, run, trips, sites).to_csv(out / "similarity.csv", index=False)
+        pool, pool_counts = real_pool(trips, sites)
+        pool_counts.to_csv(out / "similarity_pool.csv", index=False)
+        similarity(df, run, trips, pool).to_csv(out / "similarity.csv", index=False)
     overlay_figures(df, run, overlay, trips, sites, out / "figures")
     print(f"{len(episodes)} episodes, {n_conditions} conditions -> {out}")
