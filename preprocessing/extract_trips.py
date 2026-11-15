@@ -138,7 +138,7 @@ def human_trips(site: str, trial: str, controller: str, human_xy: dict, hz: floa
     A trip runs from leaving visit k (t_leave, where the person's goal label switches to the next station) to the
     turnaround of visit k + 1 (t_turn), and k is the trip number. Pairs of visits that overlap in time and pairs at the
     same station are not trips: neither has a goal-to-goal move between them. A trip's next goal is the label of the
-    first later visit at a different station than its goal.
+    first later visit with a different label than its goal, as `label_from_visits` takes it.
     """
     frames = load_frames(site, trial, controller)
     cleaned = {agent: clean_track(f["time"], np.c_[f["x"], f["y"], f["theta"]]) for agent, f in frames.items()}
@@ -151,7 +151,7 @@ def human_trips(site: str, trial: str, controller: str, human_xy: dict, hz: floa
         for k, (here, there) in enumerate(zip(own[:-1], own[1:])):
             if there["t_arrive"] <= here["t_leave"] or there["station"] == here["station"]:
                 continue
-            next_goal = next((v["label"] for v in own[k + 2 :] if v["station"] != there["station"]), "")
+            next_goal = next((v["label"] for v in own[k + 2 :] if v["label"] != there["label"]), "")
             trips.append(trip_record(site, trial, controller, frames, cleaned, agent, here["visit"], here["t_leave"], there["t_turn"],
                                      here["label"], there["label"], human_xy[there["label"]], next_goal, hz, history_s))
     return trips
