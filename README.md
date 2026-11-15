@@ -43,7 +43,7 @@ The planned agent of a trip is `trip["agent"]`, an agent id (`robot` or `human<k
 ```
 python -m traj_gen.run --run <run> select --trips-dir <trips folder>  # choose 16 test trips, write <run>/test_trips.json and <run>/run.json
 python -m traj_gen.run --run <run> select-human --trips-dir <person trips folder> --close 2 --random 2  # person test trips per site
-python -m traj_gen.run --run <run> run --thinking nothink think       # resumable, needs the vLLM server on :8000; framings default to those of the trips' agent
+python -m traj_gen.run --run <run> run --thinking nothink think       # resumable, needs the vLLM server on :8000, framings default to the trips' agent kind
 python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
 python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
 python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
