@@ -1,4 +1,5 @@
 """Command line for the Bi3 VLM trajectory generation experiments (design: PLAN.md).
+Run from the repository root: python -m traj_gen.run [--run <run folder>] <command> ...
 
   select   choose the 16 test trips and write <run>/test_trips.json
   run      run experiments (resumable; one folder per episode, see episodes.py)
@@ -13,7 +14,6 @@ Run folders live outside the repository (they hold mocap-derived outputs):
 import argparse
 import json
 import os
-import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,22 +21,18 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "preprocessing"))
-sys.path.insert(0, str(ROOT / "metrics"))
-sys.path.insert(0, str(ROOT / "traj_gen"))
-from analyze import OVERLAY, analyze
-from animate import animate, timeline
-from report_figures import report
-from traj_gen_metrics import clearance_metrics, other_stations, station_metrics
-from bi3_derived import load_site_frames, load_trips  # noqa: E402
-from experiments import EXPERIMENTS  # noqa: E402
-from planners import THINKING  # noqa: E402
-from prompting import FRAMINGS  # noqa: E402
+from metrics.traj_gen_metrics import clearance_metrics, other_stations, station_metrics
+from preprocessing.bi3_derived import SITES, load_site_frames, load_trips
+from traj_gen.analyze import OVERLAY, analyze
+from traj_gen.animate import animate, load_episode, timeline
+from traj_gen.episodes import TEST_TRIPS, load_trajectory
+from traj_gen.experiments import EXPERIMENTS
+from traj_gen.planners import THINKING
+from traj_gen.prompting import FRAMINGS
+from traj_gen.report_figures import report
 
 
 RUN = Path("/persistent/experiments/HRI/bi3_traj_gen/20261022_v1")
-SITES = ["laas", "um"]
 N_CLOSE = 5          # per site: smallest real min_distance among short trips (where social behaviour shows)
 N_TERCILES = 3       # per site: one trip from each duration tercile of the rest (easy, medium, long/robot-waiting)
 MAX_SHORT_S = 25.0   # "short" for the close-encounter stratum; longer trips are mostly the robot waiting
@@ -79,7 +75,7 @@ def select(args: argparse.Namespace) -> None:
     by_id = {t["id"]: t for t in load_trips()}
     chosen = [c for site in SITES for c in select_trips([t for t in by_id.values() if t["site"] == site], rng)]
     args.run.mkdir(parents=True, exist_ok=True)
-    (args.run / "test_trips.json").write_text(json.dumps(chosen, indent=2) + "\n")
+    (args.run / TEST_TRIPS).write_text(json.dumps(chosen, indent=2) + "\n")
     for c in chosen:
         t = by_id[c["id"]]
         print(f"{c['id']:32s} {c['stratum']:20s} {t['duration_s']:6.1f} s  min_distance {t['real_metrics']['min_distance']:.2f} m")
@@ -88,8 +84,9 @@ def select(args: argparse.Namespace) -> None:
 def run(args: argparse.Namespace) -> None:
     trips = {t["id"]: t for t in load_trips()}
     sites = load_site_frames()
+    chosen = json.loads((args.trips or args.run / TEST_TRIPS).read_text())
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
-                for e in args.experiments for exp in [EXPERIMENTS[e]] for c in json.loads((args.trips or args.run / "test_trips.json").read_text())
+                for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(args.framings, args.thinking, args.samples)]
     todo = [ep for ep in episodes if not ep.done()]
     print(f"{len(todo)} episodes to run, {len(episodes) - len(todo)} already done; concurrency {args.concurrency}", flush=True)
@@ -120,8 +117,7 @@ def rescore(args: argparse.Namespace) -> None:
         if manifest["metrics"] is None:
             continue
         trip = trips[manifest["trip"]]
-        data = np.loadtxt(path.parent / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
-        robot, humans = data[:, 1:3], data[:, 3:].reshape(len(data), -1, 2)
+        _, robot, humans = load_trajectory(path.parent)
         for old in ("footprint_overlap", "contact"):  # metrics of earlier definitions
             manifest["metrics"].pop(old, None)
         manifest["metrics"] |= station_metrics(robot, other_stations(sites[trip["site"]], trip["robot_goal"])) | clearance_metrics(robot, humans, sites[trip["site"]]["footprint_m"])
@@ -131,7 +127,8 @@ def rescore(args: argparse.Namespace) -> None:
 
 def animate_episodes(args: argparse.Namespace) -> None:
     for folder in args.episodes:
-        print(animate(folder, args.speed), timeline(folder))
+        ep = load_episode(folder)
+        print(animate(folder, ep, args.speed), timeline(folder, ep))
 
 
 def main() -> None:
@@ -144,7 +141,7 @@ def main() -> None:
     p.add_argument("--framings", nargs="+", choices=FRAMINGS, default=list(FRAMINGS))
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first (PLAN); run think afterwards")
     p.add_argument("--samples", type=int, default=3, help="samples per trip and condition")
-    p.add_argument("--trips", type=Path, help="trip list (default: <run>/test_trips.json)")
+    p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS})")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
     p.set_defaults(func=run)
     p = sub.add_parser("analyze", help="summary tables and figures")

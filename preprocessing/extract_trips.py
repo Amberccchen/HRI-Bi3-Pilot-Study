@@ -15,6 +15,8 @@ area people and the robot actually occupy (about 3.5 x 3.5 m at both sites), and
 LAAS is rotated 180 degrees so both sites have the shared two-station table on the
 +x wall.
 
+Run from the repository root: python -m preprocessing.extract_trips
+
 Outputs (mocap-derived, kept outside this repository; read with bi3_derived.py):
   <out>/site_frames.json   room frame, room size, robot footprint and stations per site
   <out>/trips.json         list of trips
@@ -25,15 +27,13 @@ Outputs (mocap-derived, kept outside this repository; read with bi3_derived.py):
 import argparse
 import csv
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-from bi3_derived import DERIVED, TRIPS_DIR, load_frames, load_stations, load_video_sync, write_manifest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
-from bi3_metrics import bi3_metrics  # noqa: E402
+from metrics.bi3_metrics import bi3_metrics
+from preprocessing.bi3_derived import (DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, TRIPS_DIR, load_frames, load_stations, load_video_sync,
+                                       moving_average, write_manifest)
 
 
 OUT = DERIVED / TRIPS_DIR
@@ -50,8 +50,6 @@ SITE_FRAMES = {
     "um": {"origin": [-0.23, 0.01], "rotation_deg": 0.0, "room_m": 3.5,
            "robot": "Stretch", "footprint_m": [0.330, 0.340]},
 }
-HZ = 2.5                # output sample rate
-HISTORY_S = 3.0         # context kept before each trip starts
 SMOOTH_S = 0.5          # moving-average window before resampling
 BASE_HZ = 10.0          # cleaning grid
 POST_S = 15.0           # replay padding after the trip end: generated robots may be slower, the humans must keep moving
@@ -74,10 +72,8 @@ def clean_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray) -> np.ndarr
     t, p = time[keep], xyt[keep]
     base = np.arange(time[0], time[-1] + 1e-9, 1 / BASE_HZ)
     cols = [np.interp(base, t, p[:, 0]), np.interp(base, t, p[:, 1]), np.interp(base, t, np.unwrap(p[:, 2]))]
-    k = max(1, int(round(SMOOTH_S * BASE_HZ)))
-    w = np.ones(k) / k
-    cols = [np.convolve(np.pad(c, (k // 2, k - 1 - k // 2), mode="edge"), w, mode="valid") for c in cols]
-    out = np.stack([np.interp(grid, base, c) for c in cols], axis=1)
+    smoothed = moving_average(np.stack(cols, axis=1), max(1, int(round(SMOOTH_S * BASE_HZ))))
+    out = np.stack([np.interp(grid, base, c) for c in smoothed.T], axis=1)
     out[:, 2] = np.angle(np.exp(1j * out[:, 2]))
     return out
 
@@ -130,7 +126,8 @@ def trips_for(site: str, trial: str, controller: str, hz: float, history_s: floa
 
 def site_frames() -> dict:
     out = {}
-    for site, frame in SITE_FRAMES.items():
+    for site in SITES:
+        frame = SITE_FRAMES[site]
         w, l = frame["footprint_m"]
         stations = {k: {"members": v["members"], "xy": to_room(site, v["xy"]).round(3).tolist()}
                     for k, v in load_stations(site).items()}
@@ -142,8 +139,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trials", nargs="*", default=DEFAULT_TRIALS, help="<site>/<trial>, e.g. laas/laas18")
     parser.add_argument("--controllers", nargs="*", default=CONTROLLERS)
-    parser.add_argument("--hz", type=float, default=HZ)
-    parser.add_argument("--history-s", type=float, default=HISTORY_S)
+    parser.add_argument("--hz", type=float, default=TRIP_HZ)
+    parser.add_argument("--history-s", type=float, default=TRIP_HISTORY_S)
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args()
 
@@ -163,7 +160,7 @@ def main() -> None:
         writer.writerows(summary)
     params = {"HZ": args.hz, "HISTORY_S": args.history_s, "SMOOTH_S": SMOOTH_S, "BASE_HZ": BASE_HZ, "POST_S": POST_S,
               "SITE_FRAMES": SITE_FRAMES, "trials": args.trials, "controllers": args.controllers}
-    write_manifest(args.out / "manifest.json", Path(__file__), params, {
+    write_manifest(args.out / "manifest.json", params, {
         "trips": len(trips),
         "fields": "time is seconds from trip start (negative = history); start_index and end_index are the first and last (inclusive) sample of the trip, samples after end_index are POST_S replay padding; "
                   "robot and humans[h] rows are [x, y, theta] in the room frame; human_* lists hold per-sample goal labels "

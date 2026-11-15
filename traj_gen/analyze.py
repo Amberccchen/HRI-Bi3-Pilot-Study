@@ -28,14 +28,14 @@ from matplotlib.figure import Figure
 from matplotlib.image import imread
 from matplotlib.lines import Line2D
 
-from bev import render_overlay
-from bi3_derived import load_site_frames, load_trips
-from episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
-from experiments import EXPERIMENTS
-from planners import THINKING
-from prompting import FRAMINGS
+from metrics.traj_gen_metrics import SPEED_CAP
+from preprocessing.bi3_derived import SITES, load_site_frames, load_trips
+from traj_gen.bev import GOAL, PERSON, REAL_PATH, ROBOT, render_overlay
+from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
+from traj_gen.experiments import BASELINES, EXPERIMENTS
+from traj_gen.planners import THINKING
+from traj_gen.prompting import FRAMINGS
 
-BASELINES = ("replay", "straight")
 KEY = ["experiment", "framing", "thinking"]
 N_BOOT = 2000   # bootstrap resamples of the trips: the interval's edges are stable to about 0.01 SD
 SEED = 20261022  # fixed so the intervals are reproducible; the run date, no other meaning
@@ -57,7 +57,7 @@ INK, GRID = "#0b0b0b", "#e4e3df"
 
 def collect(run: Path) -> pd.DataFrame:
     """One row per finished episode of the test trips."""
-    strata = {c["id"]: c["stratum"] for c in json.loads((run / "test_trips.json").read_text())}
+    strata = {c["id"]: c["stratum"] for c in json.loads((run / TEST_TRIPS).read_text())}
     rows = []
     for exp in EXPERIMENTS:
         for path in sorted((run / exp).glob("**/manifest.json")):
@@ -115,11 +115,11 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     for cond, table in by_cond.items():
         if cond[0] in BASELINES:
             continue
-        for base in BASELINES:
+        for base in sorted(BASELINES):
             if (base, "-", "-") not in by_cond:
                 continue
             ref = by_cond[(base, "-", "-")]
-            for site in ("all", "laas", "um"):
+            for site in ("all", *SITES):
                 for metric in PAIRED:
                     d = (table[metric] - ref[metric])[table.site.index if site == "all" else table.index[table.site == site]]
                     rows.append({"experiment": cond[0], "framing": cond[1], "thinking": cond[2], "baseline": base, "site": site, "metric": metric,
@@ -139,7 +139,7 @@ def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
         "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
         "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
         "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
-        "prediction - none": [(e, e.removesuffix("_pred")) for e in models if EXPERIMENTS[e].predict],
+        "prediction - none": [(e, EXPERIMENTS[e].base) for e in models if EXPERIMENTS[e].predict],
     }
     pairs = []
     for e in models:
@@ -231,19 +231,19 @@ def condition_figures(by_cond: dict, fig_dir: Path) -> None:
                      legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
     rows = [e for e in present(by_cond) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
-        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": "share of plan steps above 0.3 m/s"}, rows, ["nothink", "think"], by_cond,
+        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP:g} m/s"}, rows, ["nothink", "think"], by_cond,
                  lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir: Path) -> None:
     trips = {t["id"]: t for t in load_trips()}
     sites = load_site_frames()
-    legend = [Line2D([], [], color="#555555", ls="--", label="real path"), Line2D([], [], color="#2ca02c", ls=":", label="straight line"),
-              Line2D([], [], color="#e66101", marker="o", ms=4, label="people"), Line2D([], [], color="#1f77b4", marker="o", ms=4, label="model samples (disk = final robot position)")]
+    legend = [Line2D([], [], color=REAL_PATH, ls="--", label="real path"), Line2D([], [], color=GOAL, ls=":", label="straight line"),
+              Line2D([], [], color=PERSON, marker="o", ms=4, label="people"), Line2D([], [], color=ROBOT, marker="o", ms=4, label="model samples (disk = final robot position)")]
     for trip_id, d in df[df.experiment.isin(experiments)].groupby("trip"):
         trip = trips[trip_id]
         a, goal = trip["start_index"], np.asarray(trip["robot_goal_xy"], float)
-        real = np.asarray(trip["robot"], float)[a: trip["end_index"] + 1, :2]
+        real = real_path(trip)
         shown = [e for e in experiments if e in set(d.experiment)]
         cols = [c for c in sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (THINKING.index(c[0]), FRAMINGS.index(c[1])))]
         fig = Figure(figsize=(4.2 * len(cols), 4.2 * len(shown) + 0.9), dpi=110)
@@ -255,7 +255,7 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir
                 g = d[(d.experiment == exp) & (d.thinking == th) & (d.framing == fr)]
                 if g.empty:
                     continue
-                paths = [np.loadtxt(run / f / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)[:, 1:3] for f in g.folder]
+                paths = [load_trajectory(run / f)[1] for f in g.folder]
                 end = max(len(real), *map(len, paths))
                 humans = [np.asarray(h, float)[a: a + end, :2] for h in trip["humans"]]
                 title = f"{exp} {fr} {th}: {int((g.status == 'ok').sum())}/{len(g)} ok"
@@ -268,7 +268,7 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir
 
 
 def analyze(run: Path, overlay: list[str]) -> None:
-    out = run / "analysis"
+    out = run / ANALYSIS_DIR
     (out / "figures").mkdir(parents=True, exist_ok=True)
     episodes = collect(run)
     episodes.to_csv(out / "episodes.csv", index=False)

@@ -5,24 +5,23 @@ speed of the robot and both participants from mocap. The best lag gives
 video_time = mocap_time + offset_s. The peak correlation and how far it stands
 above the other lags (peak_z) indicate how much to trust each offset.
 
+Run from the repository root: python -m preprocessing.sync_video
+
 Output: <out>/video_sync.csv and <out>/video_sync.manifest.json. Read offsets with
 bi3_derived.load_video_sync() or bi3_derived.video_time().
 """
 
 import argparse
 import csv
-import json
 import subprocess
 from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
 
-from bi3_derived import DERIVED, SYNC_FILE, write_manifest
+from preprocessing.bi3_derived import DERIVED, RAW, SITES, SYNC_FILE, load_recording, raw_json_path, write_manifest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Bi3" / "Bi3"
 OUT = DERIVED
 FPS = 10                # both signals are compared at this rate
 MAX_LAG_S = 20.0        # search offsets within +/- this
@@ -41,11 +40,9 @@ def video_motion(path: Path) -> np.ndarray:
 
 
 def mocap_speed(path: Path) -> np.ndarray:
-    steps = json.loads(path.read_text())
-    time = np.array([s["time"] for s in steps])
-    tracks = np.concatenate(
-        [np.array([s["robot_state"][:2] for s in steps])[:, None], np.array([[a[:2] for a in s["agent_states"]] for s in steps])], axis=1
-    )
+    recording = load_recording(path)
+    time = recording["time"]
+    tracks = np.concatenate([recording["robot"][:, None, :2], recording["humans"][..., :2]], axis=1)
     grid = np.arange(time[0], time[-1], 1 / FPS)
     resampled = np.stack([np.stack([np.interp(grid, time, tracks[:, k, j]) for j in range(2)], -1) for k in range(tracks.shape[1])], 1)
     return np.linalg.norm(np.diff(resampled, axis=0), axis=-1).sum(axis=1) * FPS
@@ -72,15 +69,14 @@ def process(job: tuple[str, Path, Path]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data", type=Path, default=DATA)
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--workers", type=int, default=16)
     args = parser.parse_args()
 
     jobs = []
-    for site in ["laas", "um"]:
-        for video in sorted((args.data / "videos" / site).glob("*/*.mp4")):
-            mocap = args.data / "jsons" / site / video.parent.name / f"{video.stem}.json"
+    for site in SITES:
+        for video in sorted((RAW / "videos" / site).glob("*/*.mp4")):
+            mocap = raw_json_path(site, video.parent.name, video.stem)
             if mocap.exists():
                 jobs.append((site, video, mocap))
     with Pool(args.workers) as pool:
@@ -91,7 +87,7 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
     params = {"FPS": FPS, "MAX_LAG_S": MAX_LAG_S, "FRAME_SIZE": FRAME_SIZE}
-    write_manifest(args.out / "video_sync.manifest.json", Path(__file__), params, {
+    write_manifest(args.out / "video_sync.manifest.json", params, {
         "videos": len(rows),
         "columns": "site, trial, controller, video_s, mocap_s, offset_s (video_time = mocap_time + offset_s), "
                    "peak_corr, peak_z (peak height above other lags, in standard deviations)",

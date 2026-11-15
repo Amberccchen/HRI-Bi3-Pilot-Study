@@ -46,7 +46,7 @@ STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station 
 
 def other_stations(site: dict, goal: str) -> np.ndarray:
     """(k, 2) positions of the single stations that are not the robot's goal (from site_frames.json)."""
-    return np.array([s["xy"] for k, s in site["stations"].items() if "/" not in k and k != goal], float)
+    return np.array([s["xy"] for k, s in site["stations"].items() if len(s["members"]) == 1 and k != goal], float)
 
 
 def station_metrics(robot: np.ndarray, stations: np.ndarray) -> dict:
@@ -61,9 +61,14 @@ def inscribed_radius(footprint_m: list[float]) -> float:
     return min(footprint_m) / 2
 
 
+def clearance_gap(robot: np.ndarray, humans: np.ndarray, footprint_m: list[float]) -> np.ndarray:
+    """(T,) distance from the robot's disk to the nearest person's centre."""
+    return np.linalg.norm(np.asarray(humans, float) - np.asarray(robot, float)[:, None, :], axis=-1).min(axis=1) - inscribed_radius(footprint_m)
+
+
 def clearance_metrics(robot: np.ndarray, humans: np.ndarray, footprint_m: list[float], personal_space_radius: float = PERSONAL_SPACE_RADIUS) -> dict:
     """Minimum clearance to the people, the share of time steps in contact and in someone's personal space, and the number of separate contacts."""
-    gap = np.linalg.norm(np.asarray(humans, float) - np.asarray(robot, float)[:, None, :], axis=-1).min(axis=1) - inscribed_radius(footprint_m)  # (T,) robot disk to the nearest person's centre
+    gap = clearance_gap(robot, humans, footprint_m)
     touching = gap < BODY_RADIUS
     return {"clearance_min": float(gap.min() - BODY_RADIUS), "contact_time": float(touching.mean()),
             "contact_events": int((touching & ~np.concatenate([[False], touching[:-1]])).sum()),  # runs of consecutive contact steps

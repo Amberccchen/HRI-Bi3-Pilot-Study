@@ -12,15 +12,17 @@ Goal reached and speed are not drawn: thinking or replanning fixes them, so they
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from analyze import BASELINES, INK, ci, per_trip_means, scored, style
-from bi3_derived import load_site_frames
-from traj_gen_metrics import clearance_metrics
+from metrics.traj_gen_metrics import clearance_metrics
+from preprocessing.bi3_derived import load_site_frames
+from traj_gen.analyze import INK, ci, per_trip_means, scored, style
+from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, load_trajectory
+from traj_gen.experiments import BASELINES
 
+STRAIGHT, REPLAY = BASELINES  # registry order
 MODEL_COLOUR = "#2a78d6"   # validated categorical slot 1: one hue, since the panels compare conditions of one model
 REAL_COLOUR = "#52514e"    # secondary ink grey: the reference, not a series
 THINKING = [("nothink", "thinking off", False), ("think", "thinking on", True)]  # (key, label, filled)
@@ -53,7 +55,7 @@ def trips(by_cond: dict, experiments: list[str], framing: str, thinking: str, me
 
 def draw(axes, rows: list[tuple[str, list[str], str]], by_cond: dict, metrics: list, hints: bool) -> None:
     """One panel into a row of axes, one per metric."""
-    straight, real = by_cond[("straight", "-", "-")], by_cond[("replay", "-", "-")]
+    straight, real = by_cond[(STRAIGHT, "-", "-")], by_cond[(REPLAY, "-", "-")]
     for ax, (metric, label, direction, scale) in zip(axes, metrics):
         ref = {"straight": scale * straight[metric].mean(), "real": scale * real[metric].mean()}
         ax.axvline(ref["straight"], color=INK, lw=1, zorder=2)
@@ -106,27 +108,27 @@ SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overl
 
 def sensitivity(run: Path) -> None:
     """Personal-space overlap (% of episode time, mean over trips) at other person radii, for the baselines and the pooled model episodes."""
-    episodes = pd.read_csv(run / "analysis" / "episodes.csv")
+    episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
     episodes = episodes[episodes.status == "ok"]
     sites = load_site_frames()
-    groups = {"straight line": episodes.experiment == "straight", "real controllers": episodes.experiment == "replay",
+    groups = {"straight line": episodes.experiment == STRAIGHT, "real controllers": episodes.experiment == REPLAY,
               **{f"Qwen, {label}": ~episodes.experiment.isin(BASELINES) & (episodes.thinking == th) for th, label, _ in THINKING}}
     rows = []
     for name, mask in groups.items():
         for radius in SENSITIVITY_RADII:
             overlap = []
             for _, ep in episodes[mask].iterrows():
-                data = np.loadtxt(run / ep.folder / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
-                overlap.append(clearance_metrics(data[:, 1:3], data[:, 3:].reshape(len(data), -1, 2), sites[ep.site]["footprint_m"], radius)["personal_space_overlap"])
+                _, robot, humans = load_trajectory(run / ep.folder)
+                overlap.append(clearance_metrics(robot, humans, sites[ep.site]["footprint_m"], radius)["personal_space_overlap"])
             per_trip = pd.Series(overlap, index=episodes[mask].trip.values).groupby(level=0).mean()
             rows.append({"group": name, "person_radius_m": radius, "overlap_pct": 100 * per_trip.mean()})
-    pd.DataFrame(rows).pivot(index="group", columns="person_radius_m", values="overlap_pct").round(0).to_csv(run / "report" / "personal_space_sensitivity.csv")
+    pd.DataFrame(rows).pivot(index="group", columns="person_radius_m", values="overlap_pct").round(0).to_csv(run / REPORT_DIR / "personal_space_sensitivity.csv")
 
 
 def report(run: Path) -> None:
-    by_cond = per_trip_means(scored(pd.read_csv(run / "analysis" / "episodes.csv")))
+    by_cond = per_trip_means(scored(pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")))
     panels = [("(a) Perception ladder", LADDER), ("(b) Output type", OUTPUT_TYPES), ("(c) Replanning horizon", HORIZONS), ("(d) Prompt", PROMPTS)]
     for contact, first in CONTACT.items():  # the two ways to count contact, as separate figures to compare
-        stacked(by_cond, [(title, rows) for title, rows in panels], [first, *OTHER_METRICS], run / "report" / f"figure_ladder_output_horizon_prompt_contact_{contact}.png")
+        stacked(by_cond, [(title, rows) for title, rows in panels], [first, *OTHER_METRICS], run / REPORT_DIR / f"figure_ladder_output_horizon_prompt_contact_{contact}.png")
     sensitivity(run)
-    print(f"-> {run / 'report'}")
+    print(f"-> {run / REPORT_DIR}")

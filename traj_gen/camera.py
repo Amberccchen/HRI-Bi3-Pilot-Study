@@ -8,12 +8,12 @@ the UM test trials (um16, um17) have none (so the experiments use um13), and ask
 
 import io
 import subprocess
-from pathlib import Path
 
 from PIL import Image
 
+from preprocessing.bi3_derived import video_path
 
-VIDEOS = Path("/persistent/data/Bi3/videos")
+
 MAX_SIDE_PX = 960   # keeps a 1920x1080 frame at about 1000 vision tokens, and the LAAS frames are already 960x720
 # Per site: (counter-clockwise quarter turns, then mirror left-right?) that make the raw frame match the room frame.
 # Verified by eye against the BEV at the same times (phase2 smoke script, orientation figures): at UM the raw
@@ -25,7 +25,7 @@ ORIENTATION = {"laas": (1, False), "um": (0, False)}
 
 def camera_frame(trip: dict) -> bytes:
     """PNG bytes of the overhead frame at the trip start, in the room orientation."""
-    path = VIDEOS / trip["site"] / trip["trial"] / f"{trip['controller']}.mp4"
+    path = video_path(trip["site"], trip["trial"], trip["controller"])
     t = trip["t_start"] + trip["video_offset_s"]
     raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"],
                          capture_output=True, check=True).stdout

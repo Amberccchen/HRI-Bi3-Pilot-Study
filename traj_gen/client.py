@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from prompting import PromptBuilder, Turn
-from scene import load_prompt
+from traj_gen.prompting import PromptBuilder, Turn
+from traj_gen.scene import load_prompt
 
 
 BASE = "http://localhost:8000"

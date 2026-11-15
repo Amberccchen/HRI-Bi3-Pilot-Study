@@ -17,35 +17,45 @@ retry), error (exception; traceback saved). The files written per episode are li
 
 import itertools
 import json
-import subprocess
 import time
 import traceback
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
 
-from bev import render_result
-from bi3_metrics import bi3_metrics
-from client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
-from prompting import Turn
-from scene import DT, Scene, load_prompt
-from traj_gen_metrics import GOAL_TOL, other_stations, traj_gen_metrics
+from metrics.bi3_metrics import bi3_metrics
+from metrics.traj_gen_metrics import GOAL_TOL, other_stations, traj_gen_metrics
+from preprocessing.bi3_derived import provenance
+from traj_gen.bev import render_result
+from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
+from traj_gen.prompting import Turn
+from traj_gen.scene import DT, Scene, load_prompt
 
-REPO = Path(__file__).resolve().parents[1]
-CODE_DIRS = ["traj_gen", "metrics", "preprocessing"]
+# Layout of a run folder: the trip list, then <experiment>/... episode folders, and the outputs of analyze and report.
+TEST_TRIPS = "test_trips.json"
+ANALYSIS_DIR = "analysis"
+REPORT_DIR = "report"
 
 
-@lru_cache(maxsize=None)
-def code_version() -> dict:
-    git = lambda *a: subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True, check=True).stdout.strip()
-    return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain", "--", *CODE_DIRS))}
+def real_path(trip: dict) -> np.ndarray:
+    """(n, 2) positions of the real robot from the trip's start to its end, in the room frame."""
+    return np.asarray(trip["robot"], float)[trip["start_index"]: trip["end_index"] + 1, :2]
+
+
+def save_trajectory(folder: Path, times: np.ndarray, track: np.ndarray, humans: np.ndarray) -> None:
+    """Write <folder>/trajectory.csv from times (T,), the robot track (T, 2) and the people (T, H, 2)."""
+    header = "t,x,y" + "".join(f",h{h + 1}_x,h{h + 1}_y" for h in range(humans.shape[1]))
+    np.savetxt(folder / "trajectory.csv", np.column_stack([times, track, humans.reshape(len(humans), -1)]), delimiter=",", header=header, comments="", fmt="%.4f")
+
+
+def load_trajectory(folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Read <folder>/trajectory.csv: times (T,), the robot track (T, 2) and the people (T, H, 2)."""
+    data = np.loadtxt(folder / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
+    return data[:, 0], data[:, 1:3], data[:, 3:].reshape(len(data), -1, 2)
 
 
 class Episode:
     """Shared machinery; subclasses decide when to query and how much of a plan to execute."""
-
-    uses_model = True
 
     def __init__(self, run: Path, exp, trip: dict, site: dict, framing: str | None, thinking: str | None, sample: int):
         self.exp, self.trip, self.site, self.framing, self.thinking, self.sample = exp, trip, site, framing, thinking, sample
@@ -106,7 +116,7 @@ class Episode:
     def plan(self, value: np.ndarray | None, scene: Scene, steps: int | None) -> np.ndarray:
         """Positions for a reply, with the plan recorded; steps = how many plan steps will be executed (None = all), for the raw speeds."""
         positions, raw = self.planner.positions(value, scene)
-        self.plans.append({"query": self.n_queries - 1 if self.n_queries else None, "time_s": scene.time_s, "units": self.exp.units.name if self.exp.units else None,
+        self.plans.append({"query": self.n_queries - 1 if self.n_queries else None, "time_s": scene.time_s, "units": self.planner.units.name if self.planner.units else None,
                            "reply": None if value is None else value.tolist(), "positions_m": positions.tolist(),
                            "raw_speed": None if raw is None else raw.tolist()})
         if raw is not None:
@@ -148,16 +158,16 @@ class Episode:
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
         model = {"name": MODEL, "thinking": self.thinking == "think", "reasoning_effort": THINKING_EFFORT, "sampling": THINKING_SAMPLING if self.thinking == "think" else INSTRUCT_SAMPLING,
-                 "max_tokens": THINK_MAX_TOKENS if self.thinking == "think" else ANSWER_MAX_TOKENS} if self.uses_model else None
+                 "max_tokens": THINK_MAX_TOKENS if self.thinking == "think" else ANSWER_MAX_TOKENS} if self.exp.uses_model else None
         return {
             "trip": t["id"], "site": t["site"], "controller": t["controller"], "experiment": self.exp.id, "framing": self.framing,
-            "thinking": self.thinking, "sample": self.sample, "images": list(self.exp.images), "output_mode": self.exp.prompt.key if self.exp.prompt else None,
+            "thinking": self.thinking, "sample": self.sample, "images": list(self.exp.images), "output_mode": self.planner.name,
             "horizon": type(self).__name__, "execute_s": self.exp.execute_s, "model": model, "status": self.status, "error": self.error,
             "start_index": self.start, "steps_executed": len(self.track) - self.start - 1, "metrics": self.metrics(),
             "queries": self.n_queries, "samples": len(self.records), "retries": sum(r["attempt"] > 0 for r in self.records),
             "invalid_replies": sum(not r["valid"] for r in self.records), "forced_answers": sum(r["forced"] for r in self.records),
             "prompt_tokens": sum(r["prompt_tokens"] for r in self.records), "completion_tokens": sum(r["completion_tokens"] for r in self.records),
-            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": code_version()}
+            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": provenance()}
 
     def save(self, wall_s: float) -> None:
         f, t, a = self.folder, self.trip, self.start
@@ -166,13 +176,12 @@ class Episode:
             (f / "inputs" / name).write_bytes(png)
         n = len(self.track) - a
         times = np.asarray(t["time"], float)[a: a + n]
-        humans = [np.asarray(h, float)[a: a + n, :2] for h in t["humans"]]
-        header = "t,x,y" + "".join(f",h{h + 1}_x,h{h + 1}_y" for h in range(len(humans)))
-        np.savetxt(f / "trajectory.csv", np.column_stack([times, self.track[a:], *humans]), delimiter=",", header=header, comments="", fmt="%.4f")
+        humans = np.stack([np.asarray(h, float)[a: a + n, :2] for h in t["humans"]], axis=1)
+        save_trajectory(f, times, self.track[a:], humans)
         for name, rows in (("plans.jsonl", self.plans), ("queries.jsonl", self.records)):
             (f / name).write_text("".join(json.dumps(r) + "\n" for r in rows))
         title = f"{self.exp.id} {self.framing or ''} {self.thinking or ''} {t['id']} {self.status}"
-        (f / "result.png").write_bytes(render_result(self.site, self.goal, self.track[a:], np.asarray(t["robot"], float)[a: t["end_index"] + 1, :2], humans, title))
+        (f / "result.png").write_bytes(render_result(self.site, self.goal, self.track[a:], real_path(t), list(humans.transpose(1, 0, 2)), title))
         manifest = self.manifest(wall_s)
         manifest["files"] = sorted(str(p.relative_to(f)) for p in f.rglob("*") if p.is_file()) + ["manifest.json"]
         (f / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -190,8 +199,6 @@ class SingleShotEpisode(Episode):
 
 class BaselineEpisode(SingleShotEpisode):
     """No model: the planner's positions are executed as they are; one folder per trip."""
-
-    uses_model = False
 
     @classmethod
     def folder_for(cls, run, exp_id, trip_id, framing, thinking, sample) -> Path:

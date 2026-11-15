@@ -1,8 +1,9 @@
 """Planners: turn a model reply into the robot's positions, one per time step from where it is now.
 
 A planner is made per episode from an experiments.Experiment. Model planners (QueryPlanner
-subclasses) also open the chats and render the images for the queries; the output mode decides
-how a reply becomes positions:
+subclasses) also open the chats and render the images for the queries. Each subclass is one
+output mode: its class attributes (name, prompt template, reply key, example, units) and
+methods (to_units, max_steps, positions) say how it is prompted and how a reply becomes positions:
 
 - waypoints (metres): the speed limit keeps the path's shape and stretches its timing.
 - pixels: the same after mapping the BEV pixels to metres.
@@ -18,20 +19,40 @@ from functools import cached_property
 
 import numpy as np
 
-from bev import render_bev
-from camera import camera_frame
-from client import Chat, QwenClient
-from scene import DT, Scene
-from traj_gen_metrics import SPEED_CAP
+from metrics.traj_gen_metrics import SPEED_CAP
+from traj_gen.bev import bev_transform, render_bev
+from traj_gen.camera import camera_frame
+from traj_gen.client import Chat, QwenClient
+from traj_gen.episodes import real_path
+from traj_gen.prompting import PromptBuilder
+from traj_gen.scene import DT, Metres, Pixels, Scene
 
 
 THINKING = ("nothink", "think")  # run option of the model conditions: Qwen thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s: about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap; a longer plan could not be scored in a replay anyway
 STEP_M = SPEED_CAP * DT  # most the robot moves in one step
+METRES, PIXELS = Metres(), Pixels(bev_transform())
+
+
+def retime(start: np.ndarray, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Walk the path start -> points at most STEP_M per step, keeping its shape: (n, 2) positions and the plan's (len(points),) speeds in m/s."""
+    points = np.vstack([start, points])
+    seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    arc = np.concatenate([[0.0], np.cumsum(seg)])  # arclength of each plan point
+    reached = [0.0]  # arclength the robot has actually covered at each step: at most STEP_M more than the step before, never ahead of the plan
+    for target in arc[1:]:
+        reached.append(min(target, reached[-1] + STEP_M))
+    while reached[-1] < arc[-1]:  # the plan has ended but the robot is behind it
+        reached.append(min(arc[-1], reached[-1] + STEP_M))
+    s = np.array(reached[1:])
+    return np.stack([np.interp(s, arc, points[:, 0]), np.interp(s, arc, points[:, 1])], axis=1), seg / DT
 
 
 class Planner:
-    """Base: what an episode needs from a planner."""
+    """Base: what an episode needs from a planner. name and units are None for the baselines, which have no output mode."""
+
+    name = None
+    units = None
 
     def __init__(self, exp, trip: dict, framing: str | None, thinking: str | None):
         self.exp, self.trip, self.framing, self.thinking = exp, trip, framing, thinking
@@ -42,9 +63,15 @@ class Planner:
 
 
 class QueryPlanner(Planner):
-    """Planners that ask the model: the output mode (prompt builder, units) comes from the experiment."""
+    """Planners that ask the model. A subclass sets name, template (prompt template), key (JSON key of the reply),
+    example (metres, converted by to_units) and overrides units, pixel_ticks, to_units and max_steps where its mode differs."""
 
+    units = METRES
     pixel_ticks = False  # BEV grid labelled in metres
+
+    def to_units(self, value) -> np.ndarray:
+        """An example position in metres, written in the units of the output mode."""
+        return self.units.pos(value)
 
     def max_steps(self, remaining: int) -> int:
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""
@@ -52,7 +79,7 @@ class QueryPlanner(Planner):
 
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = self.exp.prompt(self.framing, self.exp.units, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.robot)), self.exp.predict)
+        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.robot)), self.exp.predict)
         return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property
@@ -66,30 +93,40 @@ class QueryPlanner(Planner):
 class WaypointPlanner(QueryPlanner):
     """Positions in metres; the speed limit retimes the path."""
 
+    name = "waypoints"
+    template = "output_waypoints"
+    key = "waypoints"  # key of the JSON object the model replies with: {key: [[a, b], ...]}
+    # Example numbers in metres (converted to the units in use): a short slow path, ~0.1 m per step (0.25 m/s)
+    # in an arbitrary place so it does not hint at where the robot should go.
+    example = [(-0.50, 0.40), (-0.40, 0.45), (-0.30, 0.50)]
+
     def positions(self, value, scene):
-        points = np.vstack([scene.robot[-1], value])
-        seg = np.linalg.norm(np.diff(points, axis=0), axis=1)
-        arc = np.concatenate([[0.0], np.cumsum(seg)])  # arclength of each plan point
-        reached = [0.0]  # arclength the robot has actually covered at each step: at most STEP_M more than the step before, never ahead of the plan
-        for target in arc[1:]:
-            reached.append(min(target, reached[-1] + STEP_M))
-        while reached[-1] < arc[-1]:  # the plan has ended but the robot is behind it
-            reached.append(min(arc[-1], reached[-1] + STEP_M))
-        s = np.array(reached[1:])
-        return np.stack([np.interp(s, arc, points[:, 0]), np.interp(s, arc, points[:, 1])], axis=1), seg / DT
+        return retime(scene.robot[-1], value)
 
 
 class PixelPlanner(WaypointPlanner):
     """Points on the BEV in pixels: mapped to metres, then as waypoints."""
 
+    name = "pixels"
+    template = "output_pixels"
+    key = "points"
+    units = PIXELS
     pixel_ticks = True
 
     def positions(self, value, scene):
-        return super().positions(self.exp.units.transform.to_metre(value), scene)
+        return super().positions(self.units.transform.to_metre(value), scene)
 
 
 class VelocityPlanner(QueryPlanner):
     """One velocity per step in m/s, each scaled down to the speed cap and integrated."""
+
+    name = "velocity_sequence"
+    template = "output_velocity_seq"
+    key = "velocities"
+    example = [(0.20, 0.10), (0.20, 0.15), (0.15, 0.20)]  # m/s, below the cap
+
+    def to_units(self, value) -> np.ndarray:
+        return self.units.vec(value)
 
     def positions(self, value, scene):
         speed = np.linalg.norm(value, axis=1)
@@ -100,6 +137,10 @@ class VelocityPlanner(QueryPlanner):
 class StepVelocityPlanner(VelocityPlanner):
     """A single velocity for the next step."""
 
+    name = "velocity"
+    template = "output_velocity"
+    example = [(0.20, 0.10)]
+
     def max_steps(self, remaining: int) -> int:
         return 1
 
@@ -108,15 +149,11 @@ class StraightPlanner(Planner):
     """Baseline: straight line to the goal at the speed cap."""
 
     def positions(self, value, scene):
-        to_goal = scene.goal_xy - scene.robot[-1]
-        dist = np.linalg.norm(to_goal)
-        along = np.minimum(np.arange(1, int(np.ceil(dist / STEP_M)) + 1) * STEP_M, dist)
-        return scene.robot[-1] + along[:, None] * to_goal / dist, None
+        return retime(scene.robot[-1], scene.goal_xy[None])[0], None
 
 
 class ReplayPlanner(Planner):
     """Baseline: the real controller's path, as recorded."""
 
     def positions(self, value, scene):
-        i = len(scene.robot)  # first index after the scene
-        return np.asarray(self.trip["robot"], float)[i: self.trip["end_index"] + 1, :2], None
+        return real_path(self.trip)[1:], None  # the scene is at start_index, so the real path after it

@@ -22,26 +22,27 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Circle
 from PIL import Image
 
-from bev import EXTENT_M, LABEL_PX, PERSON, ROBOT, _axes, _draw_room
-from bi3_derived import load_site_frames, load_trips
-from scene import DT
-from traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, inscribed_radius
+from metrics.traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, clearance_gap, inscribed_radius
+from preprocessing.bi3_derived import load_site_frames, load_trips
+from traj_gen.bev import EXTENT_M, LABEL, LABEL_PX, PERSON, REAL_PATH, ROBOT, bev_axes, draw_room, figure_png
+from traj_gen.episodes import load_trajectory, real_path
+from traj_gen.scene import DT, person_name
 
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
 
 
-def _load(folder: Path) -> dict:
-    """Everything a time view needs from an episode folder and its trip."""
+def load_episode(folder: Path) -> dict:
+    """Everything a time view needs from an episode folder and its trip; humans is a list of (T, 2) tracks, gap the (T,) robot-person clearance gap."""
     manifest = json.loads((folder / "manifest.json").read_text())
     trip = load_trips(id=manifest["trip"])[0]
-    data = np.loadtxt(folder / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
-    a = trip["start_index"]
+    t, robot, humans = load_trajectory(folder)
+    site = load_site_frames()[trip["site"]]
     plans = [json.loads(line) for line in (folder / "plans.jsonl").read_text().splitlines()]
-    return {"manifest": manifest, "site": load_site_frames()[trip["site"]], "goal": np.asarray(trip["robot_goal_xy"], float),
-            "t": data[:, 0], "robot": data[:, 1:3], "humans": [data[:, 3 + 2 * h: 5 + 2 * h] for h in range((data.shape[1] - 3) // 2)],
-            "real": np.asarray(trip["robot"], float)[a: trip["end_index"] + 1, :2], "plans": plans}
+    return {"manifest": manifest, "site": site, "goal": np.asarray(trip["robot_goal_xy"], float), "t": t, "robot": robot,
+            "humans": list(humans.transpose(1, 0, 2)), "gap": clearance_gap(robot, humans, site["footprint_m"]),
+            "real": real_path(trip), "plans": plans}
 
 
 def _title(ep: dict) -> str:
@@ -49,19 +50,13 @@ def _title(ep: dict) -> str:
     return " ".join(str(v) for v in (m["experiment"], m["framing"], m["thinking"], m["trip"], f"s{m['sample']}") if v is not None)
 
 
-def _png(fig) -> bytes:
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=fig.dpi)
-    return buf.getvalue()
-
-
 def _frame(ep: dict, k: int) -> bytes:
-    fig, ax, _ = _axes(False)
+    fig, ax, _ = bev_axes(False)
     site, radius = ep["site"], inscribed_radius(ep["site"]["footprint_m"])  # the disks the metrics use
-    _draw_room(ax, site, ep["goal"])
-    ax.plot(*ep["real"].T, ls="--", color="#555555", lw=1.5, alpha=0.5, zorder=3)
+    draw_room(ax, site, ep["goal"])
+    ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.5, zorder=3)
     if k < len(ep["real"]):
-        ax.add_patch(Circle(ep["real"][k], radius, fill=False, ec="#555555", ls="--", lw=2, zorder=4))
+        ax.add_patch(Circle(ep["real"][k], radius, fill=False, ec=REAL_PATH, ls="--", lw=2, zorder=4))
     t = ep["t"][k]
     current = [p for p in ep["plans"] if p["time_s"] <= t + 1e-6]
     if current and current[-1]["positions_m"]:
@@ -77,16 +72,15 @@ def _frame(ep: dict, k: int) -> bytes:
         if color == PERSON:
             ax.add_patch(Circle(track[k], PERSONAL_SPACE_RADIUS, fill=False, ec=PERSON, ls=":", lw=1.5, zorder=4))
     for h, track in enumerate(ep["humans"]):
-        ax.text(*track[k], f"P{h + 1}", ha="center", va="center", fontsize=LABEL_PX * 0.6, zorder=6)
-    clearance = min(np.linalg.norm(h[k] - ep["robot"][k]) for h in ep["humans"]) - radius - BODY_RADIUS
+        ax.text(*track[k], person_name(h), ha="center", va="center", fontsize=LABEL_PX * 0.6, zorder=6)
+    clearance = ep["gap"][k] - BODY_RADIUS
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\nt = {t:.1f} s   clearance {clearance:+.2f} m\ndashed ring: real robot now, dotted line: current plan, dotted ring: personal space",
             ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
-    return _png(fig)
+    return figure_png(fig)
 
 
-def animate(folder: Path, speed: float) -> Path:
-    """Write <folder>/animation.gif, played `speed` times faster than real time; the last frame is held."""
-    ep = _load(folder)
+def animate(folder: Path, ep: dict, speed: float) -> Path:
+    """Write <folder>/animation.gif from load_episode(folder), played `speed` times faster than real time; the last frame is held."""
     frames = [Image.open(io.BytesIO(_frame(ep, k))).convert("RGB") for k in range(len(ep["t"]))]
     for f in frames:
         f.thumbnail((GIF_PX, GIF_PX), Image.Resampling.LANCZOS)
@@ -96,19 +90,18 @@ def animate(folder: Path, speed: float) -> Path:
     return out
 
 
-def timeline(folder: Path) -> Path:
-    """Write <folder>/timeline.png: robot and people paths coloured by time on one scale."""
-    ep = _load(folder)
-    fig, ax, _ = _axes(False)
-    _draw_room(ax, ep["site"], ep["goal"])
-    ax.plot(*ep["real"].T, ls="--", color="#555555", lw=1.5, alpha=0.6, zorder=3)
+def timeline(folder: Path, ep: dict) -> Path:
+    """Write <folder>/timeline.png from load_episode(folder): robot and people paths coloured by time on one scale."""
+    fig, ax, _ = bev_axes(False)
+    draw_room(ax, ep["site"], ep["goal"])
+    ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.6, zorder=3)
     cmap, t = colormaps[CMAP], ep["t"]
     norm = (t - t[0]) / max(t[-1] - t[0], DT)
     for track, lw, marker in [(ep["robot"], 5, "o")] + [(h, 2.5, "^") for h in ep["humans"]]:
         ax.add_collection(LineCollection(np.stack([track[:-1], track[1:]], axis=1), colors=cmap(norm[:-1]), lw=lw, zorder=4))
         ax.scatter(*track.T, c=cmap(norm), marker=marker, s=30 if marker == "o" else 22, ec="k", lw=0.3, zorder=5)
     for h, track in enumerate(ep["humans"]):
-        ax.text(*track[0] + [0, 0.12], f"P{h + 1}", ha="center", fontsize=LABEL_PX * 0.7, color="#7a3300", zorder=7)
+        ax.text(*track[0] + [0, 0.12], person_name(h), ha="center", fontsize=LABEL_PX * 0.7, color=LABEL, zorder=7)
     ax.plot(*ep["robot"][0], marker="s", color="k", ms=8, zorder=6)
     cax = fig.add_axes([0.665, 0.924, 0.245, 0.012])  # x 0.6..1.7 m, y 1.86..1.92 m: the strip above the room's top wall, right of the title
     cbar = fig.colorbar(ScalarMappable(cmap=cmap), cax=cax, orientation="horizontal")
@@ -117,5 +110,5 @@ def timeline(folder: Path) -> Path:
     cbar.ax.tick_params(labelsize=LABEL_PX * 0.55)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\ncolour = time; circles: robot, triangles: people; dashed: real path", ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
     out = folder / "timeline.png"
-    out.write_bytes(_png(fig))
+    out.write_bytes(figure_png(fig))
     return out

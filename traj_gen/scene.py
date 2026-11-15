@@ -6,20 +6,23 @@ read from the trip: in rolling episodes it is the real pre-start history followe
 the generated plan actually executed. Leakage rule: only samples at indices <= i are ever
 read, so nothing after the query time can reach the text or the map.
 
-Coordinates are written in a Units: metres in the room frame (x right, y up), or pixels of
+Coordinates are written in a Metres or Pixels object: metres in the room frame (x right, y up), or pixels of
 the BEV image (u right, v down), so the pixel output mode differs from the metre mode only
 by the coordinate system. Text comes from the templates in prompts/ (str.format fields).
 """
 
+from functools import cache
 from pathlib import Path
 
 import numpy as np
 
+from preprocessing.bi3_derived import TRIP_HZ, label_members
+
 
 PROMPTS = Path(__file__).parent / "prompts"
-DT = 0.4             # s between samples, from extract_trips.HZ = 2.5
-HISTORY_STEPS = 7    # 2.8 s: the most whole steps that fit in the 3 s of history the trips carry
-HISTORY_S = round(HISTORY_STEPS * DT, 1)  # 2.8, as written in the prompts
+DT = 1 / TRIP_HZ     # s between samples
+PROMPT_HISTORY_STEPS = 7    # 2.8 s: the most whole steps that fit in the 3 s of history the trips carry
+PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the prompts
 # Horizons of the constant-velocity prediction (prediction experiments): 2 s is the rolling execution window
 # (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
 # middle and the end of the stretch the robot is committed to.
@@ -27,11 +30,12 @@ PREDICT_S = (1.0, 2.0)
 VELOCITY_STEPS = 2   # velocity = displacement over 0.8 s; the tracks are already smoothed over 0.5 s, one step is noisy
 
 
+@cache
 def load_prompt(name: str) -> str:
     return (PROMPTS / f"{name}.txt").read_text().strip()
 
 
-class Units:
+class Metres:
     """Metres in the room frame: x right, y up."""
 
     name = "m"
@@ -68,7 +72,7 @@ class Units:
                 "c1_min": self.num(corners[:, 1].min()), "c1_max": self.num(corners[:, 1].max())}
 
 
-class Pixels(Units):
+class Pixels(Metres):
     """Pixels of the BEV image (u right, v down, origin top-left); transform is a bev.BevTransform."""
 
     name = "px"
@@ -87,11 +91,16 @@ class Pixels(Units):
         return float(m) * self.transform.scale
 
 
-def station_text(label: str) -> str:
-    if label == "":
+def person_name(h: int) -> str:
+    return f"P{h + 1}"
+
+
+def station_text(label: str, stations: dict) -> str:
+    members = label_members(label, stations)
+    if not members:
         return "no further goal"
-    if "/" in label:
-        return "station " + " or ".join(label.split("/")) + " (shared table)"
+    if len(members) > 1:
+        return "station " + " or ".join(members) + " (shared table)"
     return f"station {label}"
 
 
@@ -111,38 +120,38 @@ class Scene:
             v = (xy[-1] - xy[-1 - k]) / (k * DT)
             half = site["room_m"] / 2  # people stay in the room, so the prediction does too
             self.people.append({
-                "name": f"P{h + 1}", "xy": xy[-1], "history": xy[-1 - HISTORY_STEPS: -1], "velocity": v,
+                "name": person_name(h), "xy": xy[-1], "history": xy[-1 - PROMPT_HISTORY_STEPS: -1], "velocity": v,
                 "speed": float(np.linalg.norm(v)), "predicted": np.clip(xy[-1] + np.outer(PREDICT_S, v), -half, half), "standing": trip["human_state"][h][i] == "at_station",
                 "goal": trip["human_goal"][h][i], "next_goal": trip["human_next_goal"][h][i],
                 "distance": float(np.linalg.norm(xy[-1] - self.robot[-1]))})
-        self.robot_history = self.robot[-1 - HISTORY_STEPS: -1]
+        self.robot_history = self.robot[-1 - PROMPT_HISTORY_STEPS: -1]
 
-    def stations_text(self, units: Units) -> str:
+    def stations_text(self, units: Metres) -> str:
         """Station positions, then one sentence per shared table."""
         stations = self.site["stations"]
-        lines = [f"station {k}: {units.pos_text(s['xy'])}" for k, s in stations.items() if "/" not in k]
+        lines = [f"station {k}: {units.pos_text(s['xy'])}" for k, s in stations.items() if len(label_members(k, stations)) == 1]
         lines += [load_prompt("shared_table").format(a=a, b=b, pos=units.pos_text(s["xy"]))
-                  for k, s in stations.items() if "/" in k for a, b in [s["members"]]]
+                  for k, s in stations.items() if len(label_members(k, stations)) == 2 for a, b in [s["members"]]]
         return "\n".join(lines)
 
-    def person_text(self, p: dict, units: Units, predict: bool) -> str:
-        activity = f"standing at {station_text(p['goal'])}" if p["standing"] else "walking"
+    def person_text(self, p: dict, units: Metres, predict: bool) -> str:
+        activity = f"standing at {station_text(p['goal'], self.site['stations'])}" if p["standing"] else "walking"
         text = load_prompt("person").format(
-            name=p["name"], pos=units.pos_text(p["xy"]), activity=activity, goal=station_text(p["goal"]),
-            next_goal=station_text(p["next_goal"]), velocity=units.vec_text(p["velocity"]),
+            name=p["name"], pos=units.pos_text(p["xy"]), activity=activity, goal=station_text(p["goal"], self.site["stations"]),
+            next_goal=station_text(p["next_goal"], self.site["stations"]), velocity=units.vec_text(p["velocity"]),
             speed=units.len_text(p["speed"]), distance=units.len_text(p["distance"]), unit=units.name,
-            history=", ".join(units.pos_text(q) for q in p["history"]), hist_s=HISTORY_S, dt=DT)
+            history=", ".join(units.pos_text(q) for q in p["history"]), hist_s=PROMPT_HISTORY_S, dt=DT)
         if predict:
             (h1, h2), (p1, p2) = PREDICT_S, p["predicted"]
             text += " " + load_prompt("person_prediction").format(
                 name=p["name"], h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
         return text
 
-    def text(self, units: Units, predict: bool) -> str:
+    def text(self, units: Metres, predict: bool) -> str:
         """The per-turn state block; predict adds each person's constant-velocity positions."""
         return load_prompt("scene").format(
             time_s=f"{self.time_s:.1f}", robot_pos=units.pos_text(self.robot[-1]), unit=units.name, dt=DT,
-            hist_s=HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.robot_history),
-            goal=station_text(self.goal), goal_pos=units.pos_text(self.goal_xy),
+            hist_s=PROMPT_HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.robot_history),
+            goal=station_text(self.goal, self.site["stations"]), goal_pos=units.pos_text(self.goal_xy),
             goal_dist=units.len_text(np.linalg.norm(self.goal_xy - self.robot[-1])),
             people="\n".join(self.person_text(p, units, predict) for p in self.people))

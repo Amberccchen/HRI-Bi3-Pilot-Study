@@ -10,8 +10,10 @@ Goal labels are text: a station id ("0".."5"), or a shared-table pair ("0/1" at
 LAAS, "4/5" at UM) when a participant's visits there could not be resolved to one
 of the two stations. stations.json lists every allowed label per site.
 
+Run from the repository root: python -m preprocessing.annotate_goals
+
 Outputs (mocap-derived, so kept outside this repository; read them with bi3_derived.py):
-  <out>/manifest.json                        parameters and script fingerprint
+  <out>/manifest.json                        parameters and git state of the code
   <out>/stations.json                        allowed goal labels and coordinates per site
   <out>/<site>/<trial>/<controller>_frames.csv  per-sample labels for robot and humans
   <out>/<site>/<trial>/<controller>_visits.csv  detected visits
@@ -26,11 +28,9 @@ from pathlib import Path
 
 import numpy as np
 
-from bi3_derived import DERIVED, GOALS_DIR, write_manifest
+from preprocessing.bi3_derived import DERIVED, GOALS_DIR, RAW, SITES, load_recording, moving_average, write_manifest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Bi3" / "Bi3"
 OUT = DERIVED / GOALS_DIR
 
 # Workstation coordinates are the robot's goal points (the only six values
@@ -55,21 +55,9 @@ GOAL_TOL_M = 0.05       # recorded robot goal matches a station within this
 ROBOT_LAG_S = (1.0, 4.0)  # robot turnaround window after its goal switches (before, after)
 
 
-def load(path: Path) -> dict:
-    steps = json.loads(path.read_text())
-    return {
-        "time": np.array([s["time"] for s in steps]),
-        "robot": np.array([s["robot_state"] for s in steps]),
-        "humans": np.array([s["agent_states"] for s in steps]),
-        "robot_goal": np.array([s["robot_goal"] for s in steps]),
-    }
-
-
 def smooth(p: np.ndarray, time: np.ndarray) -> np.ndarray:
     n = max(1, int(round(SMOOTH_S / np.median(np.diff(time)))))
-    pad = np.pad(p, ((n // 2, n - 1 - n // 2), (0, 0)), mode="edge")
-    kernel = np.ones(n) / n
-    return np.stack([np.convolve(pad[:, k], kernel, mode="valid") for k in range(p.shape[1])], axis=1)
+    return moving_average(p, n)
 
 
 def turn_angles(p: np.ndarray) -> np.ndarray:
@@ -242,7 +230,7 @@ def process(job: tuple[str, Path, Path]) -> dict:
     site, path, out = job
     trial, controller = path.parent.name, path.stem
     stations = np.array(STATIONS[site])
-    data = load(path)
+    data = load_recording(path)
     time, n = data["time"], len(data["time"])
     rows, visit_rows = [], []
     tracks = [("robot", data["robot"])] + [(f"human{h}", data["humans"][:, h]) for h in range(data["humans"].shape[1])]
@@ -282,22 +270,22 @@ def process(job: tuple[str, Path, Path]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data", type=Path, default=DATA)
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--only", nargs="*", help="limit to <site>/<trial>/<controller> or <site>/<trial>, e.g. laas/laas1/cohan")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
 
     jobs = []
-    for site in STATIONS:
-        for path in sorted((args.data / "jsons" / site).glob("*/*.json")):
+    for site in SITES:
+        for path in sorted((RAW / "jsons" / site).glob("*/*.json")):
             key = f"{site}/{path.parent.name}/{path.stem}"
             if args.only and not any(key == o or key.startswith(o.rstrip("/") + "/") for o in args.only):
                 continue
             jobs.append((site, path, args.out))
     args.out.mkdir(parents=True, exist_ok=True)
     labels = {}
-    for site, xys in STATIONS.items():
+    for site in SITES:
+        xys = STATIONS[site]
         labels[site] = {str(k): {"members": [str(k)], "xy": list(xy)} for k, xy in enumerate(xys)}
         for pair in SHARED_TABLES[site]:
             labels[site][shared_label(pair)] = {"members": [str(k) for k in sorted(pair)],
@@ -313,8 +301,8 @@ def main() -> None:
     found = sum(s["goals_found"] for s in summary)
     det = sum(s["detected_visits"] for s in summary)
     ok = sum(s["visits_matching_a_goal"] for s in summary)
-    params = {k: v for k, v in globals().items() if k.isupper() and k not in ("ROOT", "DATA", "OUT", "DERIVED", "GOALS_DIR")}
-    write_manifest(args.out / "manifest.json", Path(__file__), params, {
+    params = {k: v for k, v in globals().items() if k.isupper() and k not in ("OUT", "DERIVED", "GOALS_DIR", "RAW", "SITES")}
+    write_manifest(args.out / "manifest.json", params, {
         "files": len(summary), "only": args.only,
         "robot_check": {"completed_goals": segs, "goals_found": found, "detected_visits": det, "visits_matching_a_goal": ok},
         "columns": {
