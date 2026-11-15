@@ -66,7 +66,8 @@ SEED = 20261022  # fixed so the intervals are reproducible. The value is a date 
 INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
         "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s", "move_end_index"]
 STATUSES = ("ok", "invalid_reply", "error")
-SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other"}  # per-agent detail, not an episode-level number
+SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other",  # per-agent detail, not an episode-level number
+        "station_crossing", "station_distance_min"}  # no longer computed: skipped when an older run folder's manifest still holds them
 METRICS = [m for m in METRIC_CLASS if m not in SKIP]  # episode-level metric columns, present (NaN when absent) in every episode table
 RATES = ["goal_reached", "contact_time", "personal_space_overlap", "out_of_room"]
 # Parts of the invalid rate, 0/1 per episode over all episodes (NaN where the part does not apply).
@@ -97,7 +98,7 @@ def collect(run: Path, chosen: list[dict]) -> pd.DataFrame:
             if m["trip"] not in strata:
                 other_trips.add(m["trip"])
                 continue
-            unknown = set(m["metrics"] or {}) - set(METRIC_CLASS)
+            unknown = set(m["metrics"] or {}) - set(METRIC_CLASS) - SKIP
             if unknown:
                 raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
             metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
