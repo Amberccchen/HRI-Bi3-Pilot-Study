@@ -18,9 +18,10 @@ the planner's heading is unknown and the corners are not modelled), so:
   other agent's personal space (a disk of the given radius around that agent's centre).
 - goal reached: the path gets within the arrival radius + GOAL_SLACK of the goal station. Bi3
   switches goals at about the arrival radius on the raw mocap, but the cleaned room-frame real
-  paths end 0.48-0.60 m from the goal at their last sample, so the slack keeps the real controllers
-  from being scored as failures (2 of the 133 trips with a full prompt history end 0.601 and 0.602 m
-  away and are scored as not reached). Time to goal is the first such sample.
+  paths end 0.48-0.60 m from the goal at their last sample before the switch. The largest of these
+  end distances over all 144 trips is 0.602 m (um_um13_blind_robot_04), so with a slack of 0.15 m
+  (threshold 0.65 m, a round value with margin above it) every real controller reaches its goal.
+  Time to goal is the first such sample.
 - final distance to goal: distance of the last sample, also for paths that never arrive.
 - out of room: any sample outside the square room of side room_m.
 - stations: the agent's centre entering the box of a station that is not part of its goal (the stations
@@ -39,7 +40,7 @@ import numpy as np
 from preprocessing.bi3_derived import label_members
 
 
-GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end 0.48-0.60 m from the goal at their last sample
+GOAL_SLACK = 0.15    # absorbs where real paths end relative to the goal at Bi3's goal switch: at most 0.602 m over all 144 trips
 STATION_BOX_M = 0.2  # side of a station's box as drawn on the map; the station position is the robot's stopping point in front of the table
 # Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (an unusable reply, which has
 # no metrics, is invalid too). contact: closeness to the other agents. efficiency: how the agent moves.
