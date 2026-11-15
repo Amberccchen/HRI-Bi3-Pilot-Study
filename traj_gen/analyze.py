@@ -35,7 +35,9 @@ the run's trips folder that reaches its goal and does not start within the arriv
 (start station, goal station). Against the site pool, the pool is split at random into the compared real set and the reference
 pool. Against the same trips, the compared set is the test trips' real moves and the reference pool is the site's other moves.
 Generated moves of a station pair with fewer real moves in the reference pool than generated ones are left out of that comparison
-(n_unmatched_station_pair), since no reference set with their station mix exists.
+(n_unmatched_station_pair), since no reference set with their station mix exists. Moves without a turning angle (too short, or
+too slow, for two 0.8 s displacements of TURN_MIN_DISPLACEMENT_M) are left out on both sides (n_without_turning for the generated
+ones): a resampled set made of such moves alone has no turning sample, and W1 is not defined for it.
 """
 
 import io
@@ -349,7 +351,8 @@ def move_features(trip: dict, site: dict, positions: dict[str, np.ndarray], end:
 
 
 def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
-    """{site: {trip id: move features}} of every person trip in trips that reaches its goal and does not start within the arrival radius."""
+    """{site: {trip id: move features}} of every person trip in trips that reaches its goal, does not start within the arrival radius,
+    and has a turning angle."""
     radius = ARRIVAL_RADIUS_M["human"]
     moves = {site: {} for site in SITES}
     for trip in trips.values():
@@ -362,7 +365,9 @@ def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
             continue
         end = move_end_index(positions[trip["agent"]], goal, radius, np.array([site["stations"][m]["xy"] for m in label_members(trip["goal"], site["stations"])], float))
         if end is not None:
-            moves[trip["site"]][trip["id"]] = move_features(trip, site, positions, end)
+            features = move_features(trip, site, positions, end)
+            if features["turning_angle"].size:
+                moves[trip["site"]][trip["id"]] = features
     return moves
 
 
@@ -373,7 +378,8 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.Data
     rows = []
     for (*cond, site), d in df[df.kind == "human"].groupby([*COND, "site"], sort=False):
         ok = d[(d.status == "ok") & d.move_end_index.notna()]
-        generated = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
+        moved = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
+        generated = [m for m in moved if m["turning_angle"].size]
         if not generated:
             continue
         ids = list(pool[site])
@@ -397,6 +403,7 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.Data
                              "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
                              "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
                              "n_generated": fd.n_generated, "n_real": fd.n_real, "n_episodes": len(d), "n_without_move": len(d) - len(ok),
+                             "n_without_turning": len(moved) - len(generated),
                              "n_unmatched_station_pair": len(generated) - len(matched)})
     return pd.DataFrame(rows)
 
