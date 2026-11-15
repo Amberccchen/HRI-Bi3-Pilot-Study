@@ -114,7 +114,7 @@ def _trail(ax, history: np.ndarray, now: np.ndarray, color: str) -> None:
 
 def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
     """Walls, stations (with the shared table outline) and the planned agent's goal with its arrival radius: the part of every map that does not change in time.
-    Stations are drawn at the robot's stopping points for every planned agent, so a site looks the same in every map. Only the goal is at the planned agent's own point."""
+    Stations are drawn at the robot's stopping points for every planned agent. Only the goal is at the planned agent's own point."""
     room = site["room_m"]
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
     stations = site["stations"]

@@ -19,7 +19,7 @@ ARRIVAL_RADIUS_M = {"robot": 0.5, "human": 0.4}
 # How far beyond the room's walls the agent may go before it counts as out of the room. The station positions and walls
 # bound the robot, but people stand closer to the walls than the robot's stopping points.
 ROOM_MARGIN_M = {"robot": 0.0, "human": 0.25}
-# The site_frames station field a planned agent of the kind is given in its prompts and maps: the robot's stopping point (xy) or
+# The site_frames station field a planned agent of the kind is given in its prompts: the robot's stopping point (xy) or
 # where people stand (human_xy).
 STATION_POSITION = {"robot": "xy", "human": "human_xy"}
 PERSON_BODY_RADIUS_M = 0.15          # person body radius for scoring, since mocap tracks only give the body centre
