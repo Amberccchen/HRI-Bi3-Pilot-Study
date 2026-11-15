@@ -154,7 +154,7 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
         by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
             if c != "out_of_room" and not (c == "station_crossing" and g.invalid_station.notna().any()):  # reported as their invalid parts, over all episodes
-                by_class[metric_class(c, g.kind.iloc[0])][c] = g[c].mean()
+                by_class[metric_class(c, g.name[0])][c] = g[c].mean()  # g.name[0] is the group's kind
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
             "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},
