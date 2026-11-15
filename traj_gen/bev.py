@@ -189,18 +189,16 @@ def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray
 def trajectory_legend(agent: str, others: list[str]) -> list:
     """Legend entries of the result and overlay figures, for a two-column legend (ncol=2, columns filled top to bottom). The left column holds
     the colour roles, then the final-position disk, goal and real path. The right column holds the shapes, then the arrival circle, start and straight line."""
-    radius = lambda value: f"{round(value, 2):g} m"
     kinds = list(dict.fromkeys([agent_kind(agent), *map(agent_kind, others)]))
     logged = [k for k in KIND_COLOUR if k in {agent_kind(o) for o in others}]
-    blank = lambda: Line2D([], [], ls="", label=" ")
     colours = [Line2D([], [], color=VLM_COLOUR, lw=2.5, label="VLM-controlled"),
                *[Line2D([], [], color=KIND_COLOUR[k], lw=2, label=f"logged {KIND_NAME[k]}") for k in logged]]
     shapes = [Line2D([], [], color="#777777", marker=KIND_MARKER[k], ls="", ms=7, label=KIND_NAME[k]) for k in kinds]
-    shapes += [blank() for _ in range(len(colours) - len(shapes))]
+    shapes += [Line2D([], [], ls="", label=" ") for _ in range(len(colours) - len(shapes))]
     left = [Line2D([], [], color="#888888", marker="o", ls="", ms=11, alpha=0.5, mec="k", label="final pos with collision disk"),
             Line2D([], [], color=GOAL, marker="*", ls="", ms=11, label="goal"),
             Line2D([], [], color=REAL_PATH, ls="--", lw=2, label=REAL_PATH_LABEL[agent_kind(agent)])]
-    right = [Line2D([], [], color=GOAL, marker="o", ls="", ms=11, mfc="none", mew=1.5, label=f"goal arrival thresh ({radius(ARRIVAL_RADIUS_M[agent_kind(agent)])})"),
+    right = [Line2D([], [], color=GOAL, marker="o", ls="", ms=11, mfc="none", mew=1.5, label=f"goal arrival thresh ({round(ARRIVAL_RADIUS_M[agent_kind(agent)], 2):g} m)"),
              Line2D([], [], color="k", marker=START_MARKER, ls="", ms=8, label="start"),
              Line2D([], [], color=STRAIGHT_LINE, ls=":", lw=2, label="straight line")]
     return colours + left + shapes + right
