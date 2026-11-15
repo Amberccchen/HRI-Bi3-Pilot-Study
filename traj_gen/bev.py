@@ -17,7 +17,7 @@ from matplotlib.patches import Circle, Rectangle
 
 from metrics.traj_gen_metrics import STATION_BOX_M
 from preprocessing.bi3_derived import label_members
-from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind, prompt_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind, body_radius, prompt_radius
 from traj_gen.scene import DT, Scene, person_name
 
 
@@ -167,14 +167,14 @@ def bev_transform() -> BevTransform:
 
 
 def _draw_others(ax, site: dict, agent: str, others: dict[str, np.ndarray]) -> None:
-    """Whole-episode tracks of the agents other than the planned one ({agent id: (T, 2)}): trail, final disk at the prompt radius, and a P<k> label at a person's start."""
+    """Whole-episode tracks of the agents other than the planned one ({agent id: (T, 2)}): trail, final disk at the scoring radius, and a P<k> label at a person's start."""
     labelled = set()
     for other, track in others.items():
         kind = agent_kind(other)
         ax.plot(*track.T, "-o", color=KIND_COLOUR[kind], lw=2, ms=3, alpha=0.7, zorder=3,
                 label=None if kind in labelled else OTHERS_LEGEND[agent_kind(agent)][kind])
         labelled.add(kind)
-        ax.add_patch(Circle(track[-1], prompt_radius(other, site), fc=KIND_COLOUR[kind], ec="k", alpha=0.4, zorder=5))
+        ax.add_patch(Circle(track[-1], body_radius(other, site), fc=KIND_COLOUR[kind], ec="k", alpha=0.4, zorder=5))
         if kind == "human":
             ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
 
@@ -186,14 +186,15 @@ def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray
 
 
 def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndarray, real: np.ndarray, others: dict[str, np.ndarray], title: str) -> bytes:
-    """Figure of a whole episode of the planned agent on the BEV axes: executed path (time marks), the real path, the straight line and the other agents' trails."""
+    """Figure of a whole episode of the planned agent on the BEV axes: executed path (time marks), the real path, the straight line and the other agents' trails.
+    Final positions are drawn at each agent's scoring radius (body_radius), the disk contact is scored with."""
     fig, ax, _ = bev_axes(False)
     colour = PLANNED_COLOUR[agent_kind(agent)]
     draw_room(ax, site, agent, goal_xy)
     _draw_reference(ax, goal_xy, executed[0], real)
     _draw_others(ax, site, agent, others)
     ax.plot(*executed.T, "-o", color=colour, lw=3, ms=4, zorder=4, label="executed")
-    ax.add_patch(Circle(executed[-1], prompt_radius(agent, site), fc=colour, ec="k", alpha=0.45, zorder=5))
+    ax.add_patch(Circle(executed[-1], body_radius(agent, site), fc=colour, ec="k", alpha=0.45, zorder=5))
     ax.plot(*executed[0], marker="s", color="k", ms=8, zorder=6)
     for k in range(0, len(executed), round(LABEL_EVERY_S / DT)):
         ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=colour, zorder=7)
@@ -203,7 +204,8 @@ def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndar
 
 
 def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np.ndarray], real: np.ndarray, others: dict[str, np.ndarray], title: str) -> bytes:
-    """Several executed paths of the planned agent (e.g. the samples of one condition) of one trip on the same axes, without time marks or legend (the caller adds a shared legend)."""
+    """Several executed paths of the planned agent (e.g. the samples of one condition) of one trip on the same axes, without time marks or legend (the caller adds a shared legend).
+    Final positions are drawn at each agent's scoring radius (body_radius)."""
     fig, ax, _ = bev_axes(False)
     colour = PLANNED_COLOUR[agent_kind(agent)]
     draw_room(ax, site, agent, goal_xy)
@@ -211,7 +213,7 @@ def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np
     _draw_others(ax, site, agent, others)
     for path in samples:
         ax.plot(*path.T, "-o", color=colour, lw=2.5, ms=3, alpha=0.7, zorder=4)
-        ax.add_patch(Circle(path[-1], prompt_radius(agent, site), fc=colour, ec="k", alpha=0.15, zorder=5))
+        ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=colour, ec="k", alpha=0.35, zorder=5))
     ax.plot(*real[0], marker="s", color="k", ms=8, zorder=6)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     return figure_png(fig)

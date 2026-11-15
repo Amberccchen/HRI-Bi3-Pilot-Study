@@ -32,17 +32,13 @@ Similarity. A move is the part of a path from the trip start to move_end_index (
 generated paths of ok episodes and for the real paths alike, so a replay episode's move is its trip's real move. Episodes
 without a move (not ok, or the goal not reached) are left out and counted. The real moves are every person trip of the site in
 the run's trips folder that reaches its goal and does not start within the arrival radius (as select requires), stratified by
-(start station, goal station). Against the site pool, the pool is split at random into the compared real set and the reference
-pool. Against the same trips, the compared set is the test trips' real moves and the reference pool is the site's other moves.
-Generated moves of a station pair with fewer real moves in the reference pool than generated ones are left out of that comparison
-(n_unmatched_station_pair), since no reference set with their station mix exists. Moves without a turning angle (too short, or
-too slow, for two 0.8 s displacements of TURN_MIN_DISPLACEMENT_M) are left out on both sides (n_without_turning for the generated
-ones): a resampled set made of such moves alone has no turning sample, and W1 is not defined for it.
+(start station, goal station). Against the site pool, the real set is the site's moves from recordings other than the generated
+moves' recordings. Against the same trips, it is the test trips' real moves. In both, the reference draws are the site's other
+recordings (feature_distances), and their number is reported with each row.
 """
 
 import io
 import json
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -54,8 +50,8 @@ from matplotlib.lines import Line2D
 from metrics.human_similarity import feature_distances, trajectory_features
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES, label_members
-from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind, prompt_radius
-from traj_gen.bev import GOAL, KIND_COLOUR, OTHERS_LEGEND, PLANNED_COLOUR, REAL_PATH, render_overlay
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind, body_radius
+from traj_gen.bev import GOAL, KIND_COLOUR, PLANNED_COLOUR, REAL_PATH, render_overlay
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -81,10 +77,10 @@ OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in 
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
 OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
 REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
-PROMPT_DISK = {"robot": "circumscribed disk", "human": "disk"}  # the planned agent's disk in the prompts, by kind
+OTHER_LABEL = {"robot": "robot", "human": "people"}  # legend name of the other agents of a kind
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
-SIMILARITY_DRAWS = 1000         # bootstrap and reference draws of each feature distance
+SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface). The baselines use neutral grey and violet.
 FAMILY_COLOUR = {"single shot": "#2a78d6", "rolling": "#eb6834", "conversation": "#1baf7a"}
@@ -302,38 +298,46 @@ def condition_figures(by_cond: dict, kind: str, fig_dir: Path) -> None:
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
-    """trip_<id>.png per trip: the samples of each experiment (rows) and condition (columns) drawn by render_overlay, with a legend below that fits the figure width."""
+    """trip_<id>.png per trip, drawn by render_overlay: one row per baseline (one panel), then one row per model experiment with a
+    column per model condition (thinking x framing), and a legend below that fits the figure width."""
     for trip_id, d in df[df.experiment.isin(experiments)].groupby("trip"):
         trip = trips[trip_id]
         site, agent = sites[trip["site"]], trip["agent"]
         kind, a, goal = agent_kind(agent), trip["start_index"], np.asarray(trip["goal_xy"], float)
         real = real_path(trip)
         shown = [e for e in experiments if e in set(d.experiment)]
-        cols = sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (("-", *THINKING).index(c[0]), ("-", *FRAMINGS).index(c[1])))  # "-": baselines
-        width = OVERLAY_PANEL_IN * len(cols)
+        baselines, models = [e for e in shown if e in BASELINES], [e for e in shown if e not in BASELINES]
+        model_rows = d[d.experiment.isin(models)]
+        cols = sorted({(r.thinking, r.framing) for r in model_rows.itertuples()}, key=lambda c: (THINKING.index(c[0]), list(FRAMINGS).index(c[1])))
+        panels = [(i, 0, d[d.experiment == e]) for i, e in enumerate(baselines)]
+        panels += [(len(baselines) + i, j, g) for i, e in enumerate(models) for j, (th, fr) in enumerate(cols)
+                   for g in [d[(d.experiment == e) & (d.thinking == th) & (d.framing == fr)]] if not g.empty]
+        width = OVERLAY_PANEL_IN * max(1, len(cols))
         fig = Figure(figsize=(width, OVERLAY_PANEL_IN * len(shown) + 0.4), dpi=110)
-        axes = fig.subplots(len(shown), len(cols), squeeze=False)
+        axes = fig.subplots(len(shown), max(1, len(cols)), squeeze=False)
         for ax in axes.flat:
             ax.axis("off")
-        for i, exp in enumerate(shown):
-            for j, (th, fr) in enumerate(cols):
-                g = d[(d.experiment == exp) & (d.thinking == th) & (d.framing == fr)]
-                if g.empty:
-                    continue
-                paths = [load_trajectory(run / f)[1][agent] for f in g.folder]
-                end = max(len(real), *map(len, paths))
-                others = {o: np.asarray(track, float)[a: a + end, :2] for o, track in trip["tracks"].items() if o != agent}
-                title = f"{exp} {fr} {th}: {int((g.status == 'ok').sum())}/{len(g)} ok"
-                png = render_overlay(site, agent, goal, paths, real, others, title)
-                axes[i, j].imshow(imread(io.BytesIO(png), format="png"))
-        other_kinds = dict.fromkeys(agent_kind(o) for o in trip["tracks"] if o != agent)
+        for i, j, g in panels:
+            paths = [load_trajectory(run / f)[1][agent] for f in g.folder]
+            end = max(len(real), *map(len, paths))
+            others = {o: np.asarray(track, float)[a: a + end, :2] for o, track in trip["tracks"].items() if o != agent}
+            r = g.iloc[0]
+            title = f"{r.experiment}{'' if r.framing == '-' else f' {r.framing} {r.thinking}'}: {int((g.status == 'ok').sum())}/{len(g)} ok"
+            axes[i, j].imshow(imread(io.BytesIO(render_overlay(site, agent, goal, paths, real, others, title)), format="png"))
+        radius = lambda value: f"{round(value, 2):g} m"
+        others = {}  # kind -> one of its agent ids, for the legend
+        for o in trip["tracks"]:
+            if o != agent:
+                others.setdefault(agent_kind(o), o)
+        most_samples = model_rows.groupby(COND).size().max() if len(model_rows) else 0
         legend = [Line2D([], [], color=REAL_PATH, ls="--", label=REAL_PATH_LABEL[kind]), Line2D([], [], color=GOAL, ls=":", label="straight line"),
                   Line2D([], [], color=GOAL, marker="*", ls="", ms=10, label="goal"),
-                  Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"arrival radius ({ARRIVAL_RADIUS_M[kind]:g} m)"),
-                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{OTHERS_LEGEND[kind][k]} (disk: final position)") for k in other_kinds],
-                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ms=4, label="model samples"),
-                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.3, mec="k",
-                         label=f"final position ({PROMPT_DISK[kind]}, {prompt_radius(agent, site):g} m)"),
+                  Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"goal arrival thresh ({radius(ARRIVAL_RADIUS_M[kind])})"),
+                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{OTHER_LABEL[k]} final pos with collision disk ({radius(body_radius(o, site))})")
+                    for k, o in others.items()],
+                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ms=4, label="VLM traj sample" if most_samples == 1 else "VLM traj samples"),
+                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.35, mec="k",
+                         label=f"VLM traj final pos with collision disk ({radius(body_radius(agent, site))})"),
                   Line2D([], [], color="k", marker="s", ls="", ms=7, label="start")]
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
         fig.tight_layout(rect=(0, 0, 1, 0.97))
@@ -346,13 +350,12 @@ def move_features(trip: dict, site: dict, positions: dict[str, np.ndarray], end:
     """trajectory_features of a person's move: positions ({agent id: (T, 2)} from the trip start) up to index end, stratified by (start station, goal station)."""
     agent = trip["agent"]
     other = next(a for a in positions if a not in (agent, "robot"))
-    return trajectory_features(positions[agent][: end + 1], positions["robot"][: end + 1], positions[other][: end + 1],
-                               (trip["start_goal"], trip["goal"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
+    return trajectory_features(positions[agent][: end + 1], positions["robot"][: end + 1], positions[other][: end + 1], (trip["start_goal"], trip["goal"]),
+                               (trip["site"], trip["trial"], trip["controller"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
 
 
 def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
-    """{site: {trip id: move features}} of every person trip in trips that reaches its goal, does not start within the arrival radius,
-    and has a turning angle."""
+    """{site: {trip id: move features}} of every person trip in trips that reaches its goal and does not start within the arrival radius."""
     radius = ARRIVAL_RADIUS_M["human"]
     moves = {site: {} for site in SITES}
     for trip in trips.values():
@@ -365,9 +368,7 @@ def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
             continue
         end = move_end_index(positions[trip["agent"]], goal, radius, np.array([site["stations"][m]["xy"] for m in label_members(trip["goal"], site["stations"])], float))
         if end is not None:
-            features = move_features(trip, site, positions, end)
-            if features["turning_angle"].size:
-                moves[trip["site"]][trip["id"]] = features
+            moves[trip["site"]][trip["id"]] = move_features(trip, site, positions, end)
     return moves
 
 
@@ -378,33 +379,22 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.Data
     rows = []
     for (*cond, site), d in df[df.kind == "human"].groupby([*COND, "site"], sort=False):
         ok = d[(d.status == "ok") & d.move_end_index.notna()]
-        moved = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
-        generated = [m for m in moved if m["turning_angle"].size]
+        generated = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
         if not generated:
             continue
-        ids = list(pool[site])
-        half = rng.permutation(len(ids))
-        test = set(d.trip) & set(ids)
-        comparisons = {
-            "site pool": ([pool[site][ids[i]] for i in half[: len(ids) // 2]], [pool[site][ids[i]] for i in half[len(ids) // 2:]]),
-            "same trips": ([pool[site][t] for t in sorted(test)], [m for t, m in pool[site].items() if t not in test]),
-        }
-        for comparison, (real, reference) in comparisons.items():
-            # A reference set needs as many real moves of each station pair as the generated set has. Moves of a pair the
-            # reference pool cannot match are left out of the comparison and counted.
-            in_reference = Counter(m["stratum"] for m in reference)
-            in_generated = Counter(m["stratum"] for m in generated)
-            matched = [m for m in generated if in_generated[m["stratum"]] <= in_reference[m["stratum"]]]
-            if not matched:
-                continue
-            distances = feature_distances(matched, real, reference, n_bootstrap=SIMILARITY_DRAWS, n_reference_draws=SIMILARITY_DRAWS, rng=rng)
+        recordings = {m["recording"] for m in generated}
+        moves = list(pool[site].values())
+        comparisons = {"site pool": [m for m in moves if m["recording"] not in recordings],
+                       "same trips": [pool[site][t] for t in sorted(set(d.trip) & set(pool[site]))]}
+        for comparison, real in comparisons.items():
+            distances = feature_distances(generated, real, moves, n_bootstrap=SIMILARITY_DRAWS, rng=rng)
             for feature, fd in distances.items():
                 rows.append({**dict(zip(COND, cond)), "site": site, "comparison": comparison, "feature": feature, "w1": fd.w1,
                              "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
                              "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
-                             "n_generated": fd.n_generated, "n_real": fd.n_real, "n_episodes": len(d), "n_without_move": len(d) - len(ok),
-                             "n_without_turning": len(moved) - len(generated),
-                             "n_unmatched_station_pair": len(generated) - len(matched)})
+                             "n_reference_recordings": fd.n_reference_used, "reference_moves_median": fd.reference_moves_median,
+                             "n_bootstrap_used": fd.n_bootstrap_used, "n_generated": fd.n_generated, "n_real": fd.n_real,
+                             "n_episodes": len(d), "n_without_move": len(d) - len(ok)})
     return pd.DataFrame(rows)
 
 
