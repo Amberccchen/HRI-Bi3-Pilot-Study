@@ -24,7 +24,7 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, REAL_PATH, bev_axes, draw_room, figure_png
+from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_room, figure_png
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
 
@@ -56,7 +56,7 @@ def _title(ep: dict) -> str:
 def _frame(ep: dict, k: int) -> bytes:
     fig, ax, _ = bev_axes(False)
     site, agent = ep["site"], ep["agent"]
-    radius, colour = body_radius(agent, site), KIND_COLOUR[agent_kind(agent)]  # the disks the metrics use
+    radius, colour = body_radius(agent, site), VLM_COLOUR  # the disks the metrics use
     draw_room(ax, site, agent, ep["goal"])
     ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.5, zorder=3)
     if k < len(ep["real"]):
@@ -68,15 +68,15 @@ def _frame(ep: dict, k: int) -> bytes:
         plan = np.vstack([ep["track"][q], current[-1]["positions_m"]])
         ax.plot(*plan.T, ":", color=colour, lw=1.5, alpha=0.8, zorder=3)
     lo = max(0, k - round(TRAIL_S / DT))
-    drawn = [(agent, ep["track"], radius)] + [(other, track, body_radius(other, site)) for other, track in ep["others"].items()]
-    for agent_id, track, r in drawn:
+    drawn = [(agent, ep["track"], radius, colour)] + [(other, track, body_radius(other, site), KIND_COLOUR[agent_kind(other)]) for other, track in ep["others"].items()]
+    for agent_id, track, r, agent_colour in drawn:
         kind = agent_kind(agent_id)
         seg = track[lo: k + 1]
         for j in range(1, len(seg)):  # older segments fainter
-            ax.plot(*seg[j - 1: j + 1].T, "-", color=KIND_COLOUR[kind], lw=3, alpha=0.15 + 0.85 * j / len(seg), zorder=4)
-        ax.add_patch(Circle(track[k], r, fc=KIND_COLOUR[kind], ec="k", alpha=0.55, zorder=5))
+            ax.plot(*seg[j - 1: j + 1].T, "-", color=agent_colour, lw=3, alpha=0.15 + 0.85 * j / len(seg), zorder=4)
+        ax.add_patch(Circle(track[k], r, fc=agent_colour, ec="k", alpha=0.55, zorder=5))
         if agent_id != agent and kind in PERSONAL_SPACE_RADIUS_M:
-            ax.add_patch(Circle(track[k], PERSONAL_SPACE_RADIUS_M[kind], fill=False, ec=KIND_COLOUR[kind], ls=":", lw=1.5, zorder=4))
+            ax.add_patch(Circle(track[k], PERSONAL_SPACE_RADIUS_M[kind], fill=False, ec=agent_colour, ls=":", lw=1.5, zorder=4))
     for other, track in ep["others"].items():
         if agent_kind(other) == "human":
             ax.text(*track[k], person_name(other), ha="center", va="center", fontsize=LABEL_PX * 0.6, zorder=6)

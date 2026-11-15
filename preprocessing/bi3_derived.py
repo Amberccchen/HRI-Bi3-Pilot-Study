@@ -109,6 +109,12 @@ def load_stations(site: str) -> dict:
     return json.loads((DERIVED / GOALS_DIR / "stations.json").read_text())[site]
 
 
+def goal_recordings() -> list[tuple[str, str, str]]:
+    """(site, trial, controller) of every recording with goal labels, in site, trial and controller order."""
+    return [(site, path.parent.name, path.name.removesuffix("_visits.csv"))
+            for site in SITES for path in sorted((DERIVED / GOALS_DIR / site).glob("*/*_visits.csv"))]
+
+
 def load_visits(site: str, trial: str, controller: str) -> list[dict]:
     rows = _read_csv(DERIVED / GOALS_DIR / site / trial / f"{controller}_visits.csv", VISIT_TYPES)
     for r in rows:

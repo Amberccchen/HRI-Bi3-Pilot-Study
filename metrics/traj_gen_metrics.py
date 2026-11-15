@@ -15,7 +15,8 @@ the planner's heading is unknown and the corners are not modelled), so:
   in contact (contact_time) and as the number of separate contacts, a run of consecutive steps
   counting once (contact_events). A touch between two samples is missed.
 - personal-space overlap: the share of the episode's time steps with the agent's body inside some
-  other agent's personal space (a disk of the given radius around that agent's centre).
+  other agent's personal space (a disk of the given radius around that agent's centre), over the
+  other agents that have one.
 - goal reached: the path gets within the arrival radius + GOAL_SLACK of the goal station. Bi3
   switches goals at about the arrival radius on the raw mocap, but the cleaned room-frame real
   paths end 0.48-0.60 m from the goal at their last sample before the switch. The largest of these
@@ -23,20 +24,23 @@ the planner's heading is unknown and the corners are not modelled), so:
   (threshold 0.65 m, a round value with margin above it) every real controller reaches its goal.
   Time to goal is the first such sample.
 - final distance to goal: distance of the last sample, also for paths that never arrive.
-- out of room: any sample outside the square room of side room_m.
+- out of room: any sample outside the square of half side room_half_m around the room centre.
 - stations: the agent's centre entering the box of a station that is not part of its goal (the stations
   are obstacles the planner is told about, and the real controllers never do this), and the closest
   centre distance to such a station.
 - speed cap: for a plan whose raw (before speed limiting) per-step speeds are given,
   the fraction of steps above the speed cap and the largest raw speed.
+- move end (move_end_index): where a path enters its goal station's zone, the end of the segment the
+  human-similarity features describe.
 
 Inputs are one executed path as arrays: time (T,) in seconds from trip start, agent
 (T, 2) and others (T, K, 2) in the room frame (metres), goal (2,), the radii, arrival radius and
-speed cap per agent, and the room size and stations from site_frames.json.
+speed cap per agent, and the room bound and stations from site_frames.json.
 """
 
 import numpy as np
 
+from preprocessing.annotate_goals import AT_STATION_SLACK_M
 from preprocessing.bi3_derived import label_members
 
 
@@ -70,11 +74,15 @@ def clearance_gap(agent: np.ndarray, others: np.ndarray, agent_radius: float, ot
     return (centre_distances(agent, others) - agent_radius - np.asarray(other_radii, float)).min(axis=1)
 
 
-def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float, other_radii: list[float], personal_space_radii: list[float]) -> dict:
-    """Minimum clearance to the other agents, the share of time steps in contact and in someone's personal space, and the number of separate contacts."""
-    centre = centre_distances(agent, others)
-    gap = (centre - agent_radius - np.asarray(other_radii, float)).min(axis=1)
+def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float, other_radii: list[float],
+                      personal_space_others: np.ndarray, personal_space_radii: list[float]) -> dict:
+    """Minimum clearance to the other agents, the share of time steps in contact and in someone's personal space, and the number of separate contacts.
+
+    personal_space_others (T, J, 2) are the other agents that have a personal space (J may be 0), with radii (J,).
+    """
+    gap = clearance_gap(agent, others, agent_radius, other_radii)
     touching = gap < 0
+    centre = centre_distances(agent, personal_space_others)  # (T, J)
     intruding = (centre - agent_radius < np.asarray(personal_space_radii, float)).any(axis=1)
     return {"clearance_min": float(gap.min()), "contact_time": float(touching.mean()),
             "contact_events": int((touching & ~np.concatenate([[False], touching[:-1]])).sum()),  # runs of consecutive contact steps
@@ -82,17 +90,38 @@ def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float
 
 
 def traj_gen_metrics(time: np.ndarray, agent: np.ndarray, others: np.ndarray, goal: np.ndarray, agent_radius: float, other_radii: list[float],
-                     personal_space_radii: list[float], arrival_radius: float, speed_cap: float, room_m: float, stations: np.ndarray,
-                     raw_speed: np.ndarray | None = None) -> dict:
-    """All footprint and task metrics for one path. stations comes from other_stations(), and raw_speed (steps,) is given only for model plans."""
+                     personal_space_others: np.ndarray, personal_space_radii: list[float], arrival_radius: float, speed_cap: float,
+                     room_half_m: float, stations: np.ndarray, raw_speed: np.ndarray | None = None) -> dict:
+    """All footprint and task metrics for one path. Personal space is as in clearance_metrics, stations comes from other_stations(), and raw_speed (steps,) is given only for model plans."""
     time, agent, others = np.asarray(time, float), np.asarray(agent, float), np.asarray(others, float)
     to_goal = np.linalg.norm(agent - np.asarray(goal, float), axis=1)
     arrived = np.flatnonzero(to_goal <= arrival_radius + GOAL_SLACK)
-    out = {**clearance_metrics(agent, others, agent_radius, other_radii, personal_space_radii),
+    out = {**clearance_metrics(agent, others, agent_radius, other_radii, personal_space_others, personal_space_radii),
            "goal_reached": bool(arrived.size), "time_to_goal": float(time[arrived[0]] - time[0]) if arrived.size else float("nan"),
-           "final_distance_to_goal": float(to_goal[-1]), "out_of_room": bool((np.abs(agent) > room_m / 2).any())}
+           "final_distance_to_goal": float(to_goal[-1]), "out_of_room": bool((np.abs(agent) > room_half_m).any())}
     offset = np.abs(agent[:, None, :] - stations[None])  # (T, k, 2) from the agent's centre to the other stations
     out |= {"station_crossing": bool((offset.max(axis=-1) <= STATION_BOX_M / 2).any()), "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
     if raw_speed is not None:
         out |= {"speed_violation_rate": float((np.asarray(raw_speed) > speed_cap).mean()), "raw_speed_max": float(np.max(raw_speed))}
     return out
+
+
+def move_end_index(path: np.ndarray, goal_xy: np.ndarray, arrival_radius: float, site: dict, goal: str) -> int | None:
+    """Index in path of the last sample of its goal-to-goal move, or None when the path does not reach the goal (as goal_reached).
+
+    path (T, 2) starts at the trip start, goal_xy is the planned agent's goal position, and goal its label, whose member stations
+    are taken at their site_frames xy. The move ends where the path enters the goal station by the rule of the Bi3 visit
+    annotation: of the samples within the closest approach to the station positions plus AT_STATION_SLACK_M, the first of the
+    contiguous run that ends at the closest approach. The closest approach is searched up to the first sample within the arrival
+    radius, where an episode stops, so an executed path and the real path of the same trip are cut alike.
+    """
+    to_goal = np.linalg.norm(path - goal_xy, axis=1)
+    if not (to_goal <= arrival_radius + GOAL_SLACK).any():
+        return None
+    arrived = np.flatnonzero(to_goal <= arrival_radius)
+    searched = path[: arrived[0] + 1] if arrived.size else path
+    station_xy = np.array([site["stations"][m]["xy"] for m in label_members(goal, site["stations"])], float)
+    to_station = np.linalg.norm(searched[:, None, :] - station_xy[None], axis=-1).min(axis=1)
+    closest = int(np.argmin(to_station))
+    outside = np.flatnonzero(to_station[: closest + 1] > to_station[closest] + AT_STATION_SLACK_M)
+    return int(outside[-1]) + 1 if outside.size else 0
