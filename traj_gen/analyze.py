@@ -78,7 +78,6 @@ PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_over
 COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
-OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
@@ -302,7 +301,7 @@ def condition_figures(by_cond: dict, kind: str, fig_dir: Path) -> None:
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
     """trip_<id>.png per trip, drawn by render_overlay: one row per model experiment and a column per model condition (thinking x
-    framing), and a legend below that fits the figure width. Baselines get no panel: every panel draws the straight line and the real path."""
+    framing), and a two-column legend below. Baselines get no panel: every panel draws the straight line and the real path."""
     for trip_id, d in df[df.experiment.isin(experiments) & ~df.experiment.isin(BASELINES)].groupby("trip"):
         trip = trips[trip_id]
         site, agent = sites[trip["site"]], trip["agent"]
@@ -324,11 +323,10 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
             r = g.iloc[0]
             title = f"{r.experiment} {r.framing} {r.thinking}: {int((g.status == 'ok').sum())}/{len(g)} ok"
             axes[i, j].imshow(imread(io.BytesIO(render_overlay(site, agent, goal, paths, real, others, title)), format="png"))
-        legend = trajectory_legend(site, agent, [o for o in trip["tracks"] if o != agent], int(d.groupby(COND).size().max()))
+        legend = trajectory_legend(agent, [o for o in trip["tracks"] if o != agent])
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
         fig.tight_layout(rect=(0, 0, 1, 0.97))
-        ncol = int(min(4, max(1, width // OVERLAY_LEGEND_COLUMN_IN)))
-        fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, fontsize=9, frameon=False)
+        fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=2, fontsize=9, frameon=False)
         fig.savefig(fig_dir / f"trip_{trip_id}.png", bbox_inches="tight")  # the tight box takes in the legend below the panels and the title
 
 
