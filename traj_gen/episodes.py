@@ -143,7 +143,7 @@ class Episode:
         t, robot = np.asarray(self.trip["time"], float)[sl], self.track[self.start:]
         raw = np.concatenate(self.raw) if self.raw else None
         return {**bi3_metrics(t, robot, humans), **traj_gen_metrics(
-            t, robot, humans, self.goal, self.site["robot_radius_m"], self.site["room_m"], other_stations(self.site, self.trip["robot_goal"]), raw)}
+            t, robot, humans, self.goal, self.site["footprint_m"], self.site["room_m"], other_stations(self.site, self.trip["robot_goal"]), raw)}
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip

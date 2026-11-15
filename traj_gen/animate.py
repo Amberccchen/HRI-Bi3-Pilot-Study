@@ -25,7 +25,7 @@ from PIL import Image
 from bev import EXTENT_M, LABEL_PX, PERSON, ROBOT, _axes, _draw_room
 from bi3_derived import load_site_frames, load_trips
 from scene import DT
-from traj_gen_metrics import HUMAN_RADIUS
+from traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, inscribed_radius
 
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
@@ -57,7 +57,7 @@ def _png(fig) -> bytes:
 
 def _frame(ep: dict, k: int) -> bytes:
     fig, ax, _ = _axes(False)
-    site, radius = ep["site"], ep["site"]["robot_radius_m"]
+    site, radius = ep["site"], inscribed_radius(ep["site"]["footprint_m"])  # the disks the metrics use
     _draw_room(ax, site, ep["goal"])
     ax.plot(*ep["real"].T, ls="--", color="#555555", lw=1.5, alpha=0.5, zorder=3)
     if k < len(ep["real"]):
@@ -69,15 +69,17 @@ def _frame(ep: dict, k: int) -> bytes:
         plan = np.vstack([ep["robot"][q], current[-1]["positions_m"]])
         ax.plot(*plan.T, ":", color=ROBOT, lw=1.5, alpha=0.8, zorder=3)
     lo = max(0, k - round(TRAIL_S / DT))
-    for track, color, r in [(ep["robot"], ROBOT, radius)] + [(h, PERSON, HUMAN_RADIUS) for h in ep["humans"]]:
+    for track, color, r in [(ep["robot"], ROBOT, radius)] + [(h, PERSON, BODY_RADIUS) for h in ep["humans"]]:
         seg = track[lo: k + 1]
         for j in range(1, len(seg)):  # older segments fainter
             ax.plot(*seg[j - 1: j + 1].T, "-", color=color, lw=3, alpha=0.15 + 0.85 * j / len(seg), zorder=4)
         ax.add_patch(Circle(track[k], r, fc=color, ec="k", alpha=0.55, zorder=5))
+        if color == PERSON:
+            ax.add_patch(Circle(track[k], PERSONAL_SPACE_RADIUS, fill=False, ec=PERSON, ls=":", lw=1.5, zorder=4))
     for h, track in enumerate(ep["humans"]):
         ax.text(*track[k], f"P{h + 1}", ha="center", va="center", fontsize=LABEL_PX * 0.6, zorder=6)
-    clearance = min(np.linalg.norm(h[k] - ep["robot"][k]) for h in ep["humans"]) - radius - HUMAN_RADIUS
-    ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\nt = {t:.1f} s   clearance {clearance:+.2f} m\ndashed ring: real robot now, dotted: current plan",
+    clearance = min(np.linalg.norm(h[k] - ep["robot"][k]) for h in ep["humans"]) - radius - BODY_RADIUS
+    ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\nt = {t:.1f} s   clearance {clearance:+.2f} m\ndashed ring: real robot now, dotted line: current plan, dotted ring: personal space",
             ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
     return _png(fig)
 

@@ -19,7 +19,7 @@ from matplotlib.patches import Circle, Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "metrics"))
 from scene import DT, PREDICT_S, Scene  # noqa: E402
-from traj_gen_metrics import GOAL_TOL, HUMAN_RADIUS, STATION_BOX_M  # noqa: E402
+from traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, STATION_BOX_M  # noqa: E402
 
 
 # 896 = 32 * 28: Qwen's vision tower works on 28 px blocks (one token each), so this size is
@@ -125,12 +125,12 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
     ax.plot(*scene.robot[-1], marker="+", color="k", ms=10, zorder=6)
     for p in scene.people:
         _trail(ax, p["history"], p["xy"], PERSON)
-        ax.add_patch(Circle(p["xy"], HUMAN_RADIUS, fc=PERSON, ec="k", alpha=0.6, zorder=5))
+        ax.add_patch(Circle(p["xy"], PERSONAL_SPACE_RADIUS, fc=PERSON, ec="k", alpha=0.6, zorder=5))
         if predict:
             ax.plot(*np.vstack([p["xy"], p["predicted"]]).T, ls="--", color=PERSON, lw=1, zorder=3)
             for q in p["predicted"]:
-                ax.add_patch(Circle(q, HUMAN_RADIUS, fill=False, ec=PERSON, lw=2, zorder=5))
-        ax.text(p["xy"][0], p["xy"][1] + HUMAN_RADIUS + 0.06, f"{p['name']} → {_label(p['goal'])} then {_label(p['next_goal'])}",
+                ax.add_patch(Circle(q, PERSONAL_SPACE_RADIUS, fill=False, ec=PERSON, lw=2, zorder=5))
+        ax.text(p["xy"][0], p["xy"][1] + PERSONAL_SPACE_RADIUS + 0.06, f"{p['name']} → {_label(p['goal'])} then {_label(p['next_goal'])}",
                 ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color="#7a3300", zorder=7,
                 bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"t = {scene.time_s:.1f} s", ha="left", va="top", fontsize=LABEL_PX * 0.8, zorder=7)
@@ -149,7 +149,7 @@ def _draw_people(ax, humans: list[np.ndarray]) -> None:
     """Whole-episode people: trail, final disk and a P<k> label at the start."""
     for h, track in enumerate(humans):
         ax.plot(*track.T, "-o", color=PERSON, lw=2, ms=3, alpha=0.7, zorder=3, label="people" if h == 0 else None)
-        ax.add_patch(Circle(track[-1], HUMAN_RADIUS, fc=PERSON, ec="k", alpha=0.4, zorder=5))
+        ax.add_patch(Circle(track[-1], PERSONAL_SPACE_RADIUS, fc=PERSON, ec="k", alpha=0.4, zorder=5))
         ax.text(*track[0] + [0, 0.12], f"P{h + 1}", ha="center", fontsize=LABEL_PX * 0.7, color="#7a3300", zorder=7)
 
 
