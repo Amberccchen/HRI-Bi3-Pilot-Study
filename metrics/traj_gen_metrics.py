@@ -45,23 +45,15 @@ from preprocessing.bi3_derived import label_members
 
 
 GOAL_SLACK = 0.15    # absorbs where real paths end relative to the goal at Bi3's goal switch, at most 0.602 m over all 144 trips
-STATION_BOX_M = 0.2  # side of a station's box as drawn on the map. The station position is the robot's stopping point in front of the table.
 # Class of every metric an episode manifest can hold. invalid: the plan breaks a hard rule of the task (an unusable reply, which has
 # no metrics, is invalid too). contact: closeness to the other agents. efficiency: how the agent moves.
 METRIC_CLASS = {
-    **dict.fromkeys(["goal_reached", "final_distance_to_goal", "out_of_room", "station_crossing", "station_distance_min",
-                     "speed_violation_rate", "raw_speed_max"], "invalid"),
+    **dict.fromkeys(["goal_reached", "final_distance_to_goal", "out_of_room", "speed_violation_rate", "raw_speed_max"], "invalid"),
     **dict.fromkeys(["clearance_min", "contact_time", "contact_events", "personal_space_overlap", "min_distance",
                      "min_distance_per_other", "min_distance_index", "min_distance_other"], "contact"),
     **dict.fromkeys(["time_to_goal", "path_efficiency", "path_length", "straight_distance", "velocity_mean", "velocity_median",
                      "velocity_max", "velocity_std", "acceleration_mean", "acceleration_max", "acceleration_tangential_mean"], "efficiency"),
 }
-
-
-def other_stations(site: dict, goal: str) -> np.ndarray:
-    """(k, 2) positions of the single stations that are not part of the goal label (from site_frames.json)."""
-    goal_members = label_members(goal, site["stations"])
-    return np.array([s["xy"] for k, s in site["stations"].items() if len(s["members"]) == 1 and k not in goal_members], float)
 
 
 def centre_distances(agent: np.ndarray, others: np.ndarray) -> np.ndarray:
@@ -91,16 +83,14 @@ def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float
 
 def traj_gen_metrics(time: np.ndarray, agent: np.ndarray, others: np.ndarray, goal: np.ndarray, agent_radius: float, other_radii: list[float],
                      personal_space_others: np.ndarray, personal_space_radii: list[float], arrival_radius: float, speed_cap: float,
-                     room_half_m: float, stations: np.ndarray, raw_speed: np.ndarray | None = None) -> dict:
-    """All footprint and task metrics for one path. Personal space is as in clearance_metrics, stations comes from other_stations(), and raw_speed (steps,) is given only for model plans."""
+                     room_half_m: float, raw_speed: np.ndarray | None = None) -> dict:
+    """All footprint and task metrics for one path. Personal space is as in clearance_metrics, and raw_speed (steps,) is given only for model plans."""
     time, agent, others = np.asarray(time, float), np.asarray(agent, float), np.asarray(others, float)
     to_goal = np.linalg.norm(agent - np.asarray(goal, float), axis=1)
     arrived = np.flatnonzero(to_goal <= arrival_radius + GOAL_SLACK)
     out = {**clearance_metrics(agent, others, agent_radius, other_radii, personal_space_others, personal_space_radii),
            "goal_reached": bool(arrived.size), "time_to_goal": float(time[arrived[0]] - time[0]) if arrived.size else float("nan"),
            "final_distance_to_goal": float(to_goal[-1]), "out_of_room": bool((np.abs(agent) > room_half_m).any())}
-    offset = np.abs(agent[:, None, :] - stations[None])  # (T, k, 2) from the agent's centre to the other stations
-    out |= {"station_crossing": bool((offset.max(axis=-1) <= STATION_BOX_M / 2).any()), "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
     if raw_speed is not None:
         out |= {"speed_violation_rate": float((np.asarray(raw_speed) > speed_cap).mean()), "raw_speed_max": float(np.max(raw_speed))}
     return out

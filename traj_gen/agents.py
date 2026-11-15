@@ -19,9 +19,6 @@ ARRIVAL_RADIUS_M = {"robot": 0.5, "human": 0.4}
 # How far beyond the room's walls the agent may go before it counts as out of the room. The station positions and walls
 # bound the robot, but people stand closer to the walls than the robot's stopping points.
 ROOM_MARGIN_M = {"robot": 0.0, "human": 0.25}
-# Whether entering the box of a station that is not the goal is a broken rule of the task. The boxes are the robot's stopping
-# points, which people walk across.
-STATION_CROSSING_INVALID = {"robot": True, "human": False}
 # The site_frames station field a planned agent of the kind is given in its prompts and maps: the robot's stopping point (xy) or
 # where people stand (human_xy).
 STATION_POSITION = {"robot": "xy", "human": "human_xy"}

@@ -22,8 +22,7 @@ Robot and person episodes are never pooled: every table and figure is per planne
 Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only. goal_reached
 counts every episode, so one without a usable path counts as not reached. An episode is invalid when
 its reply is unusable, the server failed (status error), or its plan exceeds the speed cap in any step,
-does not reach the goal, leaves the room (beyond the agent kind's ROOM_MARGIN_M) or, where the agent kind's
-STATION_CROSSING_INVALID says so, crosses a station. The invalid rate and the rate of each of
+does not reach the goal or leaves the room (beyond the agent kind's ROOM_MARGIN_M). The invalid rate and the rate of each of
 these parts are shares of all episodes of the condition. An episode without a path (invalid_reply or
 error) counts only in its status part. The speed-cap part does not apply to the baselines, which have no
 model reply, and is NaN for them. Paired differences and comparisons work on per-trip means (over
@@ -53,7 +52,7 @@ from matplotlib.lines import Line2D
 from metrics.human_similarity import MIN_PERCENTILE_DRAWS, feature_distances, trajectory_features
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES
-from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind
 from traj_gen.bev import render_overlay, trajectory_legend
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
@@ -67,15 +66,16 @@ SEED = 20261022  # fixed so the intervals are reproducible. The value is a date 
 INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
         "forced_answers", "prompt_tokens", "completion_tokens", "query_latency_s", "wall_s", "move_end_index"]
 STATUSES = ("ok", "invalid_reply", "error")
-SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other"}  # per-agent detail, not an episode-level number
+SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other",  # per-agent detail, not an episode-level number
+        "station_crossing", "station_distance_min"}  # no longer computed: skipped when an older run folder's manifest still holds them
 METRICS = [m for m in METRIC_CLASS if m not in SKIP]  # episode-level metric columns, present (NaN when absent) in every episode table
-RATES = ["goal_reached", "contact_time", "personal_space_overlap", "out_of_room", "station_crossing"]
+RATES = ["goal_reached", "contact_time", "personal_space_overlap", "out_of_room"]
 # Parts of the invalid rate, 0/1 per episode over all episodes (NaN where the part does not apply).
-INVALID_PARTS = ["invalid_unusable_reply", "invalid_error", "invalid_speed_cap", "invalid_goal", "invalid_room", "invalid_station"]
-MEANS = ["contact_events", "min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal", "station_distance_min"]
+INVALID_PARTS = ["invalid_unusable_reply", "invalid_error", "invalid_speed_cap", "invalid_goal", "invalid_room"]
+MEANS = ["contact_events", "min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal"]
 CLASS_ORDER = ("invalid", "contact", "efficiency")
-PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
-COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
+PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
+COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
@@ -98,7 +98,7 @@ def collect(run: Path, chosen: list[dict]) -> pd.DataFrame:
             if m["trip"] not in strata:
                 other_trips.add(m["trip"])
                 continue
-            unknown = set(m["metrics"] or {}) - set(METRIC_CLASS)
+            unknown = set(m["metrics"] or {}) - set(METRIC_CLASS) - SKIP
             if unknown:
                 raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
             metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
@@ -112,8 +112,7 @@ def collect(run: Path, chosen: list[dict]) -> pd.DataFrame:
 def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached.
     Adds the INVALID_PARTS and invalid (any part), 0/1 per episode. An episode without a path is 0 in every part but its
-    status part. invalid_speed_cap is NaN for experiments without a model, whose plans have no raw speeds, and invalid_station
-    is NaN for agent kinds whose station crossings are not a broken rule (STATION_CROSSING_INVALID)."""
+    status part. invalid_speed_cap is NaN for experiments without a model, whose plans have no raw speeds."""
     df = episodes.copy()
     df[RATES] = df[RATES].astype(float)  # before the NaN assignment: pandas refuses NaN into a bool column
     ok = df.status == "ok"
@@ -124,7 +123,6 @@ def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(df.experiment.map(lambda e: EXPERIMENTS[e].uses_model))
     df["invalid_goal"] = (ok & (df.goal_reached == 0)).astype(float)
     df["invalid_room"] = (df.out_of_room == 1).astype(float)
-    df["invalid_station"] = (df.station_crossing == 1).astype(float).where(df.kind.map(STATION_CROSSING_INVALID))
     df["invalid"] = (df[INVALID_PARTS] == 1).any(axis=1).astype(float)
     return df
 
@@ -145,10 +143,8 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
         by_class = {cls: {} for cls in CLASS_ORDER}
         by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
-            if c != "out_of_room" and not (c == "station_crossing" and g.invalid_station.notna().any()):  # reported as their invalid parts, over all episodes
-                # Station crossings break a rule only for a kind with STATION_CROSSING_INVALID (g.name[0] is the group's kind), and are contact otherwise.
-                contact_only = c in ("station_crossing", "station_distance_min") and not STATION_CROSSING_INVALID[g.name[0]]
-                by_class["contact" if contact_only else METRIC_CLASS[c]][c] = g[c].mean()
+            if c != "out_of_room":  # reported as its invalid part, over all episodes
+                by_class[METRIC_CLASS[c]][c] = g[c].mean()
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
             "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},

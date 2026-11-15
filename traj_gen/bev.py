@@ -16,7 +16,6 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Rectangle
 
-from metrics.traj_gen_metrics import STATION_BOX_M
 from preprocessing.bi3_derived import label_members
 from traj_gen.agents import ARRIVAL_RADIUS_M, STATION_POSITION, agent_kind, body_radius, prompt_radius
 from traj_gen.scene import DT, Scene, person_name
@@ -34,6 +33,7 @@ GRID_PX = 100        # grid spacing in pixel mode: round numbers for the model t
 # Station labels sit this far from the box, as the box is too small to hold one: outward (away from the room centre) at the robot's
 # stopping points, inward at the points where people stand, which are close to the walls.
 LABEL_OFFSET_M = {"robot": 0.28, "human": -0.28}
+STATION_BOX_M = 0.2   # side of a station's box as drawn on the map
 TABLE_PAD_M = 0.12   # shared-table outline around its two stations
 LABEL_PX = 20        # label font size, readable at 896 px
 LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
