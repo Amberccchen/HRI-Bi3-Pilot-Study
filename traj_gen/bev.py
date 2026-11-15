@@ -17,7 +17,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Rectangle
 
 from preprocessing.bi3_derived import label_members
-from traj_gen.agents import ARRIVAL_RADIUS_M, STATION_POSITION, agent_kind, body_radius, prompt_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind, body_radius, prompt_radius
 from traj_gen.scene import DT, Scene, person_name
 
 
@@ -30,9 +30,7 @@ PLOT_PX = 800        # axes size, so 1 m = 200 px exactly and a pixel is 5 mm
 AXES_LEFT_PX, AXES_BOTTOM_PX = 76, 56  # room for the axis label and tick labels on the left and bottom, 76 + 800 + 20 = 896
 GRID_M = 0.5         # grid spacing in metre mode
 GRID_PX = 100        # grid spacing in pixel mode: round numbers for the model to read (0.5 m = 100 px)
-# Station labels sit this far from the box, as the box is too small to hold one: outward (away from the room centre) at the robot's
-# stopping points, inward at the points where people stand, which are close to the walls.
-LABEL_OFFSET_M = {"robot": 0.28, "human": -0.28}
+LABEL_OFFSET_M = 0.28  # station labels sit this far from the box towards the room centre, as the box is too small to hold one and the wall side is outside the room
 STATION_BOX_M = 0.2   # side of a station's box as drawn on the map
 TABLE_PAD_M = 0.12   # shared-table outline around its two stations
 LABEL_PX = 20        # label font size, readable at 896 px
@@ -115,21 +113,22 @@ def _trail(ax, history: np.ndarray, now: np.ndarray, color: str) -> None:
 
 
 def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
-    """Walls, stations (with the shared table outline) and the planned agent's goal with its arrival radius: the part of every map that does not change in time."""
+    """Walls, stations (with the shared table outline) and the planned agent's goal with its arrival radius: the part of every map that does not change in time.
+    Stations are drawn at the robot's stopping points for every planned agent, so a site looks the same in every map. Only the goal is at the planned agent's own point."""
     room = site["room_m"]
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
-    stations, key = site["stations"], STATION_POSITION[agent_kind(agent)]
+    stations = site["stations"]
     for k, s in stations.items():
         if len(s["members"]) > 1:
-            pts = np.array([stations[m][key] for m in s["members"]])
+            pts = np.array([stations[m]["xy"] for m in s["members"]])
             lo, hi = pts.min(axis=0) - (STATION_BOX_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_BOX_M / 2 + TABLE_PAD_M)
             ax.add_patch(Rectangle(lo, *(hi - lo), fill=False, ec=BOX, lw=2, ls="--", zorder=2))
-            ax.text(max(room / 2, hi[0]) + 0.03, (lo[1] + hi[1]) / 2, "shared table", ha="left", va="center", rotation=90, fontsize=LABEL_PX * 0.6, color="#555555")  # just outside the wall the table is on (+x at both sites)
+            ax.text((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, "shared table", ha="center", va="center", rotation=90, fontsize=LABEL_PX * 0.6, color="#555555")
         else:
-            x, y = s[key]
+            x, y = s["xy"]
             ax.add_patch(Rectangle((x - STATION_BOX_M / 2, y - STATION_BOX_M / 2), STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
-            out = np.array([x, y]) * (1 + LABEL_OFFSET_M[agent_kind(agent)] / np.hypot(x, y))
-            ax.text(*out, _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, zorder=4)
+            inward = np.array([x, y]) * (1 - LABEL_OFFSET_M / np.hypot(x, y))
+            ax.text(*inward, _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, zorder=4)
     ax.add_patch(Circle(goal_xy, ARRIVAL_RADIUS_M[agent_kind(agent)], fill=False, ec=GOAL, lw=2, ls="--", zorder=3))
     ax.plot(*goal_xy, marker="*", color=GOAL, ms=18, zorder=4)
 
