@@ -129,9 +129,9 @@ def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
             pts = np.array([on_border[m] for m in s["members"]])
             lo, hi = pts.min(axis=0) - STATION_BOX_M / 2, pts.max(axis=0) + STATION_BOX_M / 2
             ax.add_patch(Rectangle(lo, *(hi - lo), fc=BOX, ec="#777777", zorder=2))
-        elif k not in tabled:
-            ax.add_patch(Rectangle(on_border[k] - STATION_BOX_M / 2, STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
-        if len(s["members"]) == 1:
+        else:
+            if k not in tabled:
+                ax.add_patch(Rectangle(on_border[k] - STATION_BOX_M / 2, STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
             ax.text(*on_border[k], _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, color=WALL, zorder=4)
     ax.add_patch(Circle(goal_xy, ARRIVAL_RADIUS_M[agent_kind(agent)], fill=False, ec=GOAL, lw=2, ls="--", zorder=3))
     ax.plot(*goal_xy, marker="*", color=GOAL, ms=18, zorder=4)
