@@ -18,7 +18,7 @@ from matplotlib.patches import Circle, Rectangle
 
 from metrics.traj_gen_metrics import STATION_BOX_M
 from preprocessing.bi3_derived import label_members
-from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind, body_radius, prompt_radius
+from traj_gen.agents import ARRIVAL_RADIUS_M, STATION_POSITION, agent_kind, body_radius, prompt_radius
 from traj_gen.scene import DT, Scene, person_name
 
 
@@ -48,7 +48,6 @@ KIND_NAME = {"robot": "robot", "human": "person"}
 OTHER_DISK_NAME = {"robot": "robot", "human": "people"}  # legend name of a logged agent's final-position disk
 START_MARKER = "X"
 REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
-STATION_POSITION = {"robot": "xy", "human": "human_xy"}  # station position drawn for the planned agent's kind: the robot's stopping point, where people stand
 
 
 @dataclass(frozen=True)
@@ -111,11 +110,6 @@ def bev_axes(pixel_ticks: bool):
     return fig, ax, transform
 
 
-def _agent_label(ax, xy: np.ndarray, radius: float, text: str, colour: str) -> None:
-    ax.text(xy[0], xy[1] + radius + 0.06, text, ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=colour, zorder=7,
-            bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
-
-
 def _trail(ax, history: np.ndarray, now: np.ndarray, color: str) -> None:
     pts = np.vstack([history, now])
     ax.plot(pts[:, 0], pts[:, 1], "-o", color=color, lw=2, ms=4, alpha=0.8, zorder=3)
@@ -151,7 +145,8 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
     ax.add_patch(Circle(scene.track[-1], radius, fc=colour, ec="k", alpha=0.45, zorder=5))
     ax.plot(*scene.track[-1], marker="+", color="k", ms=10, zorder=6)
     if kind == "human":
-        _agent_label(ax, scene.track[-1], radius, "you", PLANNED_PERSON)
+        ax.text(scene.track[-1][0], scene.track[-1][1] + radius + 0.06, "you", ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=PLANNED_PERSON,
+                zorder=7, bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
     for p in scene.others:
         r, other_colour = prompt_radius(p["id"], site), KIND_COLOUR[p["kind"]]
         _trail(ax, p["history"], p["xy"], other_colour)
@@ -162,7 +157,8 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
                 ax.add_patch(Circle(q, r, fill=False, ec=other_colour, lw=2, zorder=5))
         if p["kind"] == "human":  # a planned robot is told the people's goals, a planned person is not
             label = f"{person_name(p['id'])} → {_label(p['goal'], site['stations'])} then {_label(p['next_goal'], site['stations'])}" if kind == "robot" else person_name(p["id"])
-            _agent_label(ax, p["xy"], r, label, PERSON_LABEL)
+            ax.text(p["xy"][0], p["xy"][1] + r + 0.06, label, ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7,
+                    bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"t = {scene.time_s:.1f} s", ha="left", va="top", fontsize=LABEL_PX * 0.8, zorder=7)
     return figure_png(fig), BevTransform.from_axes(ax, SIZE_PX)
 
@@ -189,14 +185,6 @@ def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray
     ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3)
     ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6)
     ax.plot(*start, marker=START_MARKER, color="k", ms=9, zorder=7)
-
-
-def _draw_executed(ax, site: dict, agent: str, path: np.ndarray, alpha: float) -> None:
-    """One executed path of the VLM-controlled agent: trail with its kind's marker and its final disk at the scoring radius."""
-    marker = KIND_MARKER[agent_kind(agent)]
-    ax.plot(*path.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
-    ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=alpha, zorder=5))
-    ax.plot(*path[-1], marker=marker, color=VLM_COLOUR, mec="k", ms=7, zorder=6)
 
 
 def trajectory_legend(site: dict, agent: str, others: list[str], samples: int) -> list:
@@ -226,7 +214,10 @@ def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndar
     draw_room(ax, site, agent, goal_xy)
     _draw_reference(ax, goal_xy, executed[0], real)
     _draw_others(ax, site, others)
-    _draw_executed(ax, site, agent, executed, 0.45)
+    marker = KIND_MARKER[agent_kind(agent)]
+    ax.plot(*executed.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+    ax.add_patch(Circle(executed[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.45, zorder=5))
+    ax.plot(*executed[-1], marker=marker, color=VLM_COLOUR, mec="k", ms=7, zorder=6)
     for k in range(0, len(executed), round(LABEL_EVERY_S / DT)):
         ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=VLM_COLOUR, zorder=7)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
@@ -241,7 +232,10 @@ def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np
     draw_room(ax, site, agent, goal_xy)
     _draw_reference(ax, goal_xy, real[0], real)
     _draw_others(ax, site, others)
+    marker = KIND_MARKER[agent_kind(agent)]
     for path in samples:
-        _draw_executed(ax, site, agent, path, 0.35)
+        ax.plot(*path.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+        ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.35, zorder=5))
+        ax.plot(*path[-1], marker=marker, color=VLM_COLOUR, mec="k", ms=7, zorder=6)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     return figure_png(fig)

@@ -26,7 +26,7 @@ def test_person_prompt_has_no_robot_template_and_no_one_elses_goals():
     render without an error."""
     trip = person_trip()
     planner = WaypointPlanner(EXPERIMENTS["ss_wp_text"], trip, "participant", "nothink")
-    builder = PromptBuilder("participant", planner, (), 20, False, "human")
+    builder = PromptBuilder("participant", planner, (), 20, False)
     scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[:, :2])
     system, turn = builder.system(scene), builder.first(scene).text
     text = system + "\n" + turn

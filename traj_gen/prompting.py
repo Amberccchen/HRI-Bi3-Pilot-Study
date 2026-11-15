@@ -33,14 +33,14 @@ class Turn:
 
 
 class PromptBuilder:
-    """Prompts for one framing, set of images and output mode. mode is a QueryPlanner (template, key, example, units, to_units)."""
+    """Prompts for one framing, set of images and output mode. mode is a QueryPlanner (template, key, example, units, to_units,
+    and kind, the planned agent's kind, which framing must be written for)."""
 
-    def __init__(self, framing: str, mode, images: tuple[str, ...], max_steps: int, predict: bool, kind: str):
-        """kind is the planned agent's ("robot" or "human"), which framing must be written for."""
-        if FRAMINGS[framing] != kind:
-            raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {kind}")
-        self.framing, self.mode, self.images, self.max_steps, self.predict, self.kind = framing, mode, images, max_steps, predict, kind
-        self.suffix = TEMPLATE_SUFFIX[kind]
+    def __init__(self, framing: str, mode, images: tuple[str, ...], max_steps: int, predict: bool):
+        self.framing, self.mode, self.images, self.max_steps, self.predict, self.kind = framing, mode, images, max_steps, predict, mode.kind
+        if FRAMINGS[framing] != self.kind:
+            raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
+        self.suffix = TEMPLATE_SUFFIX[self.kind]
 
     def example_text(self) -> str:
         return ", ".join("[" + ", ".join(self.mode.units.num(c) for c in self.mode.to_units(p)) + "]" for p in self.mode.example[self.kind])

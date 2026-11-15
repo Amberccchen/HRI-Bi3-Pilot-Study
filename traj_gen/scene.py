@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from preprocessing.bi3_derived import TRIP_HISTORY_S, TRIP_HZ, label_members
-from traj_gen.agents import agent_kind, prompt_radius
+from traj_gen.agents import STATION_POSITION, agent_kind, prompt_radius
 
 
 PROMPTS = Path(__file__).parent / "prompts"
@@ -138,7 +138,7 @@ class Scene:
 
     def stations_text(self, units: Metres) -> str:
         """Station positions, then one sentence per shared table: the robot's stopping points for a planned robot, where people stand for a planned person."""
-        stations, key = self.site["stations"], "xy" if agent_kind(self.agent) == "robot" else "human_xy"
+        stations, key = self.site["stations"], STATION_POSITION[agent_kind(self.agent)]
         lines = [f"station {k}: {units.pos_text(s[key])}" for k, s in stations.items() if len(s["members"]) == 1]
         lines += [load_prompt("shared_table").format(a=a, b=b, pos=units.pos_text(s[key]))
                   for k, s in stations.items() if len(s["members"]) == 2 for a, b in [s["members"]]]

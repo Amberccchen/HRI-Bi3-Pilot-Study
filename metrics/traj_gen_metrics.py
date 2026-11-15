@@ -106,11 +106,11 @@ def traj_gen_metrics(time: np.ndarray, agent: np.ndarray, others: np.ndarray, go
     return out
 
 
-def move_end_index(path: np.ndarray, goal_xy: np.ndarray, arrival_radius: float, station_xy: np.ndarray) -> int | None:
+def move_end_index(path: np.ndarray, goal_xy: np.ndarray, arrival_radius: float, site: dict, goal: str) -> int | None:
     """Index in path of the last sample of its goal-to-goal move, or None when the path does not reach the goal (as goal_reached).
 
-    path (T, 2) starts at the trip start, goal_xy is the planned agent's goal, and station_xy (k, 2) are the positions of the goal
-    label's member stations (site_frames xy). The move ends where the path enters the goal station by the rule of the Bi3 visit
+    path (T, 2) starts at the trip start, goal_xy is the planned agent's goal position, and goal its label, whose member stations
+    are taken at their site_frames xy. The move ends where the path enters the goal station by the rule of the Bi3 visit
     annotation: of the samples within the closest approach to the station positions plus AT_STATION_SLACK_M, the first of the
     contiguous run that ends at the closest approach. The closest approach is searched up to the first sample within the arrival
     radius, where an episode stops, so an executed path and the real path of the same trip are cut alike.
@@ -120,6 +120,7 @@ def move_end_index(path: np.ndarray, goal_xy: np.ndarray, arrival_radius: float,
         return None
     arrived = np.flatnonzero(to_goal <= arrival_radius)
     searched = path[: arrived[0] + 1] if arrived.size else path
+    station_xy = np.array([site["stations"][m]["xy"] for m in label_members(goal, site["stations"])], float)
     to_station = np.linalg.norm(searched[:, None, :] - station_xy[None], axis=-1).min(axis=1)
     closest = int(np.argmin(to_station))
     outside = np.flatnonzero(to_station[: closest + 1] > to_station[closest] + AT_STATION_SLACK_M)

@@ -83,7 +83,7 @@ class QueryPlanner(Planner):
 
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict, self.kind)
+        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
         return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property

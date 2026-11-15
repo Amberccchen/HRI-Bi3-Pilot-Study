@@ -28,7 +28,6 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, other_stations, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
-from preprocessing.bi3_derived import label_members
 from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius
 from traj_gen.bev import render_result
 from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
@@ -168,12 +167,6 @@ class Episode:
             others[:, with_space], [PERSONAL_SPACE_RADIUS_M[agent_kind(self.others[k])] for k in with_space], self.arrival_radius,
             SPEED_CAP_M_S[kind], self.site["room_m"] / 2 + ROOM_MARGIN_M[kind], other_stations(self.site, self.trip["goal"]), raw)}
 
-    def move_end(self) -> int | None:
-        """Index (from start_index) of the last sample of the executed goal-to-goal move (move_end_index), None when the goal is not reached."""
-        stations = self.site["stations"]
-        return move_end_index(self.track[self.start:], self.goal, self.arrival_radius,
-                              np.array([stations[m]["xy"] for m in label_members(self.trip["goal"], stations)], float))
-
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
         model = {"name": MODEL, "thinking": self.thinking == "think", "reasoning_effort": THINKING_EFFORT, "sampling": THINKING_SAMPLING if self.thinking == "think" else INSTRUCT_SAMPLING,
@@ -183,7 +176,7 @@ class Episode:
             "thinking": self.thinking, "sample": self.sample, "images": list(self.exp.images), "output_mode": self.planner.name,
             "horizon": type(self).__name__, "execute_s": self.exp.execute_s, "model": model, "status": self.status, "error": self.error,
             "start_index": self.start, "steps_executed": len(self.track) - self.start - 1, "metrics": self.metrics(),
-            "move_end_index": self.move_end(),
+            "move_end_index": move_end_index(self.track[self.start:], self.goal, self.arrival_radius, self.site, t["goal"]),  # from start_index
             "queries": self.n_queries, "samples": len(self.records), "retries": sum(r["attempt"] > 0 for r in self.records),
             "invalid_replies": sum(not r["valid"] for r in self.records), "forced_answers": sum(r["forced"] for r in self.records),
             "prompt_tokens": sum(r["prompt_tokens"] for r in self.records), "completion_tokens": sum(r["completion_tokens"] for r in self.records),

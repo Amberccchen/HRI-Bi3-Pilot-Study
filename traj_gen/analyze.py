@@ -49,7 +49,7 @@ from matplotlib.lines import Line2D
 
 from metrics.human_similarity import feature_distances, trajectory_features
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
-from preprocessing.bi3_derived import SITES, label_members
+from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind
 from traj_gen.bev import render_overlay, trajectory_legend
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
@@ -327,7 +327,7 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         fig.savefig(fig_dir / f"trip_{trip_id}.png", bbox_inches="tight")  # the tight box takes in the legend below the panels and the title
 
 
-def move_features(trip: dict, site: dict, positions: dict[str, np.ndarray], end: int) -> dict:
+def move_features(trip: dict, positions: dict[str, np.ndarray], end: int) -> dict:
     """trajectory_features of a person's move: positions ({agent id: (T, 2)} from the trip start) up to index end, stratified by (start station, goal station)."""
     agent = trip["agent"]
     other = next(a for a in positions if a not in (agent, "robot"))
@@ -335,32 +335,26 @@ def move_features(trip: dict, site: dict, positions: dict[str, np.ndarray], end:
                                (trip["site"], trip["trial"], trip["controller"]), min_displacement_m=TURN_MIN_DISPLACEMENT_M)
 
 
-def real_moves(trips: dict, sites: dict) -> dict[str, dict[str, dict]]:
-    """{site: {trip id: move features}} of every person trip in trips that reaches its goal and does not start within the arrival radius."""
+def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.DataFrame:
+    """One row per person condition, site, comparison and feature: the FeatureDistance of the generated moves to the real moves."""
+    rng = np.random.default_rng(SEED)
     radius = ARRIVAL_RADIUS_M["human"]
-    moves = {site: {} for site in SITES}
+    pool = {site: {} for site in SITES}  # {site: {trip id: move features}} of the person trips that reach their goal and do not start within the arrival radius
     for trip in trips.values():
         if agent_kind(trip["agent"]) != "human":
             continue
-        site, a, b = sites[trip["site"]], trip["start_index"], trip["end_index"] + 1
+        a, b = trip["start_index"], trip["end_index"] + 1
         positions = {agent: np.asarray(track, float)[a:b, :2] for agent, track in trip["tracks"].items()}
         goal = np.asarray(trip["goal_xy"], float)
         if np.linalg.norm(positions[trip["agent"]][0] - goal) <= radius:
             continue
-        end = move_end_index(positions[trip["agent"]], goal, radius, np.array([site["stations"][m]["xy"] for m in label_members(trip["goal"], site["stations"])], float))
+        end = move_end_index(positions[trip["agent"]], goal, radius, sites[trip["site"]], trip["goal"])
         if end is not None:
-            moves[trip["site"]][trip["id"]] = move_features(trip, site, positions, end)
-    return moves
-
-
-def similarity(df: pd.DataFrame, run: Path, trips: dict, sites: dict) -> pd.DataFrame:
-    """One row per person condition, site, comparison and feature: the FeatureDistance of the generated moves to the real moves."""
-    rng = np.random.default_rng(SEED)
-    pool = real_moves(trips, sites)
+            pool[trip["site"]][trip["id"]] = move_features(trip, positions, end)
     rows = []
     for (*cond, site), d in df[df.kind == "human"].groupby([*COND, "site"], sort=False):
         ok = d[(d.status == "ok") & d.move_end_index.notna()]
-        generated = [move_features(trips[r.trip], sites[site], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
+        generated = [move_features(trips[r.trip], load_trajectory(run / r.folder)[1], int(r.move_end_index)) for r in ok.itertuples()]
         if not generated:
             continue
         recordings = {m["recording"] for m in generated}

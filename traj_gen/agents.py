@@ -19,6 +19,9 @@ ROOM_MARGIN_M = {"robot": 0.0, "human": 0.25}
 # Whether entering the box of a station that is not the goal is a broken rule of the task. The boxes are the robot's stopping
 # points, which people walk across.
 STATION_CROSSING_INVALID = {"robot": True, "human": False}
+# The site_frames station field a planned agent of the kind is given in its prompts and maps: the robot's stopping point (xy) or
+# where people stand (human_xy).
+STATION_POSITION = {"robot": "xy", "human": "human_xy"}
 PERSON_BODY_RADIUS_M = 0.15          # person body radius for scoring, since mocap tracks only give the body centre
 PERSON_PROMPT_RADIUS_M = 0.25        # typical shoulder half-width, the person's size in the prompts and maps
 # Personal space of an agent as an obstacle: the disk around its centre that another agent's body should stay out of.
