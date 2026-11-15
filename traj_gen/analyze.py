@@ -20,10 +20,9 @@ its reply is unusable, the server failed (status error), or its plan exceeds the
 does not reach the goal, leaves the room or crosses a station. The invalid rate and the rate of each of
 these parts are shares of all episodes of the condition. An episode without a path (invalid_reply or
 error) counts only in its status part. The speed-cap part does not apply to the baselines, which have no
-model reply, and is NaN for them. Paired differences and
-comparisons work on per-trip means (over the samples of the condition), so a trip is one
-observation and the intervals are percentile bootstrap intervals over trips (few trips: read them
-as rough). time_to_goal only exists for episodes that reached the goal.
+model reply, and is NaN for them. Paired differences and comparisons work on per-trip means (over
+the samples of the condition), so a trip is one observation and the intervals are percentile
+bootstrap intervals over trips (few trips: read them as rough). time_to_goal only exists for episodes that reached the goal.
 """
 
 import io

@@ -111,7 +111,7 @@ SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overl
 
 
 def sensitivity(run: Path, sites: dict) -> None:
-    """Personal-space overlap (% of episode time, mean over trips) at other person radii, for the baselines and the pooled model episodes."""
+    """Personal-space overlap (% of episode time, mean over trips) of the robot at other person radii, for the baselines and the pooled model episodes."""
     episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
     episodes = episodes[(episodes.status == "ok") & (episodes.kind == "robot")]
     groups = {"straight line": episodes.experiment == STRAIGHT, "real controllers": episodes.experiment == REPLAY,

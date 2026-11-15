@@ -106,12 +106,6 @@ def station_text(label: str, stations: dict) -> str:
     return f"station {label}"
 
 
-def require_robot(agent_id: str) -> None:
-    """Raise unless the planned agent is the robot: the prompt templates are written for a planned robot only."""
-    if agent_kind(agent_id) != "robot":
-        raise NotImplementedError(f"no prompt templates for planned agent {agent_id!r}: the templates describe a planned robot")
-
-
 class Scene:
     """State at index i of a trip. track is the (>= i + 1, 2) track of the planned agent (trip["agent"]) aligned with the trip arrays.
 
@@ -165,7 +159,6 @@ class Scene:
 
     def text(self, units: Metres, predict: bool) -> str:
         """The per-turn state block of the planned robot, with the other people. predict adds each person's constant-velocity positions."""
-        require_robot(self.agent)
         return load_prompt("scene").format(
             time_s=f"{self.time_s:.1f}", robot_pos=units.pos_text(self.track[-1]), unit=units.name, dt=DT,
             hist_s=PROMPT_HISTORY_S, robot_history=", ".join(units.pos_text(q) for q in self.history),

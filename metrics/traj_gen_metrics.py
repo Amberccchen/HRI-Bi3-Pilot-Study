@@ -11,10 +11,9 @@ the planner's heading is unknown and the corners are not modelled), so:
   two real controller contacts are measured on the 16 test trips of the v1 run, in trips
   laas_laas18_static_robot_02 (clearance -0.008 m) and um_um13_static_robot_05 (-0.018 m), and three
   in the 133 trips with a full prompt history. They are unlikely to be real collisions, because both
-  bodies are modelled as circles. Contact is also
-  reported as the share of the episode's time steps in contact (contact_time) and as the number of
-  separate contacts, a run of consecutive steps counting once (contact_events; steps are 0.4 s apart,
-  so a touch between two samples is missed).
+  bodies are modelled as circles. Contact is also reported as the share of the episode's time steps
+  in contact (contact_time) and as the number of separate contacts, a run of consecutive steps
+  counting once (contact_events; steps are 0.4 s apart, so a touch between two samples is missed).
 - personal-space overlap: the share of the episode's time steps with the agent's body inside some
   other agent's personal space (a disk of the given radius around that agent's centre).
 - goal reached: the path gets within the arrival radius + GOAL_SLACK of the goal station. Bi3
