@@ -46,6 +46,11 @@ def body_radius(agent_id: str, site: dict) -> float:
     return min(site["footprint_m"]) / 2 if agent_kind(agent_id) == "robot" else PERSON_BODY_RADIUS_M
 
 
+def body_radii(agent_ids, site: dict) -> list[float]:
+    """body_radius of each agent id, for the other agents of an episode."""
+    return [body_radius(a, site) for a in agent_ids]
+
+
 def prompt_radius(agent_id: str, site: dict) -> float:
     """Radius (m) of the agent's disk in the prompts and maps, site being the agent's site from site_frames.json.
 

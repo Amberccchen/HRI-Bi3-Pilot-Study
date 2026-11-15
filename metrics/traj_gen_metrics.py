@@ -13,7 +13,7 @@ the planner's heading is unknown and the corners are not modelled), so:
   in the 133 trips with a full prompt history. They are unlikely to be real collisions, because both
   bodies are modelled as circles. Contact is also reported as the share of the episode's time steps
   in contact (contact_time) and as the number of separate contacts, a run of consecutive steps
-  counting once (contact_events). Steps are 0.4 s apart, so a touch between two samples is missed.
+  counting once (contact_events). A touch between two samples is missed.
 - personal-space overlap: the share of the episode's time steps with the agent's body inside some
   other agent's personal space (a disk of the given radius around that agent's centre), over the
   other agents that have one.
@@ -64,17 +64,14 @@ def other_stations(site: dict, goal: str) -> np.ndarray:
     return np.array([s["xy"] for k, s in site["stations"].items() if len(s["members"]) == 1 and k not in goal_members], float)
 
 
-def station_metrics(agent: np.ndarray, stations: np.ndarray) -> dict:
-    """Does the agent's centre enter another station's box, and how close does it get to one."""
-    offset = np.abs(np.asarray(agent, float)[:, None, :] - stations[None])  # (T, k, 2)
-    return {"station_crossing": bool((offset.max(axis=-1) <= STATION_BOX_M / 2).any()),
-            "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
+def centre_distances(agent: np.ndarray, others: np.ndarray) -> np.ndarray:
+    """(T, K) distance from the agent's centre to each other agent's centre."""
+    return np.linalg.norm(np.asarray(others, float) - np.asarray(agent, float)[:, None, :], axis=-1)
 
 
 def clearance_gap(agent: np.ndarray, others: np.ndarray, agent_radius: float, other_radii: list[float]) -> np.ndarray:
     """(T,) smallest body-to-body gap from the agent to the other agents: centre distance minus both radii, minimised over the others."""
-    centre = np.linalg.norm(np.asarray(others, float) - np.asarray(agent, float)[:, None, :], axis=-1)  # (T, K)
-    return (centre - agent_radius - np.asarray(other_radii, float)).min(axis=1)
+    return (centre_distances(agent, others) - agent_radius - np.asarray(other_radii, float)).min(axis=1)
 
 
 def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float, other_radii: list[float],
@@ -85,7 +82,7 @@ def clearance_metrics(agent: np.ndarray, others: np.ndarray, agent_radius: float
     """
     gap = clearance_gap(agent, others, agent_radius, other_radii)
     touching = gap < 0
-    centre = np.linalg.norm(np.asarray(personal_space_others, float) - np.asarray(agent, float)[:, None, :], axis=-1)  # (T, J)
+    centre = centre_distances(agent, personal_space_others)  # (T, J)
     intruding = (centre - agent_radius < np.asarray(personal_space_radii, float)).any(axis=1)
     return {"clearance_min": float(gap.min()), "contact_time": float(touching.mean()),
             "contact_events": int((touching & ~np.concatenate([[False], touching[:-1]])).sum()),  # runs of consecutive contact steps
@@ -102,7 +99,8 @@ def traj_gen_metrics(time: np.ndarray, agent: np.ndarray, others: np.ndarray, go
     out = {**clearance_metrics(agent, others, agent_radius, other_radii, personal_space_others, personal_space_radii),
            "goal_reached": bool(arrived.size), "time_to_goal": float(time[arrived[0]] - time[0]) if arrived.size else float("nan"),
            "final_distance_to_goal": float(to_goal[-1]), "out_of_room": bool((np.abs(agent) > room_half_m).any())}
-    out |= station_metrics(agent, stations)
+    offset = np.abs(agent[:, None, :] - stations[None])  # (T, k, 2) from the agent's centre to the other stations
+    out |= {"station_crossing": bool((offset.max(axis=-1) <= STATION_BOX_M / 2).any()), "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
     if raw_speed is not None:
         out |= {"speed_violation_rate": float((np.asarray(raw_speed) > speed_cap).mean()), "raw_speed_max": float(np.max(raw_speed))}
     return out

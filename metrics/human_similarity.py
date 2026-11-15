@@ -18,7 +18,9 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.stats import wasserstein_distance
 
-STEP_S = 0.4  # sampling interval of every input track, s
+from preprocessing.bi3_derived import TRIP_HZ
+
+STEP_S = 1 / TRIP_HZ  # sampling interval of every input track, s
 TURN_WINDOW_STEPS = 2  # turning angles compare displacements over 2 steps, 0.8 s
 FEATURE_NAMES = ("speed", "turning_angle", "min_distance_robot", "min_distance_human")
 

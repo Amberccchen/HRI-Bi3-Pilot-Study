@@ -16,13 +16,13 @@ from pathlib import Path
 
 import numpy as np
 
-from preprocessing.bi3_derived import TRIP_HZ, label_members
+from preprocessing.bi3_derived import TRIP_HISTORY_S, TRIP_HZ, label_members
 from traj_gen.agents import agent_kind, prompt_radius
 
 
 PROMPTS = Path(__file__).parent / "prompts"
 DT = 1 / TRIP_HZ     # s between samples
-PROMPT_HISTORY_STEPS = 7    # 2.8 s: the most whole steps that fit in the 3 s of history the trips carry
+PROMPT_HISTORY_STEPS = int(TRIP_HISTORY_S * TRIP_HZ)    # the most whole steps that fit in the history the trips carry
 PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the prompts
 # Horizons of the constant-velocity prediction (prediction experiments): 2 s is the rolling execution window
 # (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
