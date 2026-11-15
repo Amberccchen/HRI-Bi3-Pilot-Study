@@ -30,9 +30,7 @@ PLOT_PX = 800        # axes size, so 1 m = 200 px exactly and a pixel is 5 mm
 AXES_LEFT_PX, AXES_BOTTOM_PX = 76, 56  # room for the axis label and tick labels on the left and bottom, 76 + 800 + 20 = 896
 GRID_M = 0.5         # grid spacing in metre mode
 GRID_PX = 100        # grid spacing in pixel mode: round numbers for the model to read (0.5 m = 100 px)
-LABEL_OFFSET_M = 0.28  # station labels sit this far from the box towards the room centre, as the box is too small to hold one and the wall side is outside the room
-STATION_BOX_M = 0.2   # side of a station's box as drawn on the map
-TABLE_PAD_M = 0.12   # shared-table outline around its two stations
+STATION_BOX_M = 0.2   # side of a station's box as drawn on the map: 40 px, wide enough for an S<k> label at 0.8 * LABEL_PX
 LABEL_PX = 20        # label font size, readable at 896 px
 LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
 ROBOT, PERSON, GOAL, GRID, WALL, BOX = "#1f77b4", "#e66101", "#2ca02c", "#d9d9d9", "#222222", "#b8b8b8"
@@ -113,32 +111,28 @@ def _trail(ax, history: np.ndarray, now: np.ndarray, color: str) -> None:
 
 
 def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
-    """Walls, stations (with the shared table outline) and the planned agent's goal with its arrival radius: the part of every map that does not change in time.
+    """Walls, stations (a shared table is one box spanning its two stations) and the planned agent's goal with its arrival radius: the part of every map that does not change in time.
     Stations are drawn at the points where people stand, for every planned agent. Only the goal is at the planned agent's own point."""
     room = site["room_m"]
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
     stations = site["stations"]
-    # Each box is centred on the room border: the standing point moved perpendicular onto the nearest side.
-    half = room / 2
-    on_border, inward = {}, {}
+    # Each station is centred on the room border: the standing point moved perpendicular onto the nearest side.
+    on_border = {}
     for k, s in stations.items():
         p = np.array(s["human_xy"], float)
         side = int(np.argmax(np.abs(p)))
         on_border[k] = p.copy()
-        on_border[k][side] = np.sign(p[side]) * half
-        inward[k] = np.zeros(2)
-        inward[k][side] = -np.sign(p[side])
+        on_border[k][side] = np.sign(p[side]) * room / 2
+    tabled = {m for s in stations.values() if len(s["members"]) > 1 for m in s["members"]}
     for k, s in stations.items():
-        if len(s["members"]) > 1:
+        if len(s["members"]) > 1:  # one box over the table's stations, labelled by the stations' own entries
             pts = np.array([on_border[m] for m in s["members"]])
-            lo, hi = pts.min(axis=0) - (STATION_BOX_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_BOX_M / 2 + TABLE_PAD_M)
-            ax.add_patch(Rectangle(lo, *(hi - lo), fill=False, ec=BOX, lw=2, ls="--", zorder=2))
-            ax.text((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, "shared table", ha="center", va="center", rotation=90, fontsize=LABEL_PX * 0.6, color="#555555",
-                    bbox=dict(fc="white", ec="none", pad=1), zorder=4)
-        else:
-            x, y = on_border[k]
-            ax.add_patch(Rectangle((x - STATION_BOX_M / 2, y - STATION_BOX_M / 2), STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
-            ax.text(*(on_border[k] + LABEL_OFFSET_M * inward[k]), _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, zorder=4)
+            lo, hi = pts.min(axis=0) - STATION_BOX_M / 2, pts.max(axis=0) + STATION_BOX_M / 2
+            ax.add_patch(Rectangle(lo, *(hi - lo), fc=BOX, ec="#777777", zorder=2))
+        elif k not in tabled:
+            ax.add_patch(Rectangle(on_border[k] - STATION_BOX_M / 2, STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
+        if len(s["members"]) == 1:
+            ax.text(*on_border[k], _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, color=WALL, zorder=4)
     ax.add_patch(Circle(goal_xy, ARRIVAL_RADIUS_M[agent_kind(agent)], fill=False, ec=GOAL, lw=2, ls="--", zorder=3))
     ax.plot(*goal_xy, marker="*", color=GOAL, ms=18, zorder=4)
 
