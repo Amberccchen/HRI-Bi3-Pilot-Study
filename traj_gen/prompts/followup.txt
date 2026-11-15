@@ -1,0 +1,7 @@
+The robot followed your previous plan for {executed_s} s (slowed down wherever it exceeded the maximum speed, so it may be behind your plan). The state is now:
+
+{images}
+
+{scene}
+
+Plan again from the current state, in the same format as before.

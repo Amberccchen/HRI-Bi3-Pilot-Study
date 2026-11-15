@@ -1,0 +1,1 @@
+If {name} keeps its current velocity it will be at {pos1} in {h1} s and {pos2} in {h2} s.

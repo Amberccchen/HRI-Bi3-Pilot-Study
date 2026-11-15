@@ -1,0 +1,1 @@
+Small hollow circles joined to the other participant and to the robot by a thin dashed line mark where each will be in {h1} s and {h2} s if it keeps its current velocity (the same positions as in the text).

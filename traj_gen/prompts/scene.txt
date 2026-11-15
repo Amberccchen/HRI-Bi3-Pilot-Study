@@ -1,0 +1,5 @@
+State at t = {time_s} s (time since the start of this trip).
+Robot: at {robot_pos}. Previous positions, oldest first, every {dt} s over the last {hist_s} s: {robot_history}.
+Robot goal: {goal} at {goal_pos}, {goal_dist} {unit} from the robot now.
+People (goal = the station the person is at or walking to, next goal = the station after that):
+{people}

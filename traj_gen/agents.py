@@ -1,0 +1,62 @@
+"""Physical and task parameters of the agents of a trip: the planned agent and the others it is scored against.
+
+Agent ids are those of the trips: "robot", and "human<k>" for the people. A parameter is looked up by the
+agent's kind ("robot" or "human"). A kind without an entry has no value, and the lookup raises KeyError.
+"""
+
+import numpy as np
+
+
+# The limit the model is told. For people, the 99th percentile of real per-step speed (0.4 s steps) over Bi3 goal-to-goal
+# moves of both sites, one cap shared by every person.
+SPEED_CAP_M_S = {"robot": 0.3, "human": 1.5}
+# Speed of the straight-line baseline. The robot's is its cap. A person's is the median real per-step speed (0.4 s steps,
+# raw mocap positions) over the same Bi3 goal-to-goal moves (t_leave to t_arrive, both sites pooled): 0.942 m/s.
+STRAIGHT_LINE_SPEED_M_S = {"robot": SPEED_CAP_M_S["robot"], "human": 0.94}
+# Arrival distance given to the model. For the robot about where Bi3 switches to the next goal. For a person, about where the
+# scatter of real standing positions around a station's goal point ends (90th percentile 0.30-0.36 m).
+ARRIVAL_RADIUS_M = {"robot": 0.5, "human": 0.4}
+# How far beyond the room's walls the agent may go before it counts as out of the room. The station positions and walls
+# bound the robot, but people stand closer to the walls than the robot's stopping points.
+ROOM_MARGIN_M = {"robot": 0.0, "human": 0.25}
+# The site_frames station field a planned agent of the kind is given in its prompts: the robot's stopping point (xy) or
+# where people stand (human_xy).
+STATION_POSITION = {"robot": "xy", "human": "human_xy"}
+PERSON_BODY_RADIUS_M = 0.15          # person body radius for scoring, since mocap tracks only give the body centre
+PERSON_PROMPT_RADIUS_M = 0.25        # typical shoulder half-width, the person's size in the prompts and maps
+# Personal space of an agent as an obstacle: the disk around its centre that another agent's body should stay out of.
+# For a person 0.25 m, a 0.10 m buffer beyond the body radius, a modelling choice (0.20 m is the sensitivity), not a measurement.
+PERSONAL_SPACE_RADIUS_M = {"human": 0.25}
+
+
+def agent_kind(agent_id: str) -> str:
+    """"robot" for the robot, "human" for "human<k>"."""
+    if agent_id == "robot":
+        return "robot"
+    if agent_id.startswith("human") and agent_id[len("human"):].isdigit():
+        return "human"
+    raise ValueError(f"unknown agent id {agent_id!r}: expected 'robot' or 'human<k>'")
+
+
+# The robot has two radii. The prompts and maps use the footprint's circumscribed disk (prompt_radius), which is larger
+# than the robot on purpose, so that planned paths keep a margin from people. Scoring uses the inscribed disk (body_radius),
+# the realistic body.
+def body_radius(agent_id: str, site: dict) -> float:
+    """Radius (m) of the agent's body disk for scoring, site being the agent's site from site_frames.json.
+
+    For the robot it is the disk its rectangular footprint contains: half the shorter side.
+    """
+    return min(site["footprint_m"]) / 2 if agent_kind(agent_id) == "robot" else PERSON_BODY_RADIUS_M
+
+
+def body_radii(agent_ids, site: dict) -> list[float]:
+    """body_radius of each agent id, for the other agents of an episode."""
+    return [body_radius(a, site) for a in agent_ids]
+
+
+def prompt_radius(agent_id: str, site: dict) -> float:
+    """Radius (m) of the agent's disk in the prompts and maps, site being the agent's site from site_frames.json.
+
+    For the robot it is the disk that contains its rectangular footprint, rounded to the millimetre.
+    """
+    return round(float(np.hypot(*site["footprint_m"]) / 2), 3) if agent_kind(agent_id) == "robot" else PERSON_PROMPT_RADIUS_M

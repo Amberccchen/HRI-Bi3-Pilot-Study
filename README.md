@@ -1,6 +1,6 @@
 # HRI Bi³ pilot study
 
-Exploratory pilots testing whether a vision-language model can judge robot navigation as people in the [Bi³ study](https://arxiv.org/html/2605.06863) did. This repository contains the pilot scripts and questionnaire-aligned prompt. Downloaded Bi³ data, participant-level results, mocap-derived outputs, and generated media are kept outside this public repository.
+Exploratory pilots testing whether a vision-language model can judge robot navigation as people in the [Bi³ study](https://arxiv.org/html/2605.06863) did. This repository contains the pilot scripts and questionnaire-aligned prompt, the preprocessing of the Bi³ motion-capture data (goal labels, video sync, and robot and person trips), and a trajectory-generation pilot that tests whether the model can plan the path of the robot or of a participant. How the data, metrics and generation are defined is in [DESIGN.md](DESIGN.md). Downloaded Bi³ data, participant-level results, mocap-derived outputs, and generated media are kept outside this public repository.
 
 ## Pilots
 
@@ -14,15 +14,72 @@ Exploratory pilots testing whether a vision-language model can judge robot navig
 
 The [questionnaire-aligned prompt](pilot_run/rosas_aligned_protocol.md) was used for LAAS12. Earlier pilots used a different question. These are small pilots, not population estimates or controlled comparisons between sessions.
 
+## Preprocessing: goal labels, video sync and trips
+
+[`preprocessing/annotate_goals.py`](preprocessing/annotate_goals.py) detects each participant's station visits and labels, for every mocap sample, which station each agent is at or heading to and the station after that. Goal labels are text: a station (`"0"`-`"5"`) or a shared-table pair (`"0/1"` at LAAS, `"4/5"` at UM). `stations.json` lists every allowed label per site with its coordinates. Outputs are mocap-derived and are written outside the repository, to `/persistent/data/Bi3_derived/goals` by default (`--out` to change).
+
+[`preprocessing/sync_video.py`](preprocessing/sync_video.py) estimates each overhead video's time offset from its mocap (`video_time = mocap_time + offset_s`). Results go to `/persistent/data/Bi3_derived/video_sync.csv`.
+
+[`preprocessing/extract_trips.py`](preprocessing/extract_trips.py) cuts station-to-station trips of a planned agent into compact, room-centred samples: robot trips by default, person trips with `--agents human`. Each trip names its planned agent (`agent`), the station it leaves (`start_goal`) and its goal (`goal`, `goal_xy`, `next_goal`). It holds every agent's track on a 2.5 Hz grid anchored at the trip's start (`time`, `tracks` keyed `robot`, `human0`, `human1`), with history before the start and replay after the end, `start_index` and `end_index` for the real trip, per-sample labels (`labels`) and the Bi³ metrics of the real path (`real_metrics`). `site_frames.json` records each site's room frame, room size, robot footprint and stations (`xy` for the robot, `human_xy` for people). By default it uses the trials `laas18` and `um13`. Results go to `/persistent/data/Bi3_derived/trips_v2` by default (`--out` to change). The person trips of all 37 trials (`--agents human --all-trials`) are in `/persistent/data/Bi3_derived/trips_v2_human`, and `analyze` uses all of them as the real moves the generated ones are compared with.
+
+How visits, goal labels, the room frame, stations, trips and moves are defined, and the numbers behind each choice, is in [DESIGN.md](DESIGN.md), Section 1.
+
+Use [`preprocessing/bi3_derived.py`](preprocessing/bi3_derived.py) to read these outputs rather than rerunning the scripts:
+- `load_video_sync()` and `video_time(site, trial, controller, mocap_time)` for the video offsets.
+- `load_stations(site)` for the allowed goal labels.
+- `load_visits(site, trial, controller)` for the detected visits.
+- `load_frames(site, trial, controller)` for the per-sample positions and labels of every agent of a recording, keyed by agent id (`"robot"`, `"human0"`, ...).
+- `load_trips(trips_dir, **match)` for the trips, optionally filtered by field, for example `load_trips(trips_dir, agent="robot", site="um")`.
+- `load_site_frames(trips_dir)` for the room frame, robot footprint and room-frame stations per site.
+
+Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw dataset is not under the repository root. Each script writes a manifest with its output (`goals/manifest.json`, `video_sync.manifest.json`, `trips_v2/manifest.json`) recording the git commit of the code, whether `preprocessing/`, `metrics/` or `traj_gen/` had uncommitted changes (`git_dirty`), and the parameters, so teammates can confirm they share the same labels.
+
+## Trajectory generation
+
+[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM) can plan the path of the planned agent in a Bi³ trip, the robot or one of the people. Given the room, the other agents and the planned agent's goal station, as text and/or a top-down map, the model returns timed waypoints, map pixels or velocities. The executed path is scored against the real path and a straight line on the same trips, with the other agents replayed from the logs. The experiments are defined in [`traj_gen/experiments.py`](traj_gen/experiments.py), the agents' parameters in [`traj_gen/agents.py`](traj_gen/agents.py), the prompt templates in `traj_gen/prompts/` and the metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py) and [`metrics/human_similarity.py`](metrics/human_similarity.py). What each generator is told, the radii, speed caps, arrival rule, metric classes, similarity measures and map drawing are defined in [DESIGN.md](DESIGN.md), Sections 2 and 3.
+
+```
+python -m traj_gen.run --run <run> select --trips-dir <trips folder>  # choose 16 test trips, write <run>/test_trips.json and <run>/run.json
+python -m traj_gen.run --run <run> select-human --trips-dir <person trips folder> --close 2 --random 2  # person test trips per site
+python -m traj_gen.run --run <run> run --thinking nothink think       # resumable, needs the vLLM server on :8000, framings default to the trips' agent kind
+python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
+python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
+python -m traj_gen.run --run <run> animate <condition folder> ...     # one animation.gif of all samples of <experiment>/<framing>/<thinking>/<trip>
+python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
+```
+
+The `*_pred` experiments (`ss_wp_bev_pred`, `rh_wp_bev_pred`, `rh_vel1_bev_pred`) are their base experiment plus each person's constant-velocity position at t + 1 s and t + 2 s, in the text and drawn on the map.
+
+**Note:** the official scoring of generated trajectories has not been built yet. The metrics are exploratory definitions written for this pilot, not a validated scoring against the Bi³ ratings.
+
+`--run <folder>` (before the subcommand) is required and picks the run folder. `select` writes `<run>/run.json` with the trips folder and the git commit of the code. Every later command reads the trips from that folder. `run` refuses to add episodes when the code is at another commit or has uncommitted changes in `preprocessing/`, `metrics/` or `traj_gen/`, so the episodes of a run folder come from one commit. `analyze`, `animate` and `report_figures` read a run made at any commit.
+
+Each model episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip>/s<k>/`, and each baseline episode (`straight`, `replay`) under `<run>/<experiment>/<trip>/`. An episode folder holds `inputs/` (the images sent), `trajectory.csv`, `plans.jsonl`, `queries.jsonl`, `result.png` and `manifest.json`. `trajectory.csv` has the columns `t, robot_x, robot_y, human0_x, human0_y, ...`, one per agent in the trip's track order, from the trip start (`t` = 0) to the end of the episode. The manifest records the episode's status, metrics, query counts and the code's git commit and dirty flag. The status is `ok`, `invalid_reply` (an unusable reply: single shot at once, rolling after one retry) or `error` (a server or transport error, with the traceback in the manifest). A resumed `run` runs episodes that ended in `error` again.
+
+`analyze` writes `<run>/analysis/`, with every table and figure split by the planned agent's kind (`robot` or `human`):
+- `episodes.csv`: one row per episode.
+- `summary.csv`: per kind, condition and site, the status counts and the episode-level rates and means, grouped by metric class.
+- `paired_baselines.csv`: per kind, condition and site, each condition minus replay and minus straight, paired on the same trips, with bootstrap intervals over trips.
+- `comparisons.csv`: condition comparisons (social - neutral prompt, think - nothink, bev - text input, ...) with bootstrap intervals over trips.
+- `similarity.csv` (person runs): per condition, site and feature, the Wasserstein-1 distance of the generated moves to real moves ([`metrics/human_similarity.py`](metrics/human_similarity.py)), against the site's moves from other trials and against the same test trips' real moves. The reference is the same distance for the matched moves of each other trial (another participant pair), with the number of trials it rests on.
+- `similarity_pool.csv` (person runs): per site, the person trips in the real pool and those left out.
+- `figures/`: condition dot plots, speed-cap violations and one overlay per test trip (model conditions only, each panel drawing the straight line and the real path), in the figure scheme of [DESIGN.md](DESIGN.md), Section 3.
+
+All of these are mocap-derived, so run folders stay outside the repository and must not be committed.
+
+## Tests
+
+Run the tests from the repository root with `python -m pytest tests`.
+
 ## Reproduce locally
 
 1. Download Bi³ separately and place the extracted dataset so that `Bi3/Bi3/videos/laas/`, `Bi3/Bi3/jsons/laas/`, and `Bi3/Bi3/user_impressions/laas/` exist under this repository root. The data are not redistributed here.
-2. Install Python 3 and `pip install -r requirements.txt`. The scripts call the FFmpeg binary supplied by `imageio-ffmpeg`. Image preparation scripts currently use the Windows Arial font path used for the original run.
+2. Install Python 3.10 or newer and `pip install -r requirements.txt`. The preprocessing and trajectory-generation code (`preprocessing/sync_video.py`, `traj_gen/camera.py`) calls the `ffmpeg` binary, which must be on PATH. The pilot preparation scripts in `pilot_run/` use the FFmpeg binary supplied by `imageio-ffmpeg`. Image preparation scripts currently use the Windows Arial font path used for the original run.
 3. Preparation can generate a random A/B/C condition key and contact sheets. For a **new blinded evaluation**, do not read the mapping, mocap truth, or survey CSV until the new observer ratings are saved.
 4. Run a run's `analyze.py` after preparation and rating to recompute its `results.json`. LAAS3 uses `pilot_run/analyse.py`.
 
-Generated contact sheets, maps, frame caches, and saved outputs are omitted from Git. The model was operated through Codex during these exploratory pilots; there is no automated VLM API runner or claim of deterministic regeneration of its ratings.
+Generated contact sheets, maps, frame caches, and saved outputs are omitted from Git. The model was operated through Codex during these exploratory rating pilots. For them there is no automated VLM API runner or claim of deterministic regeneration of the ratings.
 
 ## Study limitations
 
-The Bi³ papers identify the 12 RoSAS items and nine-point scale but do not publish the exact online survey form. The revised prompt adapts the original RoSAS anchors; it is not verified verbatim Bi³ wording. Frame sampling misses continuous motion, sudden changes, and participant embodiment. Participants can disagree strongly even within one trial. See each report for the run's specific design and errors.
+The Bi³ papers identify the 12 RoSAS items and nine-point scale but do not publish the exact online survey form. The revised prompt adapts the original RoSAS anchors. It is not verified verbatim Bi³ wording. Frame sampling misses continuous motion, sudden changes, and participant embodiment. Participants can disagree strongly even within one trial. See each report for the run's specific design and errors.
