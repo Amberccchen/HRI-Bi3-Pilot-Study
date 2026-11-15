@@ -1,7 +1,8 @@
 """Read and write the shared Bi3 derived files (video sync offsets, goal labels), and read the raw recordings.
 
 The derived files live outside this repository, under BI3_DERIVED (default
-/persistent/data/Bi3_derived), the raw Bi3 data under BI3_RAW (default /persistent/data/Bi3).
+/persistent/data/Bi3_derived), the raw Bi3 data under BI3_RAW (default
+<repository>/Bi3/Bi3, where README step 1 places the dataset).
 Each output folder carries a manifest.json with the parameters and the git state of the code
 that produced it, so everyone can check they are using the same labels instead of rerunning
 the scripts.
@@ -25,7 +26,8 @@ from pathlib import Path
 import numpy as np
 
 
-RAW = Path(os.environ.get("BI3_RAW", "/persistent/data/Bi3"))
+REPO = Path(__file__).resolve().parents[1]
+RAW = Path(os.environ.get("BI3_RAW", REPO / "Bi3" / "Bi3"))
 DERIVED = Path(os.environ.get("BI3_DERIVED", "/persistent/data/Bi3_derived"))
 SITES = ("laas", "um")
 SYNC_FILE = "video_sync.csv"
@@ -71,8 +73,7 @@ def label_members(label: str, stations: dict) -> list[str]:
 @lru_cache(maxsize=None)
 def provenance() -> dict:
     """Git commit of the code and whether its directories have uncommitted changes."""
-    root = Path(__file__).resolve().parents[1]
-    git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, check=True).stdout.strip()
+    git = lambda *a: subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True, check=True).stdout.strip()
     return {"git_commit": git("rev-parse", "HEAD"), "git_dirty": bool(git("status", "--porcelain", "--", "preprocessing", "metrics", "traj_gen"))}
 
 
