@@ -34,7 +34,7 @@ from preprocessing.bi3_derived import DERIVED, GOALS_DIR, RAW, SITES, load_recor
 OUT = DERIVED / GOALS_DIR
 
 # Workstation coordinates are the robot's goal points (the only six values
-# robot_goal takes per site). People stand 0.3-0.6 m further out than these.
+# robot_goal takes per site). People stand 0.14-0.52 m further out than these.
 STATIONS = {
     "laas": [(3.66, 15.0), (3.66, 16.0), (4.85, 14.45), (4.85, 16.9), (5.8, 14.5), (5.8, 16.9)],
     "um": [(-1.55, 1.45), (-1.5, -1.4), (-0.1, -1.45), (-0.05, 1.45), (1.33, 0.48), (1.38, -0.4)],

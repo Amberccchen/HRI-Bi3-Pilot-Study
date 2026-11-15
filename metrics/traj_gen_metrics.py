@@ -25,9 +25,6 @@ the planner's heading is unknown and the corners are not modelled), so:
   Time to goal is the first such sample.
 - final distance to goal: distance of the last sample, also for paths that never arrive.
 - out of room: any sample outside the square of half side room_half_m around the room centre.
-- stations: the agent's centre entering the box of a station that is not part of its goal (the stations
-  are obstacles the planner is told about, and the real controllers never do this), and the closest
-  centre distance to such a station.
 - speed cap: for a plan whose raw (before speed limiting) per-step speeds are given,
   the fraction of steps above the speed cap and the largest raw speed.
 - move end (move_end_index): where a path enters its goal station's zone, the end of the segment the
@@ -35,7 +32,7 @@ the planner's heading is unknown and the corners are not modelled), so:
 
 Inputs are one executed path as arrays: time (T,) in seconds from trip start, agent
 (T, 2) and others (T, K, 2) in the room frame (metres), goal (2,), the radii, arrival radius and
-speed cap per agent, and the room bound and stations from site_frames.json.
+speed cap per agent, and the room bound from site_frames.json.
 """
 
 import numpy as np
