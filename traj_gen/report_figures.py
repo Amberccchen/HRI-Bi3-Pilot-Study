@@ -20,7 +20,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from metrics.traj_gen_metrics import clearance_metrics
-from traj_gen.agents import body_radius
+from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radius
 from traj_gen.analyze import INK, ci, per_trip_means, scored, style
 from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
 from traj_gen.experiments import BASELINES
@@ -113,7 +113,7 @@ SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overl
 def sensitivity(run: Path, sites: dict) -> None:
     """Personal-space overlap (% of episode time, mean over trips) at other person radii, for the baselines and the pooled model episodes."""
     episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
-    episodes = episodes[episodes.status == "ok"]
+    episodes = episodes[(episodes.status == "ok") & (episodes.kind == "robot")]
     groups = {"straight line": episodes.experiment == STRAIGHT, "real controllers": episodes.experiment == REPLAY,
               **{f"Qwen, {label}": ~episodes.experiment.isin(BASELINES) & (episodes.thinking == th) for th, label, _ in THINKING}}
     rows = []
@@ -124,7 +124,8 @@ def sensitivity(run: Path, sites: dict) -> None:
                 _, positions = load_trajectory(run / ep.folder)
                 track, site = positions.pop(ep.agent), sites[ep.site]
                 overlap.append(clearance_metrics(track, np.stack(list(positions.values()), axis=1), body_radius(ep.agent, site),
-                                                 [body_radius(o, site) for o in positions], [radius] * len(positions))["personal_space_overlap"])
+                                                 [body_radius(o, site) for o in positions],
+                                                 [radius if agent_kind(o) == "human" else PERSONAL_SPACE_RADIUS_M[agent_kind(o)] for o in positions])["personal_space_overlap"])
             per_trip = pd.Series(overlap, index=episodes[mask].trip.values).groupby(level=0).mean()
             rows.append({"group": name, "person_radius_m": radius, "overlap_pct": 100 * per_trip.mean()})
     pd.DataFrame(rows).pivot(index="group", columns="person_radius_m", values="overlap_pct").round(0).to_csv(run / REPORT_DIR / "personal_space_sensitivity.csv")
@@ -132,7 +133,8 @@ def sensitivity(run: Path, sites: dict) -> None:
 
 def report(run: Path) -> None:
     _, _, _, sites = load_run(run, run / TEST_TRIPS)
-    by_cond = per_trip_means(scored(pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")))
+    episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
+    by_cond = per_trip_means(scored(episodes[episodes.kind == "robot"]))  # the write-up covers robot generation
     panels = [("(a) Perception ladder", LADDER), ("(b) Output type", OUTPUT_TYPES), ("(c) Replanning horizon", HORIZONS), ("(d) Prompt", PROMPTS)]
     for contact, first in CONTACT.items():  # the two ways to count contact, as separate figures to compare
         stacked(by_cond, [(title, rows) for title, rows in panels], [first, *OTHER_METRICS], run / REPORT_DIR / f"figure_ladder_output_horizon_prompt_contact_{contact}.png")

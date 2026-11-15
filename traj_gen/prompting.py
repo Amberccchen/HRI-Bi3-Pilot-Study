@@ -15,7 +15,7 @@ import numpy as np
 
 from traj_gen.agents import ARRIVAL_RADIUS_M, PERSON_PROMPT_RADIUS_M, SPEED_CAP_M_S, agent_kind, prompt_radius
 from traj_gen.bev import SIZE_PX
-from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt
+from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, require_robot
 
 
 FRAMINGS = ("neutral", "social", "social_body", "cautious")  # social_body: social + the centre distance the bodies need; cautious: social, stronger (waiting/detours are fine)
@@ -41,6 +41,7 @@ class PromptBuilder:
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.example_text())
 
     def system(self, scene: Scene) -> str:
+        require_robot(scene.agent)
         u, site, kind = self.mode.units, scene.site, agent_kind(scene.agent)
         frame = load_prompt(f"frame_{u.name}").format(image_px=SIZE_PX, **u.bounds(site["room_m"]))
         return load_prompt("system").format(

@@ -4,18 +4,23 @@ Reads every finished episode of the test trips under a run folder (experiments i
 only, so smoke/ and _superseded*/ are ignored; a run still in progress is fine, missing
 conditions are simply absent) and writes <run>/analysis/:
 
-  episodes.csv          one row per episode: condition, trip, status, metrics, queries, tokens, latency
-  summary.csv           per condition (experiment x framing x thinking, plus the baselines) and site
-                        (all / laas / um): status counts and episode-level rates and means, grouped by
+  episodes.csv          one row per episode: condition, trip, planned agent and its kind, status, metrics, queries, tokens, latency
+  summary.csv           per planned-agent kind, condition (experiment x framing x thinking, plus the baselines) and
+                        site (all / laas / um): status counts and episode-level rates and means, grouped by
                         metric class (invalid, contact, efficiency)
-  paired_baselines.csv  every condition minus replay and minus straight on the same trips
-  comparisons.csv       the PLAN comparisons (neutral vs social, nothink vs think, ...) as differences
-  figures/              conditions_<thinking>.png, speed_violation.png, trip_<id>.png (overlays)
+  paired_baselines.csv  every condition minus replay and minus straight on the same trips, per kind
+  comparisons.csv       the PLAN comparisons (neutral vs social, nothink vs think, ...) as differences, per kind
+  figures/              conditions_<kind>_<thinking>.png, speed_violation_<kind>.png, trip_<id>.png (overlays)
 
-Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only; goal_reached
-counts every episode, so one with an invalid reply counts as not reached. An episode is invalid when
-its reply is unusable, or its plan exceeds the speed cap in any step, does not reach the goal, leaves
-the room or crosses a station. The invalid rate is reported with the rate of each part. Paired differences and
+Robot and person episodes are never pooled: every table and figure is per planned-agent kind ("robot" or "human").
+
+Scoring rules. Path metrics (clearance, time to goal, ...) use status-ok episodes only. goal_reached
+counts every episode, so one without a usable path counts as not reached. An episode is invalid when
+its reply is unusable, the server failed (status error), or its plan exceeds the speed cap in any step,
+does not reach the goal, leaves the room or crosses a station. The invalid rate and the rate of each of
+these parts are shares of all episodes of the condition. An episode without a path (invalid_reply or
+error) counts only in its status part. The speed-cap part does not apply to the baselines, which have no
+model reply, and is NaN for them. Paired differences and
 comparisons work on per-trip means (over the samples of the condition), so a trip is one
 observation and the intervals are percentile bootstrap intervals over trips (few trips: read them
 as rough). time_to_goal only exists for episodes that reached the goal.
@@ -40,7 +45,8 @@ from traj_gen.experiments import BASELINES, EXPERIMENTS
 from traj_gen.planners import THINKING
 from traj_gen.prompting import FRAMINGS
 
-KEY = ["experiment", "framing", "thinking"]
+COND = ["experiment", "framing", "thinking"]  # a condition within one planned-agent kind
+KEY = ["kind", *COND]                         # a condition across kinds: robot and person episodes are never pooled
 N_BOOT = 2000   # bootstrap resamples of the trips: the interval's edges are stable to about 0.01 SD
 SEED = 20261022  # fixed so the intervals are reproducible; the run date, no other meaning
 INFO = ["trip", "site", "controller", "agent", "stratum", "sample", "status", "queries", "samples", "retries", "invalid_replies",
@@ -49,6 +55,8 @@ STATUSES = ("ok", "invalid_reply", "error")
 SKIP = {"min_distance_per_other", "min_distance_index", "min_distance_other"}  # per-agent detail, not an episode-level number
 METRICS = [m for m in METRIC_CLASS if m not in SKIP]  # episode-level metric columns, present (NaN when absent) in every episode table
 RATES = ["goal_reached", "contact_time", "personal_space_overlap", "out_of_room", "station_crossing"]
+# Parts of the invalid rate, 0/1 per episode over all episodes (NaN where the part does not apply).
+INVALID_PARTS = ["invalid_unusable_reply", "invalid_error", "invalid_speed_cap", "invalid_goal", "invalid_room", "invalid_station"]
 MEANS = ["contact_events", "min_distance", "time_to_goal", "path_efficiency", "velocity_mean", "acceleration_mean", "speed_violation_rate", "raw_speed_max", "final_distance_to_goal", "station_distance_min"]
 CLASS_ORDER = ("invalid", "contact", "efficiency")
 PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "station_crossing", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
@@ -77,21 +85,27 @@ def collect(run: Path) -> pd.DataFrame:
                 if unknown:
                     raise ValueError(f"{path}: metrics {sorted(unknown)} have no class in METRIC_CLASS")
                 metrics = {k: v for k, v in (m["metrics"] or {}).items() if k not in SKIP}
-                rows.append({"experiment": exp, "framing": m["framing"] or "-", "thinking": m["thinking"] or "-", "folder": str(path.parent.relative_to(run)),
-                             **{k: m[k] for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
+                rows.append({"kind": agent_kind(m["agent"]), "experiment": exp, "framing": m["framing"] or "-", "thinking": m["thinking"] or "-",
+                             "folder": str(path.parent.relative_to(run)), **{k: m[k] for k in INFO if k != "stratum"}, "stratum": strata[m["trip"]], **metrics})
     return pd.DataFrame(rows, columns=[*KEY, "folder", *INFO, *METRICS])
 
 
 def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     """Episodes as scored: metrics of episodes that are not ok are dropped, and they count as goal not reached.
-    Adds speed_cap_violated (a raw plan speed above the cap) and invalid (any part of the invalid class), both 0/1 per episode."""
+    Adds the INVALID_PARTS and invalid (any part), 0/1 per episode. An episode without a path is 0 in every part but its
+    status part. invalid_speed_cap is NaN for experiments without a model, whose plans have no raw speeds."""
     df = episodes.copy()
     df[RATES] = df[RATES].astype(float)  # before the NaN assignment: pandas refuses NaN into a bool column
-    df.loc[df.status != "ok", RATES + MEANS + ["clearance_min"]] = np.nan
+    ok = df.status == "ok"
+    df.loc[~ok, RATES + MEANS + ["clearance_min"]] = np.nan
     df["goal_reached"] = df.goal_reached.fillna(0.0)
-    df["speed_cap_violated"] = (df.speed_violation_rate > 0).astype(float)  # NaN (no reply to score: baselines, unusable replies) is not a violation
-    df["invalid"] = ((df.status == "invalid_reply") | (df.speed_cap_violated == 1) | (df.goal_reached == 0)
-                     | (df.out_of_room == 1) | (df.station_crossing == 1)).astype(float)
+    df["invalid_unusable_reply"] = (df.status == "invalid_reply").astype(float)
+    df["invalid_error"] = (df.status == "error").astype(float)
+    df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(df.experiment.map(lambda e: EXPERIMENTS[e].uses_model))
+    df["invalid_goal"] = (ok & (df.goal_reached == 0)).astype(float)
+    df["invalid_room"] = (df.out_of_room == 1).astype(float)
+    df["invalid_station"] = (df.station_crossing == 1).astype(float)
+    df["invalid"] = (df[INVALID_PARTS] == 1).any(axis=1).astype(float)
     return df
 
 
@@ -109,9 +123,10 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
     def one(g: pd.DataFrame) -> pd.Series:
         calls = g.samples.sum()
         by_class = {cls: {} for cls in CLASS_ORDER}
-        by_class["invalid"] |= {"invalid": g.invalid.mean(), "invalid_reply_rate": (g.status == "invalid_reply").mean(), "speed_cap_violated": g.speed_cap_violated.mean()}
+        by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
-            by_class[METRIC_CLASS[c]][c] = g[c].mean()
+            if c not in ("out_of_room", "station_crossing"):  # reported as their invalid parts, over all episodes
+                by_class[METRIC_CLASS[c]][c] = g[c].mean()
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
             "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},
@@ -120,14 +135,16 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
 
     parts = [df.groupby(KEY, sort=False).apply(one, include_groups=False).assign(site="all")]
     parts += [d.groupby(KEY, sort=False).apply(one, include_groups=False).assign(site=s) for s, d in df.groupby("site")]
-    return pd.concat(parts).reset_index().sort_values(["site", "experiment", "framing", "thinking"], kind="stable")
+    return pd.concat(parts).reset_index().sort_values(["kind", "site", *COND], kind="stable")
 
 
 def per_trip_means(df: pd.DataFrame) -> dict[tuple, pd.DataFrame]:
-    """condition -> table (trip x metric) of per-trip means over the samples; site as a column."""
-    means = df.groupby(KEY + ["trip"])[PAIRED].mean()
+    """condition (COND) -> table (trip x metric) of per-trip means over the samples, site as a column. df holds one planned-agent kind."""
+    if df.kind.nunique() > 1:
+        raise ValueError(f"per-trip means pool one planned-agent kind only, got {sorted(df.kind.unique())}")
+    means = df.groupby(COND + ["trip"])[PAIRED].mean()
     sites = df.groupby("trip").site.first()
-    return {k: g.droplevel(KEY).assign(site=sites) for k, g in means.groupby(level=KEY)}
+    return {k: g.droplevel(COND).assign(site=sites) for k, g in means.groupby(level=COND)}
 
 
 def paired_baselines(by_cond: dict) -> pd.DataFrame:
@@ -232,7 +249,7 @@ def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list,
 
 def present(by_cond: dict, **fixed) -> list[str]:
     """Experiments (registry order) that have a condition with the given framing/thinking."""
-    return [e for e in EXPERIMENTS if e not in BASELINES and any(c[0] == e and all(c[KEY.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
+    return [e for e in EXPERIMENTS if e not in BASELINES and any(c[0] == e and all(c[COND.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
 
 
 def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> list:
@@ -243,20 +260,20 @@ def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> lis
     return handles
 
 
-def condition_figures(by_cond: dict, speed_caps: list[float], fig_dir: Path) -> None:
-    """Dot plots per thinking mode and of the speed-cap violations, with speed_caps the planned agents' caps (m/s) in the run."""
+def condition_figures(by_cond: dict, kind: str, fig_dir: Path) -> None:
+    """Dot plots per thinking mode and of the speed-cap violations, of the episodes of one planned-agent kind (by_cond from per_trip_means)."""
     panels = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)", "path_efficiency": "path efficiency (1 = straight)"}
     baselines = any((b, "-", "-") in by_cond for b in BASELINES)
     for th in THINKING:
         rows = present(by_cond, thinking=th)
         if rows:
             framings = [f for f in FRAMINGS if any(c[1] == f and c[2] == th for c in by_cond)]
-            dot_plot(fig_dir / f"conditions_{th}.png", panels, rows, framings, by_cond, lambda e, f: (e, f, th), FRAMING_MARKER.get,
+            dot_plot(fig_dir / f"conditions_{kind}_{th}.png", panels, rows, framings, by_cond, lambda e, f: (e, f, th), FRAMING_MARKER.get,
                      f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval",
                      legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
     rows = [e for e in present(by_cond) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
-        dot_plot(fig_dir / "speed_violation.png", {"speed_violation_rate": f"share of plan steps above {' / '.join(f'{c:g}' for c in speed_caps)} m/s"}, rows, ["nothink", "think"], by_cond,
+        dot_plot(fig_dir / f"speed_violation_{kind}.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"}, rows, ["nothink", "think"], by_cond,
                  lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
@@ -268,7 +285,7 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         kind, a, goal = agent_kind(agent), trip["start_index"], np.asarray(trip["goal_xy"], float)
         real = real_path(trip)
         shown = [e for e in experiments if e in set(d.experiment)]
-        cols = [c for c in sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (THINKING.index(c[0]), FRAMINGS.index(c[1])))]
+        cols = sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (("-", *THINKING).index(c[0]), ("-", *FRAMINGS).index(c[1])))  # "-": baselines
         width = OVERLAY_PANEL_IN * len(cols)
         fig = Figure(figsize=(width, OVERLAY_PANEL_IN * len(shown) + 0.4), dpi=110)
         axes = fig.subplots(len(shown), len(cols), squeeze=False)
@@ -309,9 +326,14 @@ def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
     episodes.to_csv(out / "episodes.csv", index=False)
     df = scored(episodes)
     summary(df).to_csv(out / "summary.csv", index=False)
-    by_cond = per_trip_means(df)
-    paired_baselines(by_cond).to_csv(out / "paired_baselines.csv", index=False)
-    comparisons(by_cond).to_csv(out / "comparisons.csv", index=False)
-    condition_figures(by_cond, sorted({SPEED_CAP_M_S[agent_kind(trips[t]["agent"])] for t in episodes.trip.unique()}), out / "figures")
+    paired, compared, n_conditions = [], [], 0
+    for kind, d in df.groupby("kind"):
+        by_cond = per_trip_means(d)
+        for tables, table in ((paired, paired_baselines(by_cond)), (compared, comparisons(by_cond))):
+            tables.append(table.assign(kind=kind)[["kind", *table.columns]])
+        condition_figures(by_cond, kind, out / "figures")
+        n_conditions += len(by_cond)
+    pd.concat(paired).to_csv(out / "paired_baselines.csv", index=False)
+    pd.concat(compared).to_csv(out / "comparisons.csv", index=False)
     overlay_figures(df, run, overlay, trips, sites, out / "figures")
-    print(f"{len(episodes)} episodes, {len(by_cond)} conditions -> {out}")
+    print(f"{len(episodes)} episodes, {n_conditions} conditions -> {out}")
