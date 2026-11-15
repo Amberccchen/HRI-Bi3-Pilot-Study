@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT / "metrics"))
 sys.path.insert(0, str(ROOT / "traj_gen"))
 from analyze import OVERLAY, analyze
 from animate import animate, timeline
-from traj_gen_metrics import other_stations, station_metrics
+from report_figures import report
+from traj_gen_metrics import clearance_metrics, other_stations, station_metrics
 from bi3_derived import load_site_frames, load_trips  # noqa: E402
 from experiments import EXPERIMENTS  # noqa: E402
 from planners import THINKING  # noqa: E402
@@ -111,7 +112,7 @@ def analysis(args: argparse.Namespace) -> None:
 
 
 def rescore(args: argparse.Namespace) -> None:
-    """Merge station_metrics into every finished manifest of the run (from its trajectory.csv; other metrics untouched)."""
+    """Recompute the station and clearance metrics of every finished manifest of the run from its trajectory.csv (other metrics untouched)."""
     sites, trips = load_site_frames(), {t["id"]: t for t in load_trips()}
     paths = [p for e in EXPERIMENTS for p in (args.run / e).rglob("manifest.json")]
     for path in paths:
@@ -119,8 +120,11 @@ def rescore(args: argparse.Namespace) -> None:
         if manifest["metrics"] is None:
             continue
         trip = trips[manifest["trip"]]
-        robot = np.loadtxt(path.parent / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)[:, 1:3]
-        manifest["metrics"] |= station_metrics(robot, other_stations(sites[trip["site"]], trip["robot_goal"]))
+        data = np.loadtxt(path.parent / "trajectory.csv", delimiter=",", skiprows=1, ndmin=2)
+        robot, humans = data[:, 1:3], data[:, 3:].reshape(len(data), -1, 2)
+        for old in ("footprint_overlap", "contact"):  # metrics of earlier definitions
+            manifest["metrics"].pop(old, None)
+        manifest["metrics"] |= station_metrics(robot, other_stations(sites[trip["site"]], trip["robot_goal"])) | clearance_metrics(robot, humans, sites[trip["site"]]["footprint_m"])
         path.write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"rescored {len(paths)} manifests in {args.run}")
 
@@ -146,6 +150,7 @@ def main() -> None:
     p = sub.add_parser("analyze", help="summary tables and figures")
     p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
+    sub.add_parser("report", help="figure panels for the write-up into <run>/report").set_defaults(func=lambda args: report(args.run))
     sub.add_parser("rescore", help="add station-crossing metrics to finished manifests").set_defaults(func=rescore)
     p = sub.add_parser("animate", help="animation.gif and timeline.png for finished episodes")
     p.add_argument("episodes", nargs="+", type=Path, help="episode folders (each with a manifest.json)")
