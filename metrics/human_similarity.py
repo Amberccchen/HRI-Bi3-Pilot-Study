@@ -50,9 +50,9 @@ def trajectory_features(xy, robot_xy, other_human_xy, stratum, *, min_displaceme
     speed = np.linalg.norm(np.diff(xy, axis=0), axis=1) / STEP_S
 
     # The angle at step i is between p_i - p_{i-2} and p_{i+2} - p_i.
-    w = TURN_WINDOW_STEPS
-    displacement = xy[w:] - xy[:-w]
-    incoming, outgoing = displacement[:-w], displacement[w:]
+    window = TURN_WINDOW_STEPS
+    displacement = xy[window:] - xy[:-window]
+    incoming, outgoing = displacement[:-window], displacement[window:]
     moving = (np.linalg.norm(incoming, axis=1) >= min_displacement_m) & (
         np.linalg.norm(outgoing, axis=1) >= min_displacement_m
     )
