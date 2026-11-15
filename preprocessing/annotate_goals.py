@@ -12,7 +12,7 @@ of the two stations. stations.json lists every allowed label per site.
 
 Run from the repository root: python -m preprocessing.annotate_goals
 
-Outputs (mocap-derived, so kept outside this repository; read them with bi3_derived.py):
+Outputs (mocap-derived, so kept outside this repository, read them with bi3_derived.py):
   <out>/manifest.json                        parameters and git state of the code
   <out>/stations.json                        allowed goal labels and coordinates per site
   <out>/<site>/<trial>/<controller>_frames.csv  per-sample labels for robot and humans
@@ -84,7 +84,7 @@ def detect_visits(p: np.ndarray, time: np.ndarray, stations: np.ndarray, shared_
     nearest, dmin = dist.argmin(1), dist.min(1)
     turning = (turn_angles(ps) >= TURN_MIN_DEG) & (dmin < VISIT_RADIUS_M)
     visits = []
-    # each contiguous run of turning samples is one turnaround; keep its closest approach
+    # Each contiguous run of turning samples is one turnaround, located at its closest approach.
     edges = np.flatnonzero(np.diff(np.concatenate([[0], turning.astype(int), [0]])))
     for start, stop in zip(edges[::2], edges[1::2]):
         i = start + int(np.argmin(dmin[start:stop]))

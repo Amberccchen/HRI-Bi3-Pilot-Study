@@ -24,17 +24,17 @@ from traj_gen.scene import DT, Scene, person_name
 # 896 = 32 * 28: Qwen's vision tower works on 28 px blocks (one token each), so this size is
 # not resized (1024 tokens per map) and is big enough that a person (0.25 m) is 50 px wide.
 SIZE_PX = 896
-DPI = 100            # only fixes the figure size in inches; pixels are what matter
+DPI = 100            # only fixes the figure size in inches. Pixels are what matter
 EXTENT_M = 4.0       # drawn extent per side: the 3.5 m room plus 0.25 m margin each side for people at the walls
 PLOT_PX = 800        # axes size, so 1 m = 200 px exactly and a pixel is 5 mm
-AXES_LEFT_PX, AXES_BOTTOM_PX = 76, 56  # room for the axis label and tick labels on the left and bottom; 76 + 800 + 20 = 896
+AXES_LEFT_PX, AXES_BOTTOM_PX = 76, 56  # room for the axis label and tick labels on the left and bottom, 76 + 800 + 20 = 896
 GRID_M = 0.5         # grid spacing in metre mode
 GRID_PX = 100        # grid spacing in pixel mode: round numbers for the model to read (0.5 m = 100 px)
 # Station labels sit this far from the box, as the box is too small to hold one: outward (away from the room centre) at the robot's
 # stopping points, inward at the points where people stand, which are close to the walls.
 LABEL_OFFSET_M = {"robot": 0.28, "human": -0.28}
 TABLE_PAD_M = 0.12   # shared-table outline around its two stations
-LABEL_PX = 20        # label font size; readable at 896 px
+LABEL_PX = 20        # label font size, readable at 896 px
 LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
 ROBOT, PERSON, GOAL, GRID, WALL, BOX = "#1f77b4", "#e66101", "#2ca02c", "#d9d9d9", "#222222", "#b8b8b8"
 REAL_PATH, PERSON_LABEL, PLANNED_PERSON = "#555555", "#7a3300", "#7b3294"
@@ -135,7 +135,7 @@ def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
 
 
 def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, BevTransform]:
-    """PNG bytes and the exact transform. pixel_ticks labels the grid in image pixels (for the pixel output mode); predict marks each person's constant-velocity positions at PREDICT_S."""
+    """PNG bytes and the exact transform. pixel_ticks labels the grid in image pixels (for the pixel output mode). predict marks each person's constant-velocity positions at PREDICT_S."""
     fig, ax, transform = bev_axes(pixel_ticks)
     site, kind = scene.site, agent_kind(scene.agent)
     colour, radius = PLANNED_COLOUR[kind], prompt_radius(scene.agent, site)
@@ -180,7 +180,7 @@ def _draw_others(ax, site: dict, agent: str, others: dict[str, np.ndarray]) -> N
 
 
 def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
-    """The straight line from the start to the goal and the real path of the planned agent, drawn above the executed paths so it stays visible where they overlap."""
+    """The straight line from the start to the goal (below the executed paths) and the real path of the planned agent (above them, so it stays visible where they overlap)."""
     ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3, label="straight line")
     ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6, label="real path")
 

@@ -20,8 +20,8 @@ from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, person_name
 
 
-# Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body: social + the centre distance the
-# bodies need; cautious: social, stronger (waiting/detours are fine); participant: walk as a participant of the study would.
+# Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
+# the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would.
 FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participant": "human"}
 TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that differ by the planned agent's kind
 

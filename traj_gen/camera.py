@@ -16,10 +16,10 @@ from preprocessing.bi3_derived import video_path, video_time
 
 MAX_SIDE_PX = 960   # keeps a 1920x1080 frame at about 1000 vision tokens, and the LAAS frames are already 960x720
 # Per site: (counter-clockwise quarter turns, then mirror left-right?) that make the raw frame match the room frame.
-# Verified by eye against the BEV at the same times (phase2 smoke script, orientation figures): at UM the raw
-# frame already has the shared table on the right and S3 on top; at LAAS the raw camera looks along the room's
-# x axis (raw right = room +y, raw down = room +x), so a quarter turn counter-clockwise puts x to the right and y up.
-# Checked on robot and both people over a trip (their raw image positions move as the room-frame tracks say), no mirror needed.
+# Checked by eye against the BEV at the same times. At UM the raw frame already has the shared table on the right
+# and S3 on top. At LAAS the raw camera looks along the room's x axis (raw right = room +y, raw down = room +x), so a
+# quarter turn counter-clockwise puts x to the right and y up. Over a trip, the raw image positions of the robot and
+# both people move as the room-frame tracks say, so no mirror is needed.
 ORIENTATION = {"laas": (1, False), "um": (0, False)}
 
 

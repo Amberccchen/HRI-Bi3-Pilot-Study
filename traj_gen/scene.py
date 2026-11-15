@@ -28,7 +28,7 @@ PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the
 # (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
 # middle and the end of the stretch the robot is committed to.
 PREDICT_S = (1.0, 2.0)
-VELOCITY_STEPS = 2   # velocity = displacement over 0.8 s; the tracks are already smoothed over 0.5 s, one step is noisy
+VELOCITY_STEPS = 2   # velocity is the displacement over 0.8 s. The tracks are already smoothed over 0.5 s, but one step is noisy
 
 
 @cache
@@ -74,7 +74,7 @@ class Metres:
 
 
 class Pixels(Metres):
-    """Pixels of the BEV image (u right, v down, origin top-left); transform is a bev.BevTransform."""
+    """Pixels of the BEV image (u right, v down, origin top-left). transform is a bev.BevTransform."""
 
     name = "px"
     decimals = 0

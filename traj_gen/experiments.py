@@ -1,9 +1,9 @@
-"""The experiment registry (PLAN.md, Experiments): id -> planner (output mode), images, episode type.
+"""The experiment registry: each id maps to a planner (output mode), the images and an episode type.
 
-Framing (neutral/social) and thinking (nothink/think) are run options, not part of the id. The
-single-shot experiments plan the whole path at the trip start; the rolling ones re-plan every
-execute_s of executed motion (rh_vel1_bev every step), `_conv` ones in one growing conversation, `_pred` ones are their base
-experiment plus each person's constant-velocity prediction (text and map).
+Framing (one of prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
+single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
+execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_pred` ones are their
+base experiment plus each person's constant-velocity prediction (text and map).
 """
 
 from dataclasses import dataclass, replace
