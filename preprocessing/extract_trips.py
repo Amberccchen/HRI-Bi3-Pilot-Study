@@ -13,8 +13,9 @@ against. end_index marks where the real trip ends and the metrics stop.
 Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average on a BASE_HZ grid,
 once per recording) and resampled to --hz on a grid anchored at the trip start, so the start state, the
 camera frame at the start and the real-path metrics share one time (time 0). Coordinates are room-centred: the origin is the centre of the
-area people and the robot actually occupy (about 3.5 x 3.5 m at both sites), and
-LAAS is rotated 180 degrees so both sites have the shared two-station table on the
+area people and the robot actually occupy. room_m is the traversable workspace the Bi3 paper
+states, 3.5 x 3.5 m (Stratton et al., ICRA 2026, Sec. IV-A). The workstations stand along its
+perimeter, so people working at them stand at or just beyond its edge. LAAS is rotated 180 degrees so both sites have the shared two-station table on the
 +x wall.
 
 Run from the repository root: python -m preprocessing.extract_trips
