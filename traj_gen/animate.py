@@ -27,8 +27,8 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.bev import (EXTENT_M, KIND_COLOUR, KIND_MARKER, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, draw_reference, bev_axes, draw_room, figure_png,
-                          trajectory_legend)
+from traj_gen.bev import (EXTENT_M, KIND_COLOUR, KIND_MARKER, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_others, draw_reference, draw_room,
+                          figure_png, trajectory_legend)
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
 
@@ -116,13 +116,7 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
         fig, ax, _ = bev_axes(False)
         draw_room(ax, site, agent, longest["goal"])
         draw_reference(ax, longest["goal"], longest["real"][0], longest["real"])
-        for other, track in others.items():
-            other_kind = agent_kind(other)
-            ax.plot(*track[: k + 1].T, "-", marker=KIND_MARKER[other_kind], color=KIND_COLOUR[other_kind], lw=2, ms=4, alpha=0.7, zorder=3)
-            ax.add_patch(Circle(track[k], body_radius(other, site), fc=KIND_COLOUR[other_kind], ec="k", alpha=0.4, zorder=5))
-            ax.plot(*track[k], marker=KIND_MARKER[other_kind], color=KIND_COLOUR[other_kind], mec="k", ms=7, zorder=6)
-            if other_kind == "human":
-                ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
+        draw_others(ax, site, {other: track[: k + 1] for other, track in others.items()})  # the logged agents up to this step
         for ep in eps:
             head = min(k, len(ep["t"]) - 1)  # a finished sample holds its final position
             path = ep["track"][: head + 1]

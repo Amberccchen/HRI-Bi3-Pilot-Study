@@ -171,8 +171,8 @@ def bev_transform() -> BevTransform:
     return bev_axes(False)[2]
 
 
-def _draw_others(ax, site: dict, others: dict[str, np.ndarray]) -> None:
-    """Whole-episode tracks of the logged agents ({agent id: (T, 2)}): trail with the kind's marker, final disk at the scoring radius, and a P<k> label at a person's start."""
+def draw_others(ax, site: dict, others: dict[str, np.ndarray]) -> None:
+    """Tracks of the logged agents ({agent id: (T, 2)}): trail with the kind's marker, final disk at the last point, at the scoring radius,, and a P<k> label at a person's start."""
     for other, track in others.items():
         kind = agent_kind(other)
         ax.plot(*track.T, "-", marker=KIND_MARKER[kind], color=KIND_COLOUR[kind], lw=2, ms=4, alpha=0.7, zorder=3)
@@ -213,7 +213,7 @@ def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndar
     fig, ax, _ = bev_axes(False)
     draw_room(ax, site, agent, goal_xy)
     draw_reference(ax, goal_xy, executed[0], real)
-    _draw_others(ax, site, others)
+    draw_others(ax, site, others)
     marker = KIND_MARKER[agent_kind(agent)]
     ax.plot(*executed.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
     ax.add_patch(Circle(executed[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.45, zorder=5))
@@ -231,7 +231,7 @@ def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np
     fig, ax, _ = bev_axes(False)
     draw_room(ax, site, agent, goal_xy)
     draw_reference(ax, goal_xy, real[0], real)
-    _draw_others(ax, site, others)
+    draw_others(ax, site, others)
     marker = KIND_MARKER[agent_kind(agent)]
     for path in samples:
         ax.plot(*path.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
