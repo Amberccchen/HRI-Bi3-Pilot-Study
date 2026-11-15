@@ -10,6 +10,9 @@ import numpy as np
 # The limit the model is told. For people, the 99th percentile of real per-step speed (0.4 s steps) over Bi3 goal-to-goal
 # moves of both sites, one cap shared by every person.
 SPEED_CAP_M_S = {"robot": 0.3, "human": 1.5}
+# Speed of the straight-line baseline. The robot's is its cap. A person's is the median real per-step speed (0.4 s steps,
+# raw mocap positions) over the same Bi3 goal-to-goal moves (t_leave to t_arrive, both sites pooled): 0.942 m/s.
+STRAIGHT_LINE_SPEED_M_S = {"robot": SPEED_CAP_M_S["robot"], "human": 0.94}
 # Arrival distance given to the model. For the robot about where Bi3 switches to the next goal. For a person, about where the
 # scatter of real standing positions around a station's goal point ends (90th percentile 0.30-0.36 m).
 ARRIVAL_RADIUS_M = {"robot": 0.5, "human": 0.4}

@@ -20,7 +20,7 @@ from functools import cached_property
 
 import numpy as np
 
-from traj_gen.agents import SPEED_CAP_M_S, agent_kind
+from traj_gen.agents import SPEED_CAP_M_S, STRAIGHT_LINE_SPEED_M_S, agent_kind
 from traj_gen.bev import bev_transform, render_bev
 from traj_gen.camera import camera_frame
 from traj_gen.client import Chat, QwenClient
@@ -150,10 +150,10 @@ class StepVelocityPlanner(VelocityPlanner):
 
 
 class StraightPlanner(Planner):
-    """Baseline: straight line to the goal at the speed cap."""
+    """Baseline: straight line to the goal at the planned agent's STRAIGHT_LINE_SPEED_M_S."""
 
     def positions(self, value, scene):
-        return retime(scene.track[-1], scene.goal_xy[None], self.step_m)[0], None
+        return retime(scene.track[-1], scene.goal_xy[None], STRAIGHT_LINE_SPEED_M_S[self.kind] * DT)[0], None
 
 
 class ReplayPlanner(Planner):
