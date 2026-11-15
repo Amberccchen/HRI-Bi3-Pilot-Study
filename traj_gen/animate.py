@@ -5,7 +5,7 @@
   dashed ghost disk, and the plan it is currently following (rolling episodes replan) is a thin line.
   The frame title gives the time and the current clearance to the nearest other agent.
 - animation.gif of a condition folder: the samples of one condition on one trip, drawn as in the overlay figures (purple VLM-controlled
-  paths told apart by line style and an s<k> label, logged agents blue and orange, square robot and triangle person), one frame per time
+  paths all drawn the same way, logged agents blue and orange, square robot and triangle person), one frame per time
   step. A sample that has ended holds its final position while the others continue.
 - timeline.png: the whole episode on one map with colour = time (same colour scale for every agent),
   so a crossing point shows whether both were there at the same moment.
@@ -34,7 +34,6 @@ from traj_gen.scene import DT, person_name
 
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
-SAMPLE_LINESTYLES = ["-", "--", ":"]  # samples told apart by line style (and the s<k> label), cycling past three
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
 
 
@@ -120,10 +119,9 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
         for ep in eps:
             head = min(k, len(ep["t"]) - 1)  # a finished sample holds its final position
             path = ep["track"][: head + 1]
-            ax.plot(*path.T, ls=SAMPLE_LINESTYLES[ep["manifest"]["sample"] % len(SAMPLE_LINESTYLES)], marker=KIND_MARKER[kind], color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+            ax.plot(*path.T, marker=KIND_MARKER[kind], color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
             ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.35, zorder=5))
             ax.plot(*path[-1], marker=KIND_MARKER[kind], color=VLM_COLOUR, mec="k", ms=7, zorder=6)
-            ax.text(*path[-1] + [0.05, 0.12], f"s{ep['manifest']['sample']}", fontsize=LABEL_PX * 0.7, color=VLM_COLOUR, zorder=7)
         m = longest["manifest"]
         ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{m['experiment']} {m['framing']} {m['thinking']}\n{m['trip']}\nt = {k * DT:.1f} s",
                 ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
