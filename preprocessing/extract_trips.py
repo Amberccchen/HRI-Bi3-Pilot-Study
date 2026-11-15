@@ -32,11 +32,11 @@ from pathlib import Path
 import numpy as np
 
 from metrics.bi3_metrics import bi3_metrics
-from preprocessing.bi3_derived import (DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, TRIPS_DIR, load_frames, load_stations, load_video_sync,
+from preprocessing.bi3_derived import (DERIVED, SITES, TRIP_HISTORY_S, TRIP_HZ, load_frames, load_stations, load_video_sync,
                                        moving_average, write_manifest)
 
 
-OUT = DERIVED / TRIPS_DIR
+OUT = DERIVED / "trips"
 # Bi3's own train/val/test split by trial (fluentrobotics/Bi3 create_data_npys.py).
 TEST_TRIALS = {"laas": ["laas18", "laas19", "laas20"], "um": ["um16", "um17"]}
 # um13, not a UM test trial: um16/um17 have no overhead video, and the camera-input experiments need one.

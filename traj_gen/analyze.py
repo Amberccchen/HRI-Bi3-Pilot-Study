@@ -127,7 +127,7 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# experiment pairs (A, B) compared per comparison, the difference reported is A - B; the conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev
+# Experiment pairs (A, B) per comparison, the difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev.
 EXPERIMENT_COMPARISONS = {
     "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
     "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
@@ -137,9 +137,8 @@ EXPERIMENT_COMPARISONS = {
     "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
     "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
 }
-named = {e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs for e in pair} | set(OVERLAY)
-if not named <= set(EXPERIMENTS):
-    raise ValueError(f"experiment ids not in the registry: {sorted(named - set(EXPERIMENTS))}")
+if unknown := ({e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs for e in pair} | set(OVERLAY)) - set(EXPERIMENTS):
+    raise ValueError(f"experiment ids not in the registry: {sorted(unknown)}")
 
 
 def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:

@@ -56,8 +56,9 @@ def station_metrics(robot: np.ndarray, stations: np.ndarray) -> dict:
             "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
 
 
-# The robot has two radii. The prompt radius is the footprint's circumscribed disk. It is conservative on purpose, so planned
-# paths keep a margin from people. The body radius is the inscribed disk, the realistic body that scoring uses.
+# The robot has two radii. The prompts and maps use the footprint's circumscribed disk (robot_prompt_radius), which is larger
+# than the robot on purpose, so that planned paths keep a margin from people. Scoring uses the inscribed disk (robot_body_radius),
+# the realistic body.
 def robot_body_radius(footprint_m: list[float]) -> float:
     """Radius of the disk the robot's rectangular footprint (site_frames.json) contains: half the shorter side."""
     return min(footprint_m) / 2

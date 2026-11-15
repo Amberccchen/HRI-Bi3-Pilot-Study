@@ -30,7 +30,6 @@ DERIVED = Path(os.environ.get("BI3_DERIVED", "/persistent/data/Bi3_derived"))
 SITES = ("laas", "um")
 SYNC_FILE = "video_sync.csv"
 GOALS_DIR = "goals"
-TRIPS_DIR = "trips"
 TRIP_HZ = 2.5           # sample rate of the extracted trips
 TRIP_HISTORY_S = 3.0    # history kept before each trip starts
 FRAME_TYPES = {"step": int, "time": float, "x": float, "y": float, "theta": float}

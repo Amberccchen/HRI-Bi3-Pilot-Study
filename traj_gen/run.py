@@ -68,10 +68,10 @@ def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
     return chosen
 
 
-def load_run(run: Path, trip_list: Path) -> tuple[dict, dict, dict]:
-    """(config, trips by id, site frames) of a run folder: the run.json, and the trips and sites folder it names.
+def load_run(run: Path, trip_list: Path) -> tuple[list[dict], dict, dict]:
+    """(trip list, trips by id, site frames) of a run folder: the trip list read from trip_list, and the trips and sites of the folder run.json names.
 
-    trip_list is the JSON list of trips the caller uses. Raises ValueError when the code is at another commit than the run was started at,
+    Raises ValueError when the code is at another commit than the run was started at,
     or when a listed trip is missing, is not sampled at DT, or starts before the history the prompt reads.
     """
     config = json.loads((run / RUN_CONFIG).read_text())
@@ -80,7 +80,8 @@ def load_run(run: Path, trip_list: Path) -> tuple[dict, dict, dict]:
         raise ValueError(f"{run} was started at commit {config['git_commit']} but the code is at {commit}: start a new run folder")
     trips_dir = Path(config["trips_dir"])
     trips = {t["id"]: t for t in load_trips(trips_dir)}
-    for c in json.loads(trip_list.read_text()):
+    chosen = json.loads(trip_list.read_text())
+    for c in chosen:
         if c["id"] not in trips:
             raise ValueError(f"trip {c['id']} of {trip_list} is not in {trips_dir / 'trips.json'}")
         trip = trips[c["id"]]
@@ -89,7 +90,7 @@ def load_run(run: Path, trip_list: Path) -> tuple[dict, dict, dict]:
             raise ValueError(f"trip {trip['id']} is not sampled at {DT} s: steps from {steps.min()} to {steps.max()} s")
         if trip["start_index"] < PROMPT_HISTORY_STEPS:
             raise ValueError(f"trip {trip['id']} starts at index {trip['start_index']}, but the prompt reads {PROMPT_HISTORY_STEPS} steps of history")
-    return config, trips, load_site_frames(trips_dir)
+    return chosen, trips, load_site_frames(trips_dir)
 
 
 def select(args: argparse.Namespace) -> None:
@@ -110,9 +111,7 @@ def select(args: argparse.Namespace) -> None:
 def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
-    trip_list = args.trips or args.run / TEST_TRIPS
-    _, trips, sites = load_run(args.run, trip_list)
-    chosen = json.loads(trip_list.read_text())
+    chosen, trips, sites = load_run(args.run, args.trips or args.run / TEST_TRIPS)
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(args.framings, args.thinking, args.samples)]
