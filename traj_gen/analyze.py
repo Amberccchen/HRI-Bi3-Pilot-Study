@@ -140,13 +140,6 @@ def ci(values) -> tuple[float, float, float]:
     return float(v.mean()), *map(float, np.percentile(means, [2.5, 97.5]))
 
 
-def metric_class(metric: str, kind: str) -> str:
-    """The summary class of a metric for a planned-agent kind. Station crossings are invalid for a kind where they break a rule, and contact otherwise."""
-    if metric in ("station_crossing", "station_distance_min") and not STATION_CROSSING_INVALID[kind]:
-        return "contact"
-    return METRIC_CLASS[metric]
-
-
 def summary(df: pd.DataFrame) -> pd.DataFrame:
     def one(g: pd.DataFrame) -> pd.Series:
         calls = g.samples.sum()
@@ -154,7 +147,9 @@ def summary(df: pd.DataFrame) -> pd.DataFrame:
         by_class["invalid"] |= {c: g[c].mean() for c in ["invalid", *INVALID_PARTS]}  # NaN only where a part applies to no episode
         for c in RATES + MEANS:
             if c != "out_of_room" and not (c == "station_crossing" and g.invalid_station.notna().any()):  # reported as their invalid parts, over all episodes
-                by_class[metric_class(c, g.name[0])][c] = g[c].mean()  # g.name[0] is the group's kind
+                # Station crossings break a rule only for a kind with STATION_CROSSING_INVALID (g.name[0] is the group's kind), and are contact otherwise.
+                contact_only = c in ("station_crossing", "station_distance_min") and not STATION_CROSSING_INVALID[g.name[0]]
+                by_class["contact" if contact_only else METRIC_CLASS[c]][c] = g[c].mean()
         by_class["contact"] |= {"clearance_min_mean": g.clearance_min.mean(), "clearance_min_median": g.clearance_min.median()}
         return pd.Series({
             "n": len(g), **{s: (g.status == s).sum() for s in STATUSES}, **{k: v for cls in CLASS_ORDER for k, v in by_class[cls].items()},
