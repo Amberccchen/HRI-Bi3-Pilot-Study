@@ -127,7 +127,7 @@ def sensitivity(run: Path, sites: dict) -> None:
 
 
 def report(run: Path) -> None:
-    _, _, sites = load_run(run, run / TEST_TRIPS)
+    _, _, _, sites = load_run(run, run / TEST_TRIPS)
     by_cond = per_trip_means(scored(pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")))
     panels = [("(a) Perception ladder", LADDER), ("(b) Output type", OUTPUT_TYPES), ("(c) Replanning horizon", HORIZONS), ("(d) Prompt", PROMPTS)]
     for contact, first in CONTACT.items():  # the two ways to count contact, as separate figures to compare

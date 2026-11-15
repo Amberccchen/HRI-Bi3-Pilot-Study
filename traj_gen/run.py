@@ -68,16 +68,12 @@ def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
     return chosen
 
 
-def load_run(run: Path, trip_list: Path) -> tuple[list[dict], dict, dict]:
-    """(trip list, trips by id, site frames) of a run folder: the trip list read from trip_list, and the trips and sites of the folder run.json names.
+def load_run(run: Path, trip_list: Path) -> tuple[dict, list[dict], dict, dict]:
+    """(run.json, trip list, trips by id, site frames) of a run folder: the trip list read from trip_list, and the trips and sites of the folder run.json names.
 
-    Raises ValueError when the code is at another commit than the run was started at,
-    or when a listed trip is missing, is not sampled at DT, or starts before the history the prompt reads.
+    Raises ValueError when a listed trip is missing, is not sampled at DT, or starts before the history the prompt reads.
     """
     config = json.loads((run / RUN_CONFIG).read_text())
-    commit = provenance()["git_commit"]
-    if commit != config["git_commit"]:
-        raise ValueError(f"{run} was started at commit {config['git_commit']} but the code is at {commit}: start a new run folder")
     trips_dir = Path(config["trips_dir"])
     trips = {t["id"]: t for t in load_trips(trips_dir)}
     chosen = json.loads(trip_list.read_text())
@@ -90,7 +86,7 @@ def load_run(run: Path, trip_list: Path) -> tuple[list[dict], dict, dict]:
             raise ValueError(f"trip {trip['id']} is not sampled at {DT} s: steps from {steps.min()} to {steps.max()} s")
         if trip["start_index"] < PROMPT_HISTORY_STEPS:
             raise ValueError(f"trip {trip['id']} starts at index {trip['start_index']}, but the prompt reads {PROMPT_HISTORY_STEPS} steps of history")
-    return chosen, trips, load_site_frames(trips_dir)
+    return config, chosen, trips, load_site_frames(trips_dir)
 
 
 def select(args: argparse.Namespace) -> None:
@@ -111,7 +107,12 @@ def select(args: argparse.Namespace) -> None:
 def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
-    chosen, trips, sites = load_run(args.run, args.trips or args.run / TEST_TRIPS)
+    config, chosen, trips, sites = load_run(args.run, args.trips or args.run / TEST_TRIPS)
+    code = provenance()
+    if code["git_dirty"]:
+        raise ValueError("the code has uncommitted changes, so its commit does not identify it: commit before running episodes")
+    if code["git_commit"] != config["git_commit"]:  # episodes of two code versions would mix in one run folder
+        raise ValueError(f"{args.run} was started at commit {config['git_commit']} but the code is at {code['git_commit']}: start a new run folder")
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(args.framings, args.thinking, args.samples)]
@@ -132,14 +133,14 @@ def run(args: argparse.Namespace) -> None:
 
 
 def analysis(args: argparse.Namespace) -> None:
-    _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
+    _, _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
     analyze(args.run, args.overlay, trips, sites)
 
 
 def animate_episodes(args: argparse.Namespace) -> None:
     if args.speed <= 0:
         raise ValueError(f"--speed must be positive, got {args.speed}")
-    _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
+    _, _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
     for folder in args.episodes:
         if not folder.resolve().is_relative_to(args.run.resolve()):
             raise ValueError(f"episode {folder} is not inside the run folder {args.run}")
