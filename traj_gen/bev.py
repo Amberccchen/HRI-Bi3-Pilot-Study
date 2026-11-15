@@ -15,7 +15,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle, Rectangle
 
-from metrics.traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, STATION_BOX_M
+from metrics.traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, STATION_BOX_M, robot_prompt_radius
 from preprocessing.bi3_derived import label_members
 from traj_gen.scene import DT, Scene, person_name
 
@@ -127,7 +127,7 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
     fig, ax, transform = bev_axes(pixel_ticks)
     draw_room(ax, scene.site, scene.goal_xy)
     _trail(ax, scene.robot_history, scene.robot[-1], ROBOT)
-    ax.add_patch(Circle(scene.robot[-1], scene.site["robot_radius_m"], fc=ROBOT, ec="k", alpha=0.45, zorder=5))
+    ax.add_patch(Circle(scene.robot[-1], robot_prompt_radius(scene.site["footprint_m"]), fc=ROBOT, ec="k", alpha=0.45, zorder=5))
     ax.plot(*scene.robot[-1], marker="+", color="k", ms=10, zorder=6)
     for p in scene.people:
         _trail(ax, p["history"], p["xy"], PERSON)
@@ -170,7 +170,7 @@ def render_result(site: dict, goal_xy: np.ndarray, executed: np.ndarray, real: n
     _draw_reference(ax, goal_xy, executed[0], real)
     _draw_people(ax, humans)
     ax.plot(*executed.T, "-o", color=ROBOT, lw=3, ms=4, zorder=4, label="executed")
-    ax.add_patch(Circle(executed[-1], site["robot_radius_m"], fc=ROBOT, ec="k", alpha=0.45, zorder=5))
+    ax.add_patch(Circle(executed[-1], robot_prompt_radius(site["footprint_m"]), fc=ROBOT, ec="k", alpha=0.45, zorder=5))
     ax.plot(*executed[0], marker="s", color="k", ms=8, zorder=6)
     for k in range(0, len(executed), round(LABEL_EVERY_S / DT)):
         ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=ROBOT, zorder=7)
@@ -187,7 +187,7 @@ def render_overlay(site: dict, goal_xy: np.ndarray, samples: list[np.ndarray], r
     _draw_people(ax, humans)
     for path in samples:
         ax.plot(*path.T, "-o", color=ROBOT, lw=2.5, ms=3, alpha=0.7, zorder=4)
-        ax.add_patch(Circle(path[-1], site["robot_radius_m"], fc=ROBOT, ec="k", alpha=0.15, zorder=5))
+        ax.add_patch(Circle(path[-1], robot_prompt_radius(site["footprint_m"]), fc=ROBOT, ec="k", alpha=0.15, zorder=5))
     ax.plot(*real[0], marker="s", color="k", ms=8, zorder=6)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     return figure_png(fig)

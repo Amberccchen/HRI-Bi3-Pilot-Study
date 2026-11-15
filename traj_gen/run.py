@@ -1,10 +1,9 @@
 """Command line for the Bi3 VLM trajectory generation experiments (design: PLAN.md).
-Run from the repository root: python -m traj_gen.run [--run <run folder>] <command> ...
+Run from the repository root: python -m traj_gen.run --run <run folder> <command> ...
 
-  select   choose the 16 test trips and write <run>/test_trips.json
+  select   choose the 16 test trips from --trips-dir and write <run>/test_trips.json and <run>/run.json
   run      run experiments (resumable; one folder per episode, see episodes.py)
   analyze  tables and figures of a (partial) run into <run>/analysis (see analyze.py)
-  rescore  add metrics introduced after a run (station crossing) to its finished manifests
   animate  animation.gif and timeline.png (colour = time) in given episode folders (see animate.py)
 
 Run folders live outside the repository (they hold mocap-derived outputs):
@@ -21,18 +20,17 @@ from pathlib import Path
 
 import numpy as np
 
-from metrics.traj_gen_metrics import clearance_metrics, other_stations, station_metrics
-from preprocessing.bi3_derived import SITES, load_site_frames, load_trips
+from preprocessing.bi3_derived import SITES, load_site_frames, load_trips, provenance
 from traj_gen.analyze import OVERLAY, analyze
 from traj_gen.animate import animate, load_episode, timeline
-from traj_gen.episodes import TEST_TRIPS, load_trajectory
+from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
 from traj_gen.experiments import EXPERIMENTS
 from traj_gen.planners import THINKING
 from traj_gen.prompting import FRAMINGS
-from traj_gen.report_figures import report
+from traj_gen.scene import DT, PROMPT_HISTORY_STEPS
 
 
-RUN = Path("/persistent/experiments/HRI/bi3_traj_gen/20261022_v1")
+STEP_TOLERANCE_S = 2e-3  # trip times are stored to 1 ms
 N_CLOSE = 5          # per site: smallest real min_distance among short trips (where social behaviour shows)
 N_TERCILES = 3       # per site: one trip from each duration tercile of the rest (easy, medium, long/robot-waiting)
 MAX_SHORT_S = 25.0   # "short" for the close-encounter stratum; longer trips are mostly the robot waiting
@@ -70,21 +68,51 @@ def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
     return chosen
 
 
+def load_run(run: Path, trip_list: Path) -> tuple[dict, dict, dict]:
+    """(config, trips by id, site frames) of a run folder: the run.json, and the trips and sites folder it names.
+
+    trip_list is the JSON list of trips the caller uses. Raises ValueError when the code is at another commit than the run was started at,
+    or when a listed trip is missing, is not sampled at DT, or starts before the history the prompt reads.
+    """
+    config = json.loads((run / RUN_CONFIG).read_text())
+    commit = provenance()["git_commit"]
+    if commit != config["git_commit"]:
+        raise ValueError(f"{run} was started at commit {config['git_commit']} but the code is at {commit}: start a new run folder")
+    trips_dir = Path(config["trips_dir"])
+    trips = {t["id"]: t for t in load_trips(trips_dir)}
+    for c in json.loads(trip_list.read_text()):
+        if c["id"] not in trips:
+            raise ValueError(f"trip {c['id']} of {trip_list} is not in {trips_dir / 'trips.json'}")
+        trip = trips[c["id"]]
+        steps = np.diff(trip["time"])
+        if np.abs(steps - DT).max() > STEP_TOLERANCE_S:
+            raise ValueError(f"trip {trip['id']} is not sampled at {DT} s: steps from {steps.min()} to {steps.max()} s")
+        if trip["start_index"] < PROMPT_HISTORY_STEPS:
+            raise ValueError(f"trip {trip['id']} starts at index {trip['start_index']}, but the prompt reads {PROMPT_HISTORY_STEPS} steps of history")
+    return config, trips, load_site_frames(trips_dir)
+
+
 def select(args: argparse.Namespace) -> None:
+    for name in (TEST_TRIPS, RUN_CONFIG):
+        if (args.run / name).exists():
+            raise ValueError(f"{args.run / name} exists: select into a new run folder")
     rng = np.random.default_rng(SEED)
-    by_id = {t["id"]: t for t in load_trips()}
+    by_id = {t["id"]: t for t in load_trips(args.trips_dir)}
     chosen = [c for site in SITES for c in select_trips([t for t in by_id.values() if t["site"] == site], rng)]
     args.run.mkdir(parents=True, exist_ok=True)
     (args.run / TEST_TRIPS).write_text(json.dumps(chosen, indent=2) + "\n")
+    (args.run / RUN_CONFIG).write_text(json.dumps({"trips_dir": str(args.trips_dir), "git_commit": provenance()["git_commit"]}, indent=2) + "\n")
     for c in chosen:
         t = by_id[c["id"]]
         print(f"{c['id']:32s} {c['stratum']:20s} {t['duration_s']:6.1f} s  min_distance {t['real_metrics']['min_distance']:.2f} m")
 
 
 def run(args: argparse.Namespace) -> None:
-    trips = {t["id"]: t for t in load_trips()}
-    sites = load_site_frames()
-    chosen = json.loads((args.trips or args.run / TEST_TRIPS).read_text())
+    if args.samples < 1 or args.concurrency < 1:
+        raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
+    trip_list = args.trips or args.run / TEST_TRIPS
+    _, trips, sites = load_run(args.run, trip_list)
+    chosen = json.loads(trip_list.read_text())
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(args.framings, args.thinking, args.samples)]
@@ -96,7 +124,7 @@ def run(args: argparse.Namespace) -> None:
     try:
         for n, future in enumerate(as_completed(futures), 1):
             ep = futures[future]
-            future.result()  # go() catches the episode's own exceptions; anything raised here is a bug in saving
+            future.result()  # go() catches server and transport errors; anything raised here is a bug and stops the run
             print(f"[{n}/{len(todo)} {time.perf_counter() - t0:.0f}s] {ep.exp.id} {ep.framing} {ep.thinking} {ep.trip['id']} s{ep.sample}: {ep.status}", flush=True)
     except KeyboardInterrupt:
         pool.shutdown(wait=False, cancel_futures=True)
@@ -105,37 +133,28 @@ def run(args: argparse.Namespace) -> None:
 
 
 def analysis(args: argparse.Namespace) -> None:
-    analyze(args.run, args.overlay)
-
-
-def rescore(args: argparse.Namespace) -> None:
-    """Recompute the station and clearance metrics of every finished manifest of the run from its trajectory.csv (other metrics untouched)."""
-    sites, trips = load_site_frames(), {t["id"]: t for t in load_trips()}
-    paths = [p for e in EXPERIMENTS for p in (args.run / e).rglob("manifest.json")]
-    for path in paths:
-        manifest = json.loads(path.read_text())
-        if manifest["metrics"] is None:
-            continue
-        trip = trips[manifest["trip"]]
-        _, robot, humans = load_trajectory(path.parent)
-        for old in ("footprint_overlap", "contact"):  # metrics of earlier definitions
-            manifest["metrics"].pop(old, None)
-        manifest["metrics"] |= station_metrics(robot, other_stations(sites[trip["site"]], trip["robot_goal"])) | clearance_metrics(robot, humans, sites[trip["site"]]["footprint_m"])
-        path.write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"rescored {len(paths)} manifests in {args.run}")
+    _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
+    analyze(args.run, args.overlay, trips, sites)
 
 
 def animate_episodes(args: argparse.Namespace) -> None:
+    if args.speed <= 0:
+        raise ValueError(f"--speed must be positive, got {args.speed}")
+    _, trips, sites = load_run(args.run, args.run / TEST_TRIPS)
     for folder in args.episodes:
-        ep = load_episode(folder)
+        if not folder.resolve().is_relative_to(args.run.resolve()):
+            raise ValueError(f"episode {folder} is not inside the run folder {args.run}")
+        ep = load_episode(folder, trips, sites)
         print(animate(folder, ep, args.speed), timeline(folder, ep))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--run", type=Path, default=RUN, help="run folder")
+    parser.add_argument("--run", type=Path, required=True, help="run folder")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("select", help="write test_trips.json").set_defaults(func=select)
+    p = sub.add_parser("select", help=f"write {TEST_TRIPS} and {RUN_CONFIG}")
+    p.add_argument("--trips-dir", type=Path, required=True, help="folder with trips.json and site_frames.json (written by preprocessing.extract_trips)")
+    p.set_defaults(func=select)
     p = sub.add_parser("run", help="run experiments")
     p.add_argument("--experiments", nargs="+", choices=list(EXPERIMENTS), default=list(EXPERIMENTS), help="experiment ids (default: all)")
     p.add_argument("--framings", nargs="+", choices=FRAMINGS, default=list(FRAMINGS))
@@ -147,8 +166,6 @@ def main() -> None:
     p = sub.add_parser("analyze", help="summary tables and figures")
     p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
-    sub.add_parser("report", help="figure panels for the write-up into <run>/report").set_defaults(func=lambda args: report(args.run))
-    sub.add_parser("rescore", help="add station-crossing metrics to finished manifests").set_defaults(func=rescore)
     p = sub.add_parser("animate", help="animation.gif and timeline.png for finished episodes")
     p.add_argument("episodes", nargs="+", type=Path, help="episode folders (each with a manifest.json)")
     p.add_argument("--speed", type=float, default=2.0, help="playback speed vs real time (2: a 12 s trip plays in 6 s)")

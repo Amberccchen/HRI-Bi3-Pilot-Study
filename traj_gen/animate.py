@@ -22,8 +22,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Circle
 from PIL import Image
 
-from metrics.traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, clearance_gap, inscribed_radius
-from preprocessing.bi3_derived import load_site_frames, load_trips
+from metrics.traj_gen_metrics import BODY_RADIUS, PERSONAL_SPACE_RADIUS, clearance_gap, robot_body_radius
 from traj_gen.bev import EXTENT_M, LABEL_PX, PERSON, PERSON_LABEL, REAL_PATH, ROBOT, bev_axes, draw_room, figure_png
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
@@ -33,12 +32,12 @@ GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-fra
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
 
 
-def load_episode(folder: Path) -> dict:
-    """Everything a time view needs from an episode folder and its trip. humans is a list of (T, 2) tracks, gap the (T,) robot-person clearance gap."""
+def load_episode(folder: Path, trips: dict, sites: dict) -> dict:
+    """Everything a time view needs from an episode folder and its trip (trips and sites as returned by run.load_run). humans is a list of (T, 2) tracks, gap the (T,) robot-person clearance gap."""
     manifest = json.loads((folder / "manifest.json").read_text())
-    trip = load_trips(id=manifest["trip"])[0]
+    trip = trips[manifest["trip"]]
     t, robot, humans = load_trajectory(folder)
-    site = load_site_frames()[trip["site"]]
+    site = sites[trip["site"]]
     plans = [json.loads(line) for line in (folder / "plans.jsonl").read_text().splitlines()]
     return {"manifest": manifest, "site": site, "goal": np.asarray(trip["robot_goal_xy"], float), "t": t, "robot": robot,
             "humans": list(humans.transpose(1, 0, 2)), "gap": clearance_gap(robot, humans, site["footprint_m"]),
@@ -52,7 +51,7 @@ def _title(ep: dict) -> str:
 
 def _frame(ep: dict, k: int) -> bytes:
     fig, ax, _ = bev_axes(False)
-    site, radius = ep["site"], inscribed_radius(ep["site"]["footprint_m"])  # the disks the metrics use
+    site, radius = ep["site"], robot_body_radius(ep["site"]["footprint_m"])  # the disks the metrics use
     draw_room(ax, site, ep["goal"])
     ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.5, zorder=3)
     if k < len(ep["real"]):

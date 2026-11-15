@@ -11,10 +11,11 @@ the human replay (the last index of the trip arrays).
 - BaselineEpisode: single shot without a model (straight, replay), one folder per trip.
 
 Status: ok, invalid (single shot: unusable reply), failed (rolling: unusable reply after one
-retry), error (exception; traceback saved). The files written per episode are listed in PLAN.md
+retry), error (server or transport error; traceback saved). The files written per episode are listed in PLAN.md
 (Saved results); manifest.json comes last, so a folder with a manifest is a finished episode.
 """
 
+import http.client
 import itertools
 import json
 import time
@@ -31,8 +32,9 @@ from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_M
 from traj_gen.prompting import Turn
 from traj_gen.scene import DT, Scene, load_prompt
 
-# Layout of a run folder: the trip list, then <experiment>/... episode folders, and the outputs of analyze and report.
+# Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
 TEST_TRIPS = "test_trips.json"
+RUN_CONFIG = "run.json"
 ANALYSIS_DIR = "analysis"
 REPORT_DIR = "report"
 
@@ -136,11 +138,11 @@ class Episode:
         raise NotImplementedError
 
     def go(self) -> None:
-        """Run and save; an exception becomes status error instead of stopping the whole run."""
+        """Run and save; a server or transport error becomes status error instead of stopping the whole run."""
         t0 = time.perf_counter()
         try:
             self.run()
-        except Exception:
+        except (OSError, http.client.HTTPException):
             self.status, self.error = "error", traceback.format_exc()
         self.save(time.perf_counter() - t0)
 

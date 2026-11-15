@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 
 from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
 from traj_gen.planners import PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.scene import DT
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,14 @@ class Experiment:
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
+
+    def __post_init__(self):
+        if issubclass(self.episode, (RollingEpisode, ConversationEpisode)):
+            steps = round(self.execute_s / DT)
+            if steps < 1 or abs(steps * DT - self.execute_s) >= 1e-9:
+                raise ValueError(f"{self.id}: execute_s {self.execute_s} is not a positive whole number of {DT} s steps")
+        elif self.execute_s is not None:
+            raise ValueError(f"{self.id}: execute_s is only for rolling and conversation episodes, got {self.execute_s}")
 
     @property
     def predict(self) -> bool:

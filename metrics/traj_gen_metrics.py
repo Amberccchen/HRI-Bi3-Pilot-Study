@@ -6,10 +6,10 @@ person, does it intrude on their personal space, does it reach its goal, does it
 the room. The robot is a disk of its footprint's inscribed radius (half the shorter side;
 the planner's heading is unknown, so the corners are not modelled) and a person is a disk, so:
 
-- clearance: centre distance - robot radius - BODY_RADIUS, minimised over time and people;
-  negative means the bodies touch (contact). BODY_RADIUS is the largest round value for which no real
-  controller trip collides (closest real centre distance 0.47 m LAAS, 0.36 m UM), so real
-  controllers having clearance >= 0 is an assumption of the metric, not a finding. Contact is
+- clearance: centre distance - robot body radius - BODY_RADIUS, minimised over time and people;
+  negative means the bodies touch (contact). BODY_RADIUS is 0.15 m. At this radius one real
+  controller contact is measured, in trip laas_laas18_static_02 (clearance -0.011 m). It is unlikely
+  to be a real collision, because both bodies are modelled as circles. Contact is
   also reported as the share of the episode's time steps in contact (contact_time) and as the number
   of separate contacts, a run of consecutive steps counting once (contact_events; steps are 0.4 s apart,
   so a touch between two samples is missed).
@@ -36,7 +36,7 @@ size come from site_frames.json.
 import numpy as np
 
 
-BODY_RADIUS = 0.15            # largest round value with no collision in the real controller trips; mocap tracks only give the body centre
+BODY_RADIUS = 0.15            # person body radius (m); mocap tracks only give the body centre
 PERSONAL_SPACE_RADIUS = 0.25  # typical shoulder half-width, the person's size in the prompts and maps; a 0.10 m buffer beyond BODY_RADIUS
 GOAL_TOL = 0.5       # arrival distance given to the model; Bi3 switches to the next goal at about this
 GOAL_SLACK = 0.1     # smoothing/mocap offset: real paths end up to 0.60 m from the goal at the switch
@@ -56,14 +56,21 @@ def station_metrics(robot: np.ndarray, stations: np.ndarray) -> dict:
             "station_distance_min": float(np.linalg.norm(offset, axis=-1).min())}
 
 
-def inscribed_radius(footprint_m: list[float]) -> float:
-    """Radius of the disk the robot's rectangular footprint (site_frames.json) contains."""
+# The robot has two radii. The prompt radius is the footprint's circumscribed disk. It is conservative on purpose, so planned
+# paths keep a margin from people. The body radius is the inscribed disk, the realistic body that scoring uses.
+def robot_body_radius(footprint_m: list[float]) -> float:
+    """Radius of the disk the robot's rectangular footprint (site_frames.json) contains: half the shorter side."""
     return min(footprint_m) / 2
+
+
+def robot_prompt_radius(footprint_m: list[float]) -> float:
+    """Radius of the disk that contains the robot's rectangular footprint (site_frames.json), in metres rounded to the millimetre."""
+    return round(float(np.hypot(*footprint_m) / 2), 3)
 
 
 def clearance_gap(robot: np.ndarray, humans: np.ndarray, footprint_m: list[float]) -> np.ndarray:
     """(T,) distance from the robot's disk to the nearest person's centre."""
-    return np.linalg.norm(np.asarray(humans, float) - np.asarray(robot, float)[:, None, :], axis=-1).min(axis=1) - inscribed_radius(footprint_m)
+    return np.linalg.norm(np.asarray(humans, float) - np.asarray(robot, float)[:, None, :], axis=-1).min(axis=1) - robot_body_radius(footprint_m)
 
 
 def clearance_metrics(robot: np.ndarray, humans: np.ndarray, footprint_m: list[float], personal_space_radius: float = PERSONAL_SPACE_RADIUS) -> dict:

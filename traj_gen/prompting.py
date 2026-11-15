@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from metrics.traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, SPEED_CAP
+from metrics.traj_gen_metrics import GOAL_TOL, PERSONAL_SPACE_RADIUS, SPEED_CAP, robot_prompt_radius
 from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt
 
@@ -45,7 +45,7 @@ class PromptBuilder:
         frame = load_prompt(f"frame_{u.name}").format(image_px=SIZE_PX, **u.bounds(site["room_m"]))
         return load_prompt("system").format(
             room_side=u.len_text(site["room_m"]), unit=u.name, frame=frame, stations=scene.stations_text(u),
-            robot_radius=u.len_text(site["robot_radius_m"]), speed_cap=u.len_text(SPEED_CAP), dt=DT,
+            robot_radius=u.len_text(robot_prompt_radius(site["footprint_m"])), speed_cap=u.len_text(SPEED_CAP), dt=DT,
             goal_tol=u.len_text(GOAL_TOL))
 
     def captions(self, scene: Scene, kinds: tuple[str, ...]) -> str:
@@ -64,7 +64,7 @@ class PromptBuilder:
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
-        u, r = self.mode.units, scene.site["robot_radius_m"]
+        u, r = self.mode.units, robot_prompt_radius(scene.site["footprint_m"])
         task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSONAL_SPACE_RADIUS), min_centre=u.len_text(r + PERSONAL_SPACE_RADIUS), unit=u.name)
         parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))

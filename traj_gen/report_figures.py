@@ -1,3 +1,4 @@
+# coding-standard: noqa (write-up figures of the v1 run, not part of the pipeline)
 """Figures for the write-up, one function per panel. Each panel answers one question and fixes the other factors; what was and was not
 run (the grid is not dense) belongs in the caption, so the figure only shows the compared conditions.
 
@@ -10,6 +11,7 @@ filled = on); the solid line is the straight line and the dashed line the real c
 Goal reached and speed are not drawn: thinking or replanning fixes them, so they go in the text and the speed table.
 """
 
+import argparse
 from pathlib import Path
 
 import pandas as pd
@@ -17,10 +19,10 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from metrics.traj_gen_metrics import clearance_metrics
-from preprocessing.bi3_derived import load_site_frames
 from traj_gen.analyze import INK, ci, per_trip_means, scored, style
-from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, load_trajectory
+from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
 from traj_gen.experiments import BASELINES
+from traj_gen.run import load_run
 
 STRAIGHT, REPLAY = "straight", "replay"  # experiment ids of the baselines
 MODEL_COLOUR = "#2a78d6"   # validated categorical slot 1: one hue, since the panels compare conditions of one model
@@ -106,11 +108,10 @@ def stacked(by_cond: dict, panels: list[tuple[str, list]], metrics: list, path: 
 SENSITIVITY_RADII = (0.15, 0.20, 0.25)  # person radius for personal-space overlap: 0.15 is contact, 0.25 the one used, 0.20 the in-between
 
 
-def sensitivity(run: Path) -> None:
+def sensitivity(run: Path, sites: dict) -> None:
     """Personal-space overlap (% of episode time, mean over trips) at other person radii, for the baselines and the pooled model episodes."""
     episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
     episodes = episodes[episodes.status == "ok"]
-    sites = load_site_frames()
     groups = {"straight line": episodes.experiment == STRAIGHT, "real controllers": episodes.experiment == REPLAY,
               **{f"Qwen, {label}": ~episodes.experiment.isin(BASELINES) & (episodes.thinking == th) for th, label, _ in THINKING}}
     rows = []
@@ -126,9 +127,20 @@ def sensitivity(run: Path) -> None:
 
 
 def report(run: Path) -> None:
+    _, _, sites = load_run(run, run / TEST_TRIPS)
     by_cond = per_trip_means(scored(pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")))
     panels = [("(a) Perception ladder", LADDER), ("(b) Output type", OUTPUT_TYPES), ("(c) Replanning horizon", HORIZONS), ("(d) Prompt", PROMPTS)]
     for contact, first in CONTACT.items():  # the two ways to count contact, as separate figures to compare
         stacked(by_cond, [(title, rows) for title, rows in panels], [first, *OTHER_METRICS], run / REPORT_DIR / f"figure_ladder_output_horizon_prompt_contact_{contact}.png")
-    sensitivity(run)
+    sensitivity(run, sites)
     print(f"-> {run / REPORT_DIR}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Write the write-up figures of a run into <run>/report (needs <run>/analysis/episodes.csv from the analyze command).")
+    parser.add_argument("--run", type=Path, required=True, help="run folder")
+    report(parser.parse_args().run)
+
+
+if __name__ == "__main__":
+    main()

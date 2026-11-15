@@ -29,7 +29,7 @@ from matplotlib.image import imread
 from matplotlib.lines import Line2D
 
 from metrics.traj_gen_metrics import SPEED_CAP
-from preprocessing.bi3_derived import SITES, load_site_frames, load_trips
+from preprocessing.bi3_derived import SITES
 from traj_gen.bev import GOAL, PERSON, REAL_PATH, ROBOT, render_overlay
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
@@ -127,20 +127,25 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# experiment pairs (A, B) compared per comparison, the difference reported is A - B; the conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev
+EXPERIMENT_COMPARISONS = {
+    "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
+    "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
+    "cam + bev - bev only (waypoints)": [("ss_wp_bev_cam", "ss_wp_bev"), ("rh_wp_bev_cam", "rh_wp_bev")],
+    "rolling - single shot (bev)": [("rh_wp_bev", "ss_wp_bev"), ("rh_px_bev", "ss_px_bev")],
+    "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
+    "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
+    "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
+}
+named = {e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs for e in pair} | set(OVERLAY)
+if not named <= set(EXPERIMENTS):
+    raise ValueError(f"experiment ids not in the registry: {sorted(named - set(EXPERIMENTS))}")
+
+
 def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
     """(comparison, scope, A condition, B condition); the difference reported is A - B. Scope = the factor the pairs are split by."""
     models = [e for e in EXPERIMENTS if e not in BASELINES]
-    # the conversation partner has the same images and output as rh_wp_bev_cam / rh_velseq_bev
-    by_experiment = {
-        "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
-        "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
-        "cam + bev - bev only (waypoints)": [("ss_wp_bev_cam", "ss_wp_bev"), ("rh_wp_bev_cam", "rh_wp_bev")],
-        "rolling - single shot (bev)": [("rh_wp_bev", "ss_wp_bev"), ("rh_px_bev", "ss_px_bev")],
-        "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
-        "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
-        "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
-        "prediction - none": [(e, EXPERIMENTS[e].base) for e in models if EXPERIMENTS[e].predict],
-    }
+    by_experiment = EXPERIMENT_COMPARISONS | {"prediction - none": [(e, EXPERIMENTS[e].base) for e in models if EXPERIMENTS[e].predict]}
     pairs = []
     for e in models:
         for th in THINKING:
@@ -235,9 +240,7 @@ def condition_figures(by_cond: dict, fig_dir: Path) -> None:
                  lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
-def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir: Path) -> None:
-    trips = {t["id"]: t for t in load_trips()}
-    sites = load_site_frames()
+def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
     legend = [Line2D([], [], color=REAL_PATH, ls="--", label="real path"), Line2D([], [], color=GOAL, ls=":", label="straight line"),
               Line2D([], [], color=PERSON, marker="o", ms=4, label="people"), Line2D([], [], color=ROBOT, marker="o", ms=4, label="model samples (disk = final robot position)")]
     for trip_id, d in df[df.experiment.isin(experiments)].groupby("trip"):
@@ -267,7 +270,8 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], fig_dir
         fig.savefig(fig_dir / f"trip_{trip_id}.png")
 
 
-def analyze(run: Path, overlay: list[str]) -> None:
+def analyze(run: Path, overlay: list[str], trips: dict, sites: dict) -> None:
+    """Write the tables and figures of the run's episodes into <run>/analysis; trips and sites as returned by run.load_run."""
     out = run / ANALYSIS_DIR
     (out / "figures").mkdir(parents=True, exist_ok=True)
     episodes = collect(run)
@@ -278,5 +282,5 @@ def analyze(run: Path, overlay: list[str]) -> None:
     paired_baselines(by_cond).to_csv(out / "paired_baselines.csv", index=False)
     comparisons(by_cond).to_csv(out / "comparisons.csv", index=False)
     condition_figures(by_cond, out / "figures")
-    overlay_figures(df, run, overlay, out / "figures")
+    overlay_figures(df, run, overlay, trips, sites, out / "figures")
     print(f"{len(episodes)} episodes, {len(by_cond)} conditions -> {out}")

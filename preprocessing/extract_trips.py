@@ -128,10 +128,9 @@ def site_frames() -> dict:
     out = {}
     for site in SITES:
         frame = SITE_FRAMES[site]
-        w, l = frame["footprint_m"]
         stations = {k: {"members": v["members"], "xy": to_room(site, v["xy"]).round(3).tolist()}
                     for k, v in load_stations(site).items()}
-        out[site] = {**frame, "robot_radius_m": round(float(np.hypot(w, l) / 2), 3), "stations": stations}
+        out[site] = {**frame, "stations": stations}
     return out
 
 

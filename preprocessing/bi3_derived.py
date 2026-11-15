@@ -124,12 +124,12 @@ def load_frames(site: str, trial: str, controller: str, agent: str) -> dict:
     return {key: np.array([r[key] for r in rows]) for key in rows[0]}
 
 
-def load_site_frames() -> dict:
-    """Room frame, robot footprint/radius and room-frame stations per site (from extract_trips.py)."""
-    return json.loads((DERIVED / TRIPS_DIR / "site_frames.json").read_text())
+def load_site_frames(trips_dir: Path) -> dict:
+    """Room frame, robot footprint and room-frame stations per site, from the trips folder written by extract_trips.py."""
+    return json.loads((trips_dir / "site_frames.json").read_text())
 
 
-def load_trips(**match) -> list[dict]:
-    """Robot trips from extract_trips.py, optionally filtered, e.g. load_trips(site="um", controller="cohan")."""
-    trips = json.loads((DERIVED / TRIPS_DIR / "trips.json").read_text())
+def load_trips(trips_dir: Path, **match) -> list[dict]:
+    """Robot trips from the trips folder written by extract_trips.py, optionally filtered, e.g. load_trips(trips_dir, site="um", controller="cohan")."""
+    trips = json.loads((trips_dir / "trips.json").read_text())
     return [t for t in trips if all(t[k] == v for k, v in match.items())]
