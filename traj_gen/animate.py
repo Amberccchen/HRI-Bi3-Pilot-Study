@@ -24,7 +24,7 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, PLANNED_COLOUR, REAL_PATH, bev_axes, draw_room, figure_png
+from traj_gen.bev import EXTENT_M, KIND_COLOUR, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_room, figure_png
 from traj_gen.episodes import load_trajectory, real_path
 from traj_gen.scene import DT, person_name
 
@@ -56,7 +56,7 @@ def _title(ep: dict) -> str:
 def _frame(ep: dict, k: int) -> bytes:
     fig, ax, _ = bev_axes(False)
     site, agent = ep["site"], ep["agent"]
-    radius, colour = body_radius(agent, site), PLANNED_COLOUR[agent_kind(agent)]  # the disks the metrics use
+    radius, colour = body_radius(agent, site), VLM_COLOUR  # the disks the metrics use
     draw_room(ax, site, agent, ep["goal"])
     ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.5, zorder=3)
     if k < len(ep["real"]):

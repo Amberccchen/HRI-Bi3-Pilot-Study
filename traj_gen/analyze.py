@@ -50,8 +50,8 @@ from matplotlib.lines import Line2D
 from metrics.human_similarity import feature_distances, trajectory_features
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES, label_members
-from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind, body_radius
-from traj_gen.bev import GOAL, KIND_COLOUR, PLANNED_COLOUR, REAL_PATH, render_overlay
+from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, STATION_CROSSING_INVALID, agent_kind
+from traj_gen.bev import render_overlay, trajectory_legend
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.experiments import BASELINES, EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -76,8 +76,6 @@ COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_ov
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
 OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
-REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
-OTHER_LABEL = {"robot": "robot", "human": "people"}  # legend name of the other agents of a kind
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
@@ -298,23 +296,20 @@ def condition_figures(by_cond: dict, kind: str, fig_dir: Path) -> None:
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
-    """trip_<id>.png per trip, drawn by render_overlay: one row per baseline (one panel), then one row per model experiment with a
-    column per model condition (thinking x framing), and a legend below that fits the figure width."""
-    for trip_id, d in df[df.experiment.isin(experiments)].groupby("trip"):
+    """trip_<id>.png per trip, drawn by render_overlay: one row per model experiment and a column per model condition (thinking x
+    framing), and a legend below that fits the figure width. Baselines get no panel: every panel draws the straight line and the real path."""
+    for trip_id, d in df[df.experiment.isin(experiments) & ~df.experiment.isin(BASELINES)].groupby("trip"):
         trip = trips[trip_id]
         site, agent = sites[trip["site"]], trip["agent"]
         kind, a, goal = agent_kind(agent), trip["start_index"], np.asarray(trip["goal_xy"], float)
         real = real_path(trip)
         shown = [e for e in experiments if e in set(d.experiment)]
-        baselines, models = [e for e in shown if e in BASELINES], [e for e in shown if e not in BASELINES]
-        model_rows = d[d.experiment.isin(models)]
-        cols = sorted({(r.thinking, r.framing) for r in model_rows.itertuples()}, key=lambda c: (THINKING.index(c[0]), list(FRAMINGS).index(c[1])))
-        panels = [(i, 0, d[d.experiment == e]) for i, e in enumerate(baselines)]
-        panels += [(len(baselines) + i, j, g) for i, e in enumerate(models) for j, (th, fr) in enumerate(cols)
-                   for g in [d[(d.experiment == e) & (d.thinking == th) & (d.framing == fr)]] if not g.empty]
-        width = OVERLAY_PANEL_IN * max(1, len(cols))
+        cols = sorted({(r.thinking, r.framing) for r in d.itertuples()}, key=lambda c: (THINKING.index(c[0]), list(FRAMINGS).index(c[1])))
+        panels = [(i, j, g) for i, e in enumerate(shown) for j, (th, fr) in enumerate(cols)
+                  for g in [d[(d.experiment == e) & (d.thinking == th) & (d.framing == fr)]] if not g.empty]
+        width = OVERLAY_PANEL_IN * len(cols)
         fig = Figure(figsize=(width, OVERLAY_PANEL_IN * len(shown) + 0.4), dpi=110)
-        axes = fig.subplots(len(shown), max(1, len(cols)), squeeze=False)
+        axes = fig.subplots(len(shown), len(cols), squeeze=False)
         for ax in axes.flat:
             ax.axis("off")
         for i, j, g in panels:
@@ -322,23 +317,9 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
             end = max(len(real), *map(len, paths))
             others = {o: np.asarray(track, float)[a: a + end, :2] for o, track in trip["tracks"].items() if o != agent}
             r = g.iloc[0]
-            title = f"{r.experiment}{'' if r.framing == '-' else f' {r.framing} {r.thinking}'}: {int((g.status == 'ok').sum())}/{len(g)} ok"
+            title = f"{r.experiment} {r.framing} {r.thinking}: {int((g.status == 'ok').sum())}/{len(g)} ok"
             axes[i, j].imshow(imread(io.BytesIO(render_overlay(site, agent, goal, paths, real, others, title)), format="png"))
-        radius = lambda value: f"{round(value, 2):g} m"
-        others = {}  # kind -> one of its agent ids, for the legend
-        for o in trip["tracks"]:
-            if o != agent:
-                others.setdefault(agent_kind(o), o)
-        most_samples = model_rows.groupby(COND).size().max() if len(model_rows) else 0
-        legend = [Line2D([], [], color=REAL_PATH, ls="--", label=REAL_PATH_LABEL[kind]), Line2D([], [], color=GOAL, ls=":", label="straight line"),
-                  Line2D([], [], color=GOAL, marker="*", ls="", ms=10, label="goal"),
-                  Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"goal arrival thresh ({radius(ARRIVAL_RADIUS_M[kind])})"),
-                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{OTHER_LABEL[k]} final pos with collision disk ({radius(body_radius(o, site))})")
-                    for k, o in others.items()],
-                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ms=4, label="VLM traj sample" if most_samples == 1 else "VLM traj samples"),
-                  Line2D([], [], color=PLANNED_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.35, mec="k",
-                         label=f"VLM traj final pos with collision disk ({radius(body_radius(agent, site))})"),
-                  Line2D([], [], color="k", marker="s", ls="", ms=7, label="start")]
+        legend = trajectory_legend(site, agent, [o for o in trip["tracks"] if o != agent], int(d.groupby(COND).size().max()))
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
         fig.tight_layout(rect=(0, 0, 1, 0.97))
         ncol = int(min(4, max(1, width // OVERLAY_LEGEND_COLUMN_IN)))

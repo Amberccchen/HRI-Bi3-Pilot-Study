@@ -13,6 +13,7 @@ from functools import lru_cache
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Rectangle
 
 from metrics.traj_gen_metrics import STATION_BOX_M
@@ -38,9 +39,15 @@ LABEL_PX = 20        # label font size, readable at 896 px
 LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
 ROBOT, PERSON, GOAL, GRID, WALL, BOX = "#1f77b4", "#e66101", "#2ca02c", "#d9d9d9", "#222222", "#b8b8b8"
 REAL_PATH, PERSON_LABEL, PLANNED_PERSON = "#555555", "#7a3300", "#7b3294"
-KIND_COLOUR = {"robot": ROBOT, "human": PERSON}  # colour of an agent of a kind, the planned person excepted
-PLANNED_COLOUR = {"robot": ROBOT, "human": PLANNED_PERSON}  # the planned agent, by kind: a planned person stands apart from the other person
-OTHERS_LEGEND = {"robot": {"human": "people"}, "human": {"robot": "robot", "human": "other person"}}  # [planned kind][other kind]: legend label of the others
+KIND_COLOUR = {"robot": ROBOT, "human": PERSON}  # colour of a logged agent of a kind
+PLANNED_COLOUR = {"robot": ROBOT, "human": PLANNED_PERSON}  # the planned agent on the model's map, by kind: a planned person stands apart from the other person
+# Result and overlay figures: the colour says who controls an agent (the VLM or the log), the marker shape what the agent is.
+VLM_COLOUR = PLANNED_PERSON
+KIND_MARKER = {"robot": "s", "human": "^"}
+KIND_NAME = {"robot": "robot", "human": "person"}
+OTHER_DISK_NAME = {"robot": "robot", "human": "people"}  # legend name of a logged agent's final-position disk
+START_MARKER = "X"
+REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
 STATION_POSITION = {"robot": "xy", "human": "human_xy"}  # station position drawn for the planned agent's kind: the robot's stopping point, where people stand
 
 
@@ -166,54 +173,75 @@ def bev_transform() -> BevTransform:
     return bev_axes(False)[2]
 
 
-def _draw_others(ax, site: dict, agent: str, others: dict[str, np.ndarray]) -> None:
-    """Whole-episode tracks of the agents other than the planned one ({agent id: (T, 2)}): trail, final disk at the scoring radius, and a P<k> label at a person's start."""
-    labelled = set()
+def _draw_others(ax, site: dict, others: dict[str, np.ndarray]) -> None:
+    """Whole-episode tracks of the logged agents ({agent id: (T, 2)}): trail with the kind's marker, final disk at the scoring radius, and a P<k> label at a person's start."""
     for other, track in others.items():
         kind = agent_kind(other)
-        ax.plot(*track.T, "-o", color=KIND_COLOUR[kind], lw=2, ms=3, alpha=0.7, zorder=3,
-                label=None if kind in labelled else OTHERS_LEGEND[agent_kind(agent)][kind])
-        labelled.add(kind)
+        ax.plot(*track.T, "-", marker=KIND_MARKER[kind], color=KIND_COLOUR[kind], lw=2, ms=4, alpha=0.7, zorder=3)
         ax.add_patch(Circle(track[-1], body_radius(other, site), fc=KIND_COLOUR[kind], ec="k", alpha=0.4, zorder=5))
+        ax.plot(*track[-1], marker=KIND_MARKER[kind], color=KIND_COLOUR[kind], mec="k", ms=7, zorder=6)
         if kind == "human":
             ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
 
 
 def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
     """The straight line from the start to the goal (below the executed paths) and the real path of the planned agent (above them, so it stays visible where they overlap)."""
-    ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3, label="straight line")
-    ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6, label="real path")
+    ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3)
+    ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6)
+    ax.plot(*start, marker=START_MARKER, color="k", ms=9, zorder=7)
+
+
+def _draw_executed(ax, site: dict, agent: str, path: np.ndarray, alpha: float) -> None:
+    """One executed path of the VLM-controlled agent: trail with its kind's marker and its final disk at the scoring radius."""
+    marker = KIND_MARKER[agent_kind(agent)]
+    ax.plot(*path.T, "-", marker=marker, color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+    ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=alpha, zorder=5))
+    ax.plot(*path[-1], marker=marker, color=VLM_COLOUR, mec="k", ms=7, zorder=6)
+
+
+def trajectory_legend(site: dict, agent: str, others: list[str], samples: int) -> list:
+    """Legend entries of the result and overlay figures: colour roles, shapes, the final-position disks at their scoring radii and the
+    reference marks. samples is the most VLM samples one panel shows."""
+    radius = lambda value: f"{round(value, 2):g} m"
+    kinds = list(dict.fromkeys([agent_kind(agent), *map(agent_kind, others)]))
+    logged = {agent_kind(o): o for o in reversed(others)}  # one agent id per logged kind, the first in track order
+    disk = lambda colour, label: Line2D([], [], color=colour, marker="o", ls="", ms=11, alpha=0.5, mec="k", label=label)
+    return [Line2D([], [], color=VLM_COLOUR, lw=2.5, label="VLM-controlled"),
+            *[Line2D([], [], color=KIND_COLOUR[k], lw=2, label=f"logged {KIND_NAME[k]}") for k in KIND_COLOUR if k in logged],
+            *[Line2D([], [], color="#777777", marker=KIND_MARKER[k], ls="", ms=7, label=KIND_NAME[k]) for k in kinds],
+            Line2D([], [], color=VLM_COLOUR, marker=KIND_MARKER[agent_kind(agent)], ms=4, label="VLM traj sample" if samples == 1 else "VLM traj samples"),
+            disk(VLM_COLOUR, f"VLM traj final pos with collision disk ({radius(body_radius(agent, site))})"),
+            *[disk(KIND_COLOUR[k], f"{OTHER_DISK_NAME[k]} final pos with collision disk ({radius(body_radius(o, site))})") for k, o in logged.items()],
+            Line2D([], [], color=GOAL, marker="o", ls="", ms=11, mfc="none", mew=1.5, label=f"goal arrival thresh ({radius(ARRIVAL_RADIUS_M[agent_kind(agent)])})"),
+            Line2D([], [], color=GOAL, marker="*", ls="", ms=11, label="goal"),
+            Line2D([], [], color=REAL_PATH, ls="--", lw=2, label=REAL_PATH_LABEL[agent_kind(agent)]),
+            Line2D([], [], color=GOAL, ls=":", lw=2, label="straight line"),
+            Line2D([], [], color="k", marker=START_MARKER, ls="", ms=8, label="start")]
 
 
 def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndarray, real: np.ndarray, others: dict[str, np.ndarray], title: str) -> bytes:
-    """Figure of a whole episode of the planned agent on the BEV axes: executed path (time marks), the real path, the straight line and the other agents' trails.
-    Final positions are drawn at each agent's scoring radius (body_radius), the disk contact is scored with."""
+    """Figure of a whole episode of the planned agent on the BEV axes: executed path (time marks), the real path, the straight line and the
+    logged agents' trails. Final positions are drawn at each agent's scoring radius (body_radius), the disk contact is scored with."""
     fig, ax, _ = bev_axes(False)
-    colour = PLANNED_COLOUR[agent_kind(agent)]
     draw_room(ax, site, agent, goal_xy)
     _draw_reference(ax, goal_xy, executed[0], real)
-    _draw_others(ax, site, agent, others)
-    ax.plot(*executed.T, "-o", color=colour, lw=3, ms=4, zorder=4, label="executed")
-    ax.add_patch(Circle(executed[-1], body_radius(agent, site), fc=colour, ec="k", alpha=0.45, zorder=5))
-    ax.plot(*executed[0], marker="s", color="k", ms=8, zorder=6)
+    _draw_others(ax, site, others)
+    _draw_executed(ax, site, agent, executed, 0.45)
     for k in range(0, len(executed), round(LABEL_EVERY_S / DT)):
-        ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=colour, zorder=7)
+        ax.text(*executed[k] + [0.05, -0.1], f"{k * DT:.0f}s", fontsize=LABEL_PX * 0.6, color=VLM_COLOUR, zorder=7)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
-    ax.legend(loc="lower left", fontsize=LABEL_PX * 0.6)
+    ax.legend(handles=trajectory_legend(site, agent, list(others), 1), loc="lower left", fontsize=LABEL_PX * 0.45, framealpha=0.85)
     return figure_png(fig)
 
 
 def render_overlay(site: dict, agent: str, goal_xy: np.ndarray, samples: list[np.ndarray], real: np.ndarray, others: dict[str, np.ndarray], title: str) -> bytes:
-    """Several executed paths of the planned agent (e.g. the samples of one condition) of one trip on the same axes, without time marks or legend (the caller adds a shared legend).
-    Final positions are drawn at each agent's scoring radius (body_radius)."""
+    """Several executed paths of the planned agent (e.g. the samples of one condition) of one trip on the same axes, without time marks or
+    legend (the caller adds trajectory_legend). Final positions are drawn at each agent's scoring radius (body_radius)."""
     fig, ax, _ = bev_axes(False)
-    colour = PLANNED_COLOUR[agent_kind(agent)]
     draw_room(ax, site, agent, goal_xy)
     _draw_reference(ax, goal_xy, real[0], real)
-    _draw_others(ax, site, agent, others)
+    _draw_others(ax, site, others)
     for path in samples:
-        ax.plot(*path.T, "-o", color=colour, lw=2.5, ms=3, alpha=0.7, zorder=4)
-        ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=colour, ec="k", alpha=0.35, zorder=5))
-    ax.plot(*real[0], marker="s", color="k", ms=8, zorder=6)
+        _draw_executed(ax, site, agent, path, 0.35)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, title, ha="left", va="top", fontsize=LABEL_PX * 0.7, zorder=7)
     return figure_png(fig)
