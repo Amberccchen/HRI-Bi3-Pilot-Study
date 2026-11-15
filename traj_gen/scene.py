@@ -145,7 +145,7 @@ class Scene:
         return "\n".join(lines)
 
     def other_text(self, p: dict, units: Metres, predict: bool) -> str:
-        """One other agent's line: position, motion and goals (the robot's goal only, as a station name)."""
+        """One other agent's line: position, motion, goal and next goal (for the robot, its goal only, as a station name)."""
         human_planned = agent_kind(self.agent) == "human"
         fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
                   "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),

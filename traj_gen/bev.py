@@ -157,7 +157,7 @@ def render_bev(scene: Scene, pixel_ticks: bool, predict: bool) -> tuple[bytes, B
             ax.plot(*np.vstack([p["xy"], p["predicted"]]).T, ls="--", color=other_colour, lw=1, zorder=3)
             for q in p["predicted"]:
                 ax.add_patch(Circle(q, r, fill=False, ec=other_colour, lw=2, zorder=5))
-        if p["kind"] == "human":  # a planned robot is told the people's goals, a planned person is not
+        if p["kind"] == "human":  # the map shows a person's goals only to a planned robot
             label = f"{person_name(p['id'])} → {_label(p['goal'], site['stations'])} then {_label(p['next_goal'], site['stations'])}" if kind == "robot" else person_name(p["id"])
             ax.text(p["xy"][0], p["xy"][1] + r + 0.06, label, ha="center", va="bottom", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7,
                     bbox={"fc": "white", "ec": "none", "alpha": 0.75, "pad": 1})
