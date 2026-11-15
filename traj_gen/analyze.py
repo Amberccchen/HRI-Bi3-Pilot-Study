@@ -63,7 +63,8 @@ COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_ov
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
 OVERLAY_LEGEND_COLUMN_IN = 2.6  # width one legend column of the overlay figures needs at font size 9, inches
-REAL_PATH_LABEL = {"robot": "real controller's logged path", "human": "person's logged path"}  # grey dashed line, by the planned agent's kind
+REAL_PATH_LABEL = {"robot": "real controller's path", "human": "real person's path"}  # grey dashed line, by the planned agent's kind
+PROMPT_DISK = {"robot": "circumscribed disk", "human": "disk"}  # the planned agent's disk in the prompts, by kind
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True)}  # (shape, filled) per prompt framing
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface); baselines use neutral grey and violet
@@ -305,10 +306,10 @@ def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: 
         legend = [Line2D([], [], color=REAL_PATH, ls="--", label=REAL_PATH_LABEL[kind]), Line2D([], [], color=GOAL, ls=":", label="straight line"),
                   Line2D([], [], color=GOAL, marker="*", ls="", ms=10, label="goal"),
                   Line2D([], [], color=GOAL, marker="o", ls="", ms=10, mfc="none", mew=1.5, label=f"arrival radius ({ARRIVAL_RADIUS_M[kind]:g} m)"),
-                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{KIND_LEGEND[k]} (disk = final position)") for k in other_kinds],
+                  *[Line2D([], [], color=KIND_COLOUR[k], marker="o", ms=4, label=f"{KIND_LEGEND[k]} (disk: final position)") for k in other_kinds],
                   Line2D([], [], color=KIND_COLOUR[kind], marker="o", ms=4, label="model samples"),
                   Line2D([], [], color=KIND_COLOUR[kind], marker="o", ls="", ms=10, alpha=0.3, mec="k",
-                         label=f"final {kind} position (disk of radius {prompt_radius(agent, site):g} m, as in the prompt)"),
+                         label=f"final position ({PROMPT_DISK[kind]}, {prompt_radius(agent, site):g} m)"),
                   Line2D([], [], color="k", marker="s", ls="", ms=7, label="start")]
         fig.suptitle(f"{trip_id} ({trip['controller']}, {d.stratum.iloc[0]})", fontsize=11, x=0.01, ha="left")
         fig.tight_layout(rect=(0, 0, 1, 0.97))

@@ -168,9 +168,9 @@ def _draw_others(ax, site: dict, others: dict[str, np.ndarray]) -> None:
 
 
 def _draw_reference(ax, goal_xy: np.ndarray, start: np.ndarray, real: np.ndarray) -> None:
-    """The straight line from the start to the goal and the real path of the planned agent."""
+    """The straight line from the start to the goal and the real path of the planned agent, drawn above the executed paths so it stays visible where they overlap."""
     ax.plot(*np.array([start, goal_xy]).T, ls=":", color=GOAL, lw=2, zorder=3, label="straight line")
-    ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=3, label="real path")
+    ax.plot(*real.T, ls="--", color=REAL_PATH, lw=2, zorder=6, label="real path")
 
 
 def render_result(site: dict, agent: str, goal_xy: np.ndarray, executed: np.ndarray, real: np.ndarray, others: dict[str, np.ndarray], title: str) -> bytes:
