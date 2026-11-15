@@ -114,18 +114,18 @@ def _trail(ax, history: np.ndarray, now: np.ndarray, color: str) -> None:
 
 def draw_room(ax, site: dict, agent: str, goal_xy: np.ndarray) -> None:
     """Walls, stations (with the shared table outline) and the planned agent's goal with its arrival radius: the part of every map that does not change in time.
-    Stations are drawn at the robot's stopping points for every planned agent. Only the goal is at the planned agent's own point."""
+    Stations are drawn at the points where people stand, for every planned agent. Only the goal is at the planned agent's own point."""
     room = site["room_m"]
     ax.add_patch(Rectangle((-room / 2,) * 2, room, room, fill=False, ec=WALL, lw=3, zorder=2))
     stations = site["stations"]
     for k, s in stations.items():
         if len(s["members"]) > 1:
-            pts = np.array([stations[m]["xy"] for m in s["members"]])
+            pts = np.array([stations[m]["human_xy"] for m in s["members"]])
             lo, hi = pts.min(axis=0) - (STATION_BOX_M / 2 + TABLE_PAD_M), pts.max(axis=0) + (STATION_BOX_M / 2 + TABLE_PAD_M)
             ax.add_patch(Rectangle(lo, *(hi - lo), fill=False, ec=BOX, lw=2, ls="--", zorder=2))
             ax.text((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, "shared table", ha="center", va="center", rotation=90, fontsize=LABEL_PX * 0.6, color="#555555")
         else:
-            x, y = s["xy"]
+            x, y = s["human_xy"]
             ax.add_patch(Rectangle((x - STATION_BOX_M / 2, y - STATION_BOX_M / 2), STATION_BOX_M, STATION_BOX_M, fc=BOX, ec="#777777", zorder=2))
             inward = np.array([x, y]) * (1 - LABEL_OFFSET_M / np.hypot(x, y))
             ax.text(*inward, _label(k, stations), ha="center", va="center", fontsize=LABEL_PX * 0.8, zorder=4)
