@@ -93,21 +93,28 @@ def test_select_backend(monkeypatch):
     monkeypatch.setattr(client, "_backend", {"name": "qwen"})
     with pytest.raises(ValueError):
         client.select_backend("qwen", "claude-opus-5-5")
-    client.select_backend("claude", "claude-opus-5-5")
-    assert client.backend_label() == {"backend": "claude", "model": "claude-opus-5-5"}
+    client.select_backend("claude", "claude-opus-5-5", "medium")
+    assert client.backend_label() == {"backend": "claude", "model": "claude-opus-5-5", "effort": "medium"}
+    assert client.describe_model(True)["output_config"] == {"effort": "medium"}
     assert client.describe_model(True)["backend"] == "claude"
     monkeypatch.setattr(ClaudeClient, "model", client.CLAUDE_MODEL)
+    monkeypatch.setattr(ClaudeClient, "effort", client.CLAUDE_THINKING_EFFORT)
 
 
 def test_run_folder_takes_one_model(tmp_path):
     from traj_gen.run import check_run_model
-    label = {"backend": "claude", "model": "claude-sonnet-5-5"}
+    label = {"backend": "claude", "model": "claude-sonnet-5-5", "effort": "high"}
     check_run_model(tmp_path, {}, label)  # a fresh folder takes any model
     check_run_model(tmp_path, label, label)
     with pytest.raises(ValueError):
         check_run_model(tmp_path, {"backend": "qwen", "model": "Qwen/Qwen3.8-27B-FP8"}, label)
     episode = tmp_path / "e" / "f" / "nothink" / "t" / "s0"
     episode.mkdir(parents=True)
-    (episode / "manifest.json").write_text('{"model": {"name": "Qwen/Qwen3.8-27B-FP8"}}')  # an old Qwen episode, which has no backend field
+    (episode / "manifest.json").write_text('{"model": {"name": "Qwen/Qwen3.8-27B-FP8", "thinking": false}}')  # an old Qwen episode, which has no backend field
     with pytest.raises(ValueError):
         check_run_model(tmp_path, {}, label)
+    (episode / "manifest.json").write_text('{"model": {"name": "claude-sonnet-5-5", "thinking": true, "output_config": {"effort": "medium"}}}')
+    with pytest.raises(ValueError):  # the same model at another effort
+        check_run_model(tmp_path, {}, label)
+    (episode / "manifest.json").write_text('{"model": {"name": "claude-sonnet-5-5", "thinking": true, "output_config": {"effort": "high"}}}')
+    check_run_model(tmp_path, {}, label)
