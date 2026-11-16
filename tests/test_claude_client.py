@@ -58,7 +58,7 @@ def test_request_and_sample_with_thinking(requests):
     r = requests[0]
     assert r["system"] == "system text" and r["model"] == "claude-sonnet-5-5"
     assert r["messages"] == [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "cG5n"}}, {"type": "text", "text": "go"}]}]
-    assert r["thinking"] == {"type": "adaptive", "display": "summarized"} and r["output_config"] == {"effort": "medium"}
+    assert r["thinking"] == {"type": "adaptive", "display": "summarized"} and r["output_config"] == {"effort": "high"}
     assert not {"temperature", "top_p", "top_k"} & r.keys()
     assert (s.content, s.reasoning, s.finish, s.prompt_tokens, s.completion_tokens) == ('{"waypoints": [[0, 0]]}', "plan", "stop", 15, 7)
     assert s.value is not None

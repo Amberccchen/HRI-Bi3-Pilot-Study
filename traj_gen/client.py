@@ -46,6 +46,7 @@ INSTRUCT_SAMPLING = {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "presence_pe
 
 # Claude. No sampling parameters are sent: Sonnet 5.5 and Opus 5.5 reject non-default values and every model rejects them from 2026-10-21.
 CLAUDE_MODEL = "claude-sonnet-5-5"
+CLAUDE_THINKING_EFFORT = "high"  # chosen by the user for the first Sonnet tests (the Qwen runs use medium)
 CLAUDE_THINK_MAX_TOKENS = 32000  # thinking and answer together (streamed, so no HTTP timeout). Medium effort mostly needs a few thousand
 CLAUDE_ANSWER_MAX_TOKENS = 4096  # without thinking, the answer only (at most 75 pairs, about 1100 tokens)
 CLAUDE_MAX_IMAGES = 100          # the API's limit per request, so no map is ever replaced by a note
@@ -130,7 +131,7 @@ class QwenClient:
 class ClaudeClient:
     """The same for Claude through the Messages API (credentials from ANTHROPIC_API_KEY).
 
-    Thinking on is adaptive thinking at THINKING_EFFORT, with the thinking summary kept as the reasoning text. Thinking off is the model's
+    Thinking on is adaptive thinking at CLAUDE_THINKING_EFFORT, with the thinking summary kept as the reasoning text. Thinking off is the model's
     own way of switching it off (CLAUDE_THINKING_OFF). A reply cut off by the token limit is an invalid reply: there is no forced
     answer, since Claude takes no assistant prefill. The model is the one given to select_backend().
     """
@@ -149,7 +150,7 @@ class ClaudeClient:
     def request_options(cls, thinking: bool) -> dict:
         """The thinking and effort fields of a request. Models that cannot switch thinking off (Opus 5.5, Fable) get adaptive thinking at low effort."""
         if thinking:
-            return {"thinking": {"type": "adaptive", "display": "summarized"}, "output_config": {"effort": THINKING_EFFORT}}
+            return {"thinking": {"type": "adaptive", "display": "summarized"}, "output_config": {"effort": CLAUDE_THINKING_EFFORT}}
         if cls.model.startswith("claude-sonnet-5-5"):
             return {"thinking": {"type": "between_tools"}}  # Sonnet 5.5 rejects {"type": "disabled"}
         if cls.model.startswith("claude-haiku-5-5"):
