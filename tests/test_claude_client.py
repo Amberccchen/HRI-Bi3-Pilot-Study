@@ -97,3 +97,17 @@ def test_select_backend(monkeypatch):
     assert client.backend_label() == {"backend": "claude", "model": "claude-opus-5-5"}
     assert client.describe_model(True)["backend"] == "claude"
     monkeypatch.setattr(ClaudeClient, "model", client.CLAUDE_MODEL)
+
+
+def test_run_folder_takes_one_model(tmp_path):
+    from traj_gen.run import check_run_model
+    label = {"backend": "claude", "model": "claude-sonnet-5-5"}
+    check_run_model(tmp_path, {}, label)  # a fresh folder takes any model
+    check_run_model(tmp_path, label, label)
+    with pytest.raises(ValueError):
+        check_run_model(tmp_path, {"backend": "qwen", "model": "Qwen/Qwen3.8-27B-FP8"}, label)
+    episode = tmp_path / "e" / "f" / "nothink" / "t" / "s0"
+    episode.mkdir(parents=True)
+    (episode / "manifest.json").write_text('{"model": {"name": "Qwen/Qwen3.8-27B-FP8"}}')  # an old Qwen episode, which has no backend field
+    with pytest.raises(ValueError):
+        check_run_model(tmp_path, {}, label)

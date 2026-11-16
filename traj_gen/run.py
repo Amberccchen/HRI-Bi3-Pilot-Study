@@ -146,6 +146,14 @@ def select(args: argparse.Namespace) -> None:
         print(f"{c['id']:36s} {c['stratum']:20s} {t['duration_s']:6.1f} s  min_distance {t['real_metrics']['min_distance']:.2f} m")
 
 
+def check_run_model(run: Path, config: dict, label: dict) -> None:
+    """Fail unless the selected backend and model are the only one in the run folder: its run.json and every model episode already saved in it."""
+    other = {k: config[k] for k, v in label.items() if k in config and config[k] != v}
+    saved = {json.loads(f.read_text())["model"]["name"] for f in run.glob("*/*/*/*/s*/manifest.json")} - {label["model"]}
+    if other or saved:
+        raise ValueError(f"{run} holds {other or sorted(saved)} but this run selects {label}: a run folder takes one model, start a new run folder")
+
+
 def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
@@ -156,10 +164,7 @@ def run(args: argparse.Namespace) -> None:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
     select_backend(args.backend, args.model)
     label = backend_label()
-    legacy = {"backend": "qwen", "model": MODEL} if any(args.run.glob("*/*/*/*/s*/manifest.json")) else {}  # model episodes made before the backend was recorded used Qwen
-    recorded = {**label, **legacy, **config}
-    if any(recorded[k] != v for k, v in label.items()):  # episodes of two models would mix in one run folder
-        raise ValueError(f"{args.run} was started with {recorded['backend']} {recorded['model']} but this run asks for {label['backend']} {label['model']}: start a new run folder")
+    check_run_model(args.run, config, label)
     code = provenance()
     if code["git_dirty"]:
         raise ValueError("the code has uncommitted changes, so its commit does not identify it: commit before running episodes")
