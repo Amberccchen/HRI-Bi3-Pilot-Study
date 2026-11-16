@@ -106,5 +106,5 @@ class PromptBuilder:
         """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
         self.start = self.mode.units.pos(scene.track[-1])
-        text = load_prompt("followup" + self.suffix).format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=scene.text(self.mode.units, self.predict))
+        text = load_prompt("followup_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "followup" + self.suffix).format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=scene.text(self.mode.units, self.predict))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
