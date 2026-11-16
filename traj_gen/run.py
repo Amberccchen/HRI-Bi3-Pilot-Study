@@ -156,7 +156,8 @@ def run(args: argparse.Namespace) -> None:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
     select_backend(args.backend, args.model)
     label = backend_label()
-    recorded = {"backend": "qwen", "model": MODEL, **config}  # run folders made before the Claude backend existed used Qwen
+    legacy = {"backend": "qwen", "model": MODEL} if any(args.run.glob("*/*/*/*/s*/manifest.json")) else {}  # model episodes made before the backend was recorded used Qwen
+    recorded = {**label, **legacy, **config}
     if any(recorded[k] != v for k, v in label.items()):  # episodes of two models would mix in one run folder
         raise ValueError(f"{args.run} was started with {recorded['backend']} {recorded['model']} but this run asks for {label['backend']} {label['model']}: start a new run folder")
     code = provenance()
