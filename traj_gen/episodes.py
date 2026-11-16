@@ -28,6 +28,7 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
+from traj_gen.prompting import HARD_CAP_FRAMINGS
 from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius
 from traj_gen.bev import render_result
 from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
@@ -58,6 +59,9 @@ def load_trajectory(folder: Path) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     columns = path.read_text().split("\n", 1)[0].split(",")[1:]
     data = np.loadtxt(path, delimiter=",", skiprows=1, ndmin=2)
     return data[:, 0], {columns[k].removesuffix("_x"): data[:, 1 + k: 3 + k] for k in range(0, len(columns), 2)}
+
+
+HARD_CAP_RETRIES = 3  # a plan over the hard speed cap is sampled again up to this many times
 
 
 class Episode:
@@ -100,6 +104,8 @@ class Episode:
 
     def query(self, scene: Scene, retries: int) -> np.ndarray | None:
         """Ask the model for a plan (in the output units). An invalid reply is sampled again up to `retries` times."""
+        if self.framing in HARD_CAP_FRAMINGS:
+            retries = max(retries, HARD_CAP_RETRIES)
         chat, turn = self.open_turn(scene)
         images = self.planner.images(scene, turn.images)
         self.n_queries += 1

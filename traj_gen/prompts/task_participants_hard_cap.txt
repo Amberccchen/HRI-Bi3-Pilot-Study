@@ -1,0 +1,2 @@
+Your task: move the robot from where it is to its goal station. Two study participants are in the room, carrying blocks between the stations.
+Each participant takes up about a disk of radius {person_radius} {unit}. The robot cannot drive through either of them.
