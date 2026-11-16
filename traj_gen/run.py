@@ -29,6 +29,7 @@ from preprocessing.extract_trips import DEFAULT_TRIALS
 from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind
 from traj_gen.analyze import OVERLAY, analyze
 from traj_gen.animate import animate, animate_samples, load_episode, timeline
+from traj_gen.client import BACKENDS, CLAUDE_MODEL, MODEL, backend_label, select_backend
 from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
 from traj_gen.experiments import EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -153,6 +154,11 @@ def run(args: argparse.Namespace) -> None:
     framings = args.framings or [f for f, kind in FRAMINGS.items() if kind in kinds]
     if wrong := [f for f in framings if FRAMINGS[f] not in kinds]:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
+    select_backend(args.backend, args.model)
+    label = backend_label()
+    recorded = {"backend": "qwen", "model": MODEL, **config}  # run folders made before the Claude backend existed used Qwen
+    if any(recorded[k] != v for k, v in label.items()):  # episodes of two models would mix in one run folder
+        raise ValueError(f"{args.run} was started with {recorded['backend']} {recorded['model']} but this run asks for {label['backend']} {label['model']}: start a new run folder")
     code = provenance()
     if code["git_dirty"]:
         raise ValueError("the code has uncommitted changes, so its commit does not identify it: commit before running episodes")
@@ -161,6 +167,8 @@ def run(args: argparse.Namespace) -> None:
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(framings, args.thinking, args.samples)]
+    if any(k not in config for k in label):
+        (args.run / RUN_CONFIG).write_text(json.dumps({**config, **label}, indent=2) + "\n")
     todo = [ep for ep in episodes if not ep.done()]
     print(f"{len(todo)} episodes to run, {len(episodes) - len(todo)} already done; concurrency {args.concurrency}", flush=True)
     pool = ThreadPoolExecutor(args.concurrency)
@@ -212,6 +220,8 @@ def main() -> None:
     p.add_argument("--experiments", nargs="+", choices=list(EXPERIMENTS), default=list(EXPERIMENTS), help="experiment ids (default: all)")
     p.add_argument("--framings", nargs="+", choices=list(FRAMINGS), help="prompt framings (default: every framing for the trips' planned agent)")
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
+    p.add_argument("--backend", choices=list(BACKENDS), default="qwen", help="model backend: qwen (local vLLM server) or claude (Anthropic API, key in ANTHROPIC_API_KEY)")
+    p.add_argument("--model", help=f"Claude model id (claude backend only, default {CLAUDE_MODEL})")
     p.add_argument("--samples", type=int, default=3, help="samples per trip and condition")
     p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS})")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")

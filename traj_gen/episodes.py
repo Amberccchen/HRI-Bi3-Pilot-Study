@@ -16,7 +16,6 @@ inputs/ (the images sent), trajectory.csv, plans.jsonl, queries.jsonl, result.pn
 manifest.json is written last, so a folder with a manifest is a finished episode.
 """
 
-import http.client
 import itertools
 import json
 import time
@@ -30,7 +29,7 @@ from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
 from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius
 from traj_gen.bev import render_result
-from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
+from traj_gen.client import TRANSPORT_ERRORS, Chat, Sample, describe_model
 from traj_gen.prompting import Turn
 from traj_gen.scene import DT, Scene, load_prompt
 
@@ -148,7 +147,7 @@ class Episode:
         t0 = time.perf_counter()
         try:
             self.run()
-        except (OSError, http.client.HTTPException):
+        except TRANSPORT_ERRORS:
             self.status, self.error = "error", traceback.format_exc()
         self.save(time.perf_counter() - t0)
 
@@ -169,8 +168,7 @@ class Episode:
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
-        model = {"name": MODEL, "thinking": self.thinking == "think", "reasoning_effort": THINKING_EFFORT, "sampling": THINKING_SAMPLING if self.thinking == "think" else INSTRUCT_SAMPLING,
-                 "max_tokens": THINK_MAX_TOKENS if self.thinking == "think" else ANSWER_MAX_TOKENS} if self.exp.uses_model else None
+        model = describe_model(self.thinking == "think") if self.exp.uses_model else None
         return {
             "trip": t["id"], "site": t["site"], "controller": t["controller"], "agent": self.agent, "experiment": self.exp.id, "framing": self.framing,
             "thinking": self.thinking, "sample": self.sample, "images": list(self.exp.images), "output_mode": self.planner.name,
