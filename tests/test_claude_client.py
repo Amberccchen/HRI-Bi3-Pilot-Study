@@ -49,14 +49,14 @@ def requests(monkeypatch):
 
 
 def ask(thinking):
-    chat = Chat(ClaudeClient(FakeBuilder(), thinking), "system text")
+    chat = ClaudeClient(FakeBuilder(), thinking).chat("system text")
     return chat.ask(Turn("go", ["bev"]), {"bev": b"png"})[0]
 
 
 def test_request_and_sample_with_thinking(requests):
     s = ask(True)
     r = requests[0]
-    assert r["system"] == "system text" and r["model"] == "claude-sonnet-5-5"
+    assert r["system"].startswith("system text\n\n") and "only with your final answer" in r["system"] and r["model"] == "claude-sonnet-5-5"
     assert r["messages"] == [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "cG5n"}}, {"type": "text", "text": "go"}]}]
     assert r["thinking"] == {"type": "adaptive", "display": "summarized"} and r["output_config"] == {"effort": "high"}
     assert not {"temperature", "top_p", "top_k"} & r.keys()

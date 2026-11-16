@@ -132,7 +132,7 @@ class ClaudeClient:
     """The same for Claude through the Messages API (credentials from ANTHROPIC_API_KEY).
 
     Thinking on is adaptive thinking at CLAUDE_THINKING_EFFORT, with the thinking summary kept as the reasoning text. Thinking off is the model's
-    own way of switching it off (CLAUDE_THINKING_OFF). A reply cut off by the token limit is an invalid reply: there is no forced
+    own way of switching it off. A reply cut off by the token limit is an invalid reply: there is no forced
     answer, since Claude takes no assistant prefill. The model is the one given to select_backend().
     """
 
@@ -144,7 +144,7 @@ class ClaudeClient:
         self.builder, self.thinking = builder, thinking
 
     def chat(self, system: str) -> "Chat":
-        return Chat(self, system)
+        return Chat(self, system + "\n\n" + load_prompt("claude_answer_only"))  # Sonnet without thinking otherwise reasons aloud in the reply, in several JSON objects
 
     @classmethod
     def request_options(cls, thinking: bool) -> dict:
@@ -159,7 +159,7 @@ class ClaudeClient:
 
     @classmethod
     def describe(cls, thinking: bool) -> dict:
-        return {"backend": "claude", "name": cls.model, "thinking": thinking, **cls.request_options(thinking), "sampling": None,
+        return {"backend": "claude", "name": cls.model, "thinking": thinking, **cls.request_options(thinking), "sampling": None, "system_suffix": load_prompt("claude_answer_only"),
                 "max_tokens": CLAUDE_THINK_MAX_TOKENS if thinking else CLAUDE_ANSWER_MAX_TOKENS}
 
     @staticmethod
