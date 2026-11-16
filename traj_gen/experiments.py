@@ -9,7 +9,7 @@ base experiment plus each person's constant-velocity prediction (text and map).
 from dataclasses import dataclass, replace
 
 from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.planners import PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.planners import HeadingPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
 from traj_gen.scene import DT
 
 
@@ -21,6 +21,7 @@ class Experiment:
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
+    future: bool = False  # test: give each person's logged future positions in the text
 
     def __post_init__(self):
         if issubclass(self.episode, (RollingEpisode, ConversationEpisode)):
@@ -54,6 +55,8 @@ _experiments = [
     Experiment("rh_wp_bev_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_heading_bev_conv", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_px_bev_conv_future", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]

@@ -22,7 +22,7 @@ from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, 
 
 # Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
 # the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participants_hard_cap": "robot", "participant": "human"}
+FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participants_hard_cap": "robot", "participants_wait": "robot", "participant": "human"}
 # Framings whose speed cap is a hard per-step limit: a plan with a longer step (beyond rounding) is an invalid reply.
 HARD_CAP_FRAMINGS = {"participants_hard_cap"}
 HARD_CAP_ROUNDING = 1.0  # output units allowed above the step limit, for integer pixels
@@ -46,6 +46,8 @@ class PromptBuilder:
         self.suffix = TEMPLATE_SUFFIX[self.kind]
 
     def example_text(self) -> str:
+        if hasattr(self.mode, "example_text"):  # a mode whose reply is not positions
+            return self.mode.example_text()
         return ", ".join("[" + ", ".join(self.mode.units.num(c) for c in self.mode.to_units(p)) + "]" for p in self.mode.example[self.kind])
 
     def output_text(self) -> str:
@@ -59,7 +61,7 @@ class PromptBuilder:
                   "speed_cap": u.len_text(SPEED_CAP_M_S[self.kind]), "dt": DT, "goal_tol": u.len_text(ARRIVAL_RADIUS_M[self.kind])}
         fields["step"] = u.len_text(SPEED_CAP_M_S[self.kind] * DT)
         if self.kind == "robot":
-            return load_prompt("system_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "system").format(robot_radius=u.len_text(prompt_radius(scene.agent, site)), **fields)
+            return load_prompt("system_heading" if self.mode.name == "heading" else "system_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "system").format(robot_radius=u.len_text(prompt_radius(scene.agent, site)), **fields)
         return load_prompt("system_human").format(name=person_name(scene.agent), person_radius=u.len_text(prompt_radius(scene.agent, site)),
                                                   margin=u.len_text(ROOM_MARGIN_M[self.kind]), **fields)
 
@@ -82,7 +84,7 @@ class PromptBuilder:
         u, r = self.mode.units, prompt_radius("robot", scene.site)
         self.start = u.pos(scene.track[-1])
         task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name)
-        parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.output_text()]
+        parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.mode.extra_text(scene), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 
     @property
@@ -106,5 +108,5 @@ class PromptBuilder:
         """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
         self.start = self.mode.units.pos(scene.track[-1])
-        text = load_prompt("followup_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "followup" + self.suffix).format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=scene.text(self.mode.units, self.predict))
+        text = load_prompt("followup_hard_cap" if self.framing in HARD_CAP_FRAMINGS or self.mode.name == "heading" else "followup" + self.suffix).format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene="\n".join(t for t in (scene.text(self.mode.units, self.predict), self.mode.extra_text(scene)) if t))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))

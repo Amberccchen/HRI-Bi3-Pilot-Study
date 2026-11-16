@@ -26,7 +26,7 @@ from traj_gen.camera import camera_frame
 from traj_gen.client import Chat, QwenClient
 from traj_gen.episodes import real_path
 from traj_gen.prompting import PromptBuilder
-from traj_gen.scene import DT, Metres, Pixels, Scene
+from traj_gen.scene import DT, Metres, Pixels, Scene, person_name
 
 
 THINKING = ("nothink", "think")  # run option of the model conditions: Qwen thinking off, on
@@ -81,6 +81,20 @@ class QueryPlanner(Planner):
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""
         return min(MAX_PLAN_STEPS, remaining)
 
+    def extra_text(self, scene) -> str:
+        """Text added after the state: the logged future positions of the people when the experiment gives them, else nothing."""
+        if not getattr(self.exp, "future", False):
+            return ""
+        i = len(scene.track) - 1
+        lines = ["Where each person will actually be (recorded in the study; they walk exactly this way whatever the robot does):"]
+        for other, track in self.trip["tracks"].items():
+            if other == self.trip["agent"] or agent_kind(other) != "human":
+                continue
+            future = np.asarray(track, float)[i + 1:, :2]
+            pts = ", ".join(f"t+{DT * (k + 1):.1f} s {self.units.pos_text(xy)}" for k, xy in enumerate(future))
+            lines.append(f"{person_name(other)}: {pts}.")
+        return "\n".join(lines)
+
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
         builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
@@ -119,6 +133,35 @@ class PixelPlanner(WaypointPlanner):
 
     def positions(self, value, scene):
         return super().positions(self.units.transform.to_metre(value), scene)
+
+
+class HeadingPlanner(PixelPlanner):
+    """Steps [turn in degrees, distance in pixels] on the BEV, test mode. The heading starts as the direction of the agent's last movement
+    and each step first turns by its turn (positive: clockwise on the map, from +u toward +v), then moves its distance, cut to [0, step]."""
+
+    name = "heading"
+    template = "output_heading"
+    key = "steps"
+
+    def example_text(self) -> str:
+        return "[0, 20], [-15, 22], [0, 0]"
+
+    def heading(self, scene) -> float:
+        """Direction of the agent's last movement of at least 1 px, in degrees on the map (0 = +u, 90 = +v); 0 if it has not moved."""
+        uv = self.units.pos(scene.track)
+        moves = np.diff(uv, axis=0)
+        moved = np.flatnonzero(np.linalg.norm(moves, axis=1) >= 1.0)
+        return float(np.degrees(np.arctan2(*moves[moved[-1]][::-1]))) if moved.size else 0.0
+
+    def extra_text(self, scene) -> str:
+        return f"Robot heading now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of its last movement."
+
+    def positions(self, value, scene):
+        step_px = self.units.length(self.step_m)
+        theta = np.radians(self.heading(scene) + np.cumsum(value[:, 0]))
+        d = np.clip(value[:, 1], 0.0, step_px)
+        uv = self.units.pos(scene.track[-1]) + np.cumsum(d[:, None] * np.stack([np.cos(theta), np.sin(theta)], axis=1), axis=0)
+        return self.units.transform.to_metre(uv), np.abs(value[:, 1]) / self.units.length(1.0) / DT
 
 
 class VelocityPlanner(QueryPlanner):
