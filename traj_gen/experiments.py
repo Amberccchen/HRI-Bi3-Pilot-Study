@@ -57,6 +57,7 @@ _experiments = [
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_heading_bev_conv", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv_future", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
+    Experiment("rh_heading_bev_conv_future", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]

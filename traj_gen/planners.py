@@ -142,6 +142,7 @@ class HeadingPlanner(PixelPlanner):
     name = "heading"
     template = "output_heading"
     key = "steps"
+    max_turn_deg = 35.0  # the real robots' largest body yaw change in one 0.4 s step: 35.8 deg at LAAS, 34.4 at UM (trips_v2, 144 robot trips)
 
     def example_text(self) -> str:
         return "[0, 20], [-15, 22], [0, 0]"
@@ -154,11 +155,13 @@ class HeadingPlanner(PixelPlanner):
         return float(np.degrees(np.arctan2(*moves[moved[-1]][::-1]))) if moved.size else 0.0
 
     def extra_text(self, scene) -> str:
-        return f"Robot heading now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of its last movement."
+        future = super().extra_text(scene)
+        return (future + "\n\n" if future else "") + f"Robot heading now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of its last movement."
 
     def positions(self, value, scene):
         step_px = self.units.length(self.step_m)
-        theta = np.radians(self.heading(scene) + np.cumsum(value[:, 0]))
+        turn = np.clip(value[:, 0], -self.max_turn_deg, self.max_turn_deg)
+        theta = np.radians(self.heading(scene) + np.cumsum(turn))
         d = np.clip(value[:, 1], 0.0, step_px)
         uv = self.units.pos(scene.track[-1]) + np.cumsum(d[:, None] * np.stack([np.cos(theta), np.sin(theta)], axis=1), axis=0)
         return self.units.transform.to_metre(uv), np.abs(value[:, 1]) / self.units.length(1.0) / DT

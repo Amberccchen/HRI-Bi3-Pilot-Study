@@ -51,7 +51,8 @@ class PromptBuilder:
         return ", ".join("[" + ", ".join(self.mode.units.num(c) for c in self.mode.to_units(p)) + "]" for p in self.mode.example[self.kind])
 
     def output_text(self) -> str:
-        output = load_prompt(self.mode.template + self.suffix).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps)
+        output = load_prompt(self.mode.template + self.suffix).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
+                                                                 max_turn=f"{getattr(self.mode, 'max_turn_deg', 0):g}")
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.example_text())
 
     def system(self, scene: Scene) -> str:
