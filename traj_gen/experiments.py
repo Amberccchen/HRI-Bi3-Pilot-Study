@@ -22,6 +22,7 @@ class Experiment:
     execute_s: float | None  # executed motion between queries (rolling only)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
     future: bool = False  # test: give each person's logged future positions in the text
+    check_rounds: int = 0  # test: check each plan against the logged future and report the first conflict back, up to this many revisions
 
     def __post_init__(self):
         if issubclass(self.episode, (RollingEpisode, ConversationEpisode)):
@@ -58,6 +59,7 @@ _experiments = [
     Experiment("rh_heading_bev_conv", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv_future", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
     Experiment("rh_heading_bev_conv_future", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
+    Experiment("rh_heading_bev_conv_future_check", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]

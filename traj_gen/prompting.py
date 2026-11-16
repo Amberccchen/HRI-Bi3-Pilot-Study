@@ -15,16 +15,19 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from traj_gen.agents import ARRIVAL_RADIUS_M, PERSON_PROMPT_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, prompt_radius
+from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
+                             prompt_radius)
 from traj_gen.bev import SIZE_PX
 from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, person_name
 
 
 # Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
 # the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participants_hard_cap": "robot", "participants_wait": "robot", "participant": "human"}
+FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "participants_hard_cap": "robot", "participants_wait": "robot", "participants_space": "robot", "participant": "human"}
 # Framings whose speed cap is a hard per-step limit: a plan with a longer step (beyond rounding) is an invalid reply.
 HARD_CAP_FRAMINGS = {"participants_hard_cap"}
+# Framings that state the scored contact distance and the personal-space distance instead of the drawn disks (test).
+SPACE_FRAMINGS = {"participants_space"}
 HARD_CAP_ROUNDING = 1.0  # output units allowed above the step limit, for integer pixels
 TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that differ by the planned agent's kind
 
@@ -33,6 +36,16 @@ TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that diff
 class Turn:
     text: str
     images: list[str]
+
+
+def contact_distance(site: dict) -> float:
+    """Centre distance (m) below which the robot and a person are in contact, as scored."""
+    return body_radius("robot", site) + PERSON_BODY_RADIUS_M
+
+
+def comfort_distance(site: dict) -> float:
+    """Centre distance (m) below which the robot's body is inside a person's personal space, as scored."""
+    return body_radius("robot", site) + PERSONAL_SPACE_RADIUS_M["human"]
 
 
 class PromptBuilder:
@@ -62,7 +75,7 @@ class PromptBuilder:
                   "speed_cap": u.len_text(SPEED_CAP_M_S[self.kind]), "dt": DT, "goal_tol": u.len_text(ARRIVAL_RADIUS_M[self.kind])}
         fields["step"] = u.len_text(SPEED_CAP_M_S[self.kind] * DT)
         if self.kind == "robot":
-            return load_prompt("system_heading" if self.mode.name == "heading" else "system_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "system").format(robot_radius=u.len_text(prompt_radius(scene.agent, site)), **fields)
+            return load_prompt("system_heading" if self.mode.name == "heading" else "system_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "system").format(robot_radius=u.len_text((body_radius if self.framing in SPACE_FRAMINGS else prompt_radius)(scene.agent, site)), **fields)
         return load_prompt("system_human").format(name=person_name(scene.agent), person_radius=u.len_text(prompt_radius(scene.agent, site)),
                                                   margin=u.len_text(ROOM_MARGIN_M[self.kind]), **fields)
 
@@ -84,7 +97,8 @@ class PromptBuilder:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
         u, r = self.mode.units, prompt_radius("robot", scene.site)
         self.start = u.pos(scene.track[-1])
-        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name)
+        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name,
+                                                       contact=u.len_text(contact_distance(scene.site)), comfort=u.len_text(comfort_distance(scene.site)))
         parts = [task, self.captions(scene, self.images), scene.text(self.mode.units, self.predict), self.mode.extra_text(scene), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 

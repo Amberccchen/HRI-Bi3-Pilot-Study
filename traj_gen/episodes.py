@@ -28,12 +28,12 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
-from traj_gen.prompting import HARD_CAP_FRAMINGS
+from traj_gen.prompting import HARD_CAP_FRAMINGS, comfort_distance, contact_distance
 from traj_gen.agents import ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius
 from traj_gen.bev import render_result
 from traj_gen.client import ANSWER_MAX_TOKENS, INSTRUCT_SAMPLING, MODEL, THINK_MAX_TOKENS, THINKING_EFFORT, THINKING_SAMPLING, Chat, Sample
 from traj_gen.prompting import Turn
-from traj_gen.scene import DT, Scene, load_prompt
+from traj_gen.scene import DT, Scene, load_prompt, person_name
 
 # Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
 TEST_TRIPS = "test_trips.json"
@@ -118,7 +118,56 @@ class Episode:
             if sample.value is not None:
                 chat.accept(sample)
                 break
-        return sample.value
+        if sample.value is None or not getattr(self.exp, "check_rounds", 0):
+            return sample.value
+        return self.revise(scene, chat, sample.value, retries)
+
+    def conflicts(self, value: np.ndarray, scene: Scene) -> tuple[tuple[int, int], str | None]:
+        """(contact steps, personal-space steps) of a plan against the people's logged future, and the feedback text on its first conflict (None if none)."""
+        positions, _ = self.planner.positions(value, scene)
+        i, u = len(self.track), self.planner.units
+        people = [o for o in self.others if agent_kind(o) == "human"]
+        n = min(len(positions), len(self.trip["time"]) - i)
+        if n <= 0:
+            return (0, 0), None
+        future = {o: np.asarray(self.trip["tracks"][o], float)[i: i + n, :2] for o in people}
+        dist = np.stack([np.linalg.norm(positions[:n] - future[o], axis=1) for o in people], axis=1)  # (n, people)
+        contact, comfort = contact_distance(self.site), comfort_distance(self.site)
+        near = dist.min(axis=1)
+        counts = (int((near < contact).sum()), int(((near >= contact) & (near < comfort)).sum()))
+        bad = np.flatnonzero(near < comfort)
+        if not bad.size:
+            return counts, None
+        k = bad[0]
+        j = int(dist[k].argmin())
+        text = load_prompt("plan_check").format(
+            t=f"{DT * (k + 1):.1f}", robot=u.pos_text(positions[k]), dist=u.len_text(near[k]), person=person_name(people[j]), person_at=u.pos_text(future[people[j]][k]),
+            kind="in contact" if near[k] < contact else "inside personal space", contact=u.len_text(contact), comfort=u.len_text(comfort),
+            n_contact=counts[0], n_space=counts[1], unit=u.name)
+        return counts, text
+
+    def revise(self, scene: Scene, chat: Chat, value: np.ndarray, retries: int) -> np.ndarray:
+        """Report the plan's first conflict with the logged future and ask for a revision, up to check_rounds times; the plan with the fewest contact
+        steps (then personal-space steps) wins, the latest on ties."""
+        best, best_counts = value, None
+        for _ in range(self.exp.check_rounds + 1):
+            counts, text = self.conflicts(value, scene)
+            if best_counts is None or counts <= best_counts:
+                best, best_counts = value, counts
+            if text is None or _ == self.exp.check_rounds:
+                break
+            turn = Turn(text, [])
+            for attempt in range(retries + 1):
+                sample = chat.ask(turn, {})[0] if attempt == 0 else chat.resample(1)[0]
+                self.log(scene, chat, attempt, sample)
+                if sample.value is not None:
+                    break
+            if sample.value is None:  # keep the conversation well formed: the last valid plan stands
+                chat.messages.pop()
+                break
+            chat.accept(sample)
+            value = sample.value
+        return best
 
     def log(self, scene: Scene, chat: Chat, attempt: int, s: Sample) -> None:
         messages = [{"role": m["role"], "content": [p[1] if p[0] == "text" else {"image": self.refs[p[2]]} for p in m["parts"]]} for m in chat.messages]
