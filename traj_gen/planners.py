@@ -86,13 +86,16 @@ class QueryPlanner(Planner):
         if not getattr(self.exp, "future", False):
             return ""
         i = len(scene.track) - 1
-        lines = ["Where each person will actually be (recorded in the study; they walk exactly this way whatever the robot does):"]
+        if self.kind == "robot":
+            lines = ["Where each person will actually be (recorded in the study; they walk exactly this way whatever the robot does):"]
+        else:  # a planned person is also given the robot's recorded future
+            lines = ["Where the other participant and the robot will actually be (recorded in the study; they move exactly this way whatever you do):"]
         for other, track in self.trip["tracks"].items():
-            if other == self.trip["agent"] or agent_kind(other) != "human":
+            if other == self.trip["agent"] or (self.kind == "robot" and agent_kind(other) != "human"):
                 continue
             future = np.asarray(track, float)[i + 1:, :2]
             pts = ", ".join(f"t+{DT * (k + 1):.1f} s {self.units.pos_text(xy)}" for k, xy in enumerate(future))
-            lines.append(f"{person_name(other)}: {pts}.")
+            lines.append(f"{'Robot' if agent_kind(other) == 'robot' else person_name(other)}: {pts}.")
         return "\n".join(lines)
 
     def chat(self, scene: Scene) -> Chat:
@@ -142,7 +145,14 @@ class HeadingPlanner(PixelPlanner):
     name = "heading"
     template = "output_heading"
     key = "steps"
-    max_turn_deg = 35.0  # the real robots' largest body yaw change in one 0.4 s step: 35.8 deg at LAAS, 34.4 at UM (trips_v2, 144 robot trips)
+    # Largest turn per 0.4 s step. Robot: the real robots' largest body yaw change, 35.8 deg at LAAS and 34.4 at UM (trips_v2, 144 robot trips).
+    # Person: the 99th percentile of the change in walking direction between consecutive steps both above 0.2 m/s, 115.6 deg over the
+    # trips_v2_human goal-to-goal moves (14292 trips; the median is 9 deg), the same percentile as the person's speed cap.
+    MAX_TURN_DEG = {"robot": 35.0, "human": 115.0}
+
+    @property
+    def max_turn_deg(self) -> float:
+        return self.MAX_TURN_DEG[self.kind]
 
     def example_text(self) -> str:
         return "[0, 20], [-15, 22], [0, 0]"
@@ -156,7 +166,8 @@ class HeadingPlanner(PixelPlanner):
 
     def extra_text(self, scene) -> str:
         future = super().extra_text(scene)
-        return (future + "\n\n" if future else "") + f"Robot heading now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of its last movement."
+        who, whose = ("Robot heading", "its") if self.kind == "robot" else ("Your heading", "your")
+        return (future + "\n\n" if future else "") + f"{who} now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of {whose} last movement."
 
     def positions(self, value, scene):
         step_px = self.units.length(self.step_m)
