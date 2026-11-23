@@ -59,3 +59,35 @@ class SteerPlanner(QueryPlanner):
         d = np.clip(value[:, 1], 0.0, self.units.length(self.step_m))
         uv = self.units.pos(scene.track[-1]) + np.cumsum(d[:, None] * np.stack([np.cos(theta), np.sin(theta)], axis=1), axis=0)
         return self.units.pos_to_metres(uv), self.units.length_to_metres(np.abs(value[:, 1])) / DT
+
+
+class SteerVelocityPlanner(SteerPlanner):
+    """The steer_vel mode: steps [turn rate in degrees per second, speed in the units per second], each held for the step, so the agent
+    follows a circular arc of radius speed / turn rate (the unicycle model), straight at a turn rate of 0. The heading starts as steer's and
+    continues from each step's end. The turn rate is cut to the kind's steer turn cap per step divided by the step (MAX_TURN_DEG / DT), the
+    speed to [0, the kind's speed cap]. Same harness prompts, system and follow-up texts as steer."""
+
+    name = "steer_velocity"
+    template = "steer_vel"
+    # Example steps [turn rate in deg/s, speed in m/s] at about each kind's walking or driving speed. The speeds are written in the units.
+    example = {"robot": [(0, 0.25), (-40, 0.27), (0, 0.0)], "human": [(0, 1.0), (-40, 1.0), (0, 0.0)]}
+
+    @property
+    def max_turn_rate_deg_s(self) -> float:
+        return self.max_turn_deg / DT
+
+    def output_fields(self) -> dict:
+        return {"max_turn_rate": f"{self.max_turn_rate_deg_s:g}"}
+
+    def positions(self, value, scene):
+        omega = np.radians(np.clip(value[:, 0], -self.max_turn_rate_deg_s, self.max_turn_rate_deg_s))
+        speed = np.clip(value[:, 1], 0.0, self.units.length(self.speed_cap))
+        theta0 = np.radians(self.heading(scene)) + np.concatenate([[0.0], np.cumsum(omega * DT)[:-1]])  # heading at each step's start
+        theta1 = theta0 + omega * DT
+        turning = omega != 0.0
+        # Arc of radius speed / omega: the chord is (speed / omega) (sin theta1 - sin theta0, cos theta0 - cos theta1); straight when omega = 0.
+        radius = np.divide(speed, omega, out=np.zeros_like(speed), where=turning)
+        chord = np.where(turning[:, None], radius[:, None] * np.stack([np.sin(theta1) - np.sin(theta0), np.cos(theta0) - np.cos(theta1)], axis=1),
+                         (speed * DT)[:, None] * np.stack([np.cos(theta0), np.sin(theta0)], axis=1))
+        uv = self.units.pos(scene.track[-1]) + np.cumsum(chord, axis=0)
+        return self.units.pos_to_metres(uv), self.units.length_to_metres(np.abs(value[:, 1]))

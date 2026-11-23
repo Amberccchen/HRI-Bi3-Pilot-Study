@@ -70,6 +70,7 @@ def test_id_suffixes_for_check_count_and_replanning_interval():
     ({"units": "cm"}, "units='cm' is not one of"),
     ({"images": "text"}, "units px are pixels of the map"),
     ({"framing": "participant"}, "harness framings"),
+    ({"output": "steer_vel", "framing": "participant"}, "harness framings"),
     ({"episode": "single_shot", "execute_s": 2.0}, "only for rolling episodes"),
     ({"execute_s": 0.5}, "whole number of 0.4 s steps"),
     ({"prediction": "future"}, "prediction='future' is not one of"),

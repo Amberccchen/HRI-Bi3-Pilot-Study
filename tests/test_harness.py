@@ -34,7 +34,7 @@ def test_harness_framings_go_only_with_the_harness_mode():
     trip = person_trip()
     for exp_id, framing in (("rh_px_bev_conv", "harness"), ("rh_steer_bev_conv", "participant")):
         exp = EXPERIMENTS[exp_id]
-        with pytest.raises(ValueError, match="harness framings go only with the steer mode"):
+        with pytest.raises(ValueError, match="harness framings go only with the steer and steer_vel modes"):
             PromptBuilder(framing, exp.planner(exp, trip, framing, "think"), exp.images, 20, exp.predict)
     assert EXPERIMENTS["rh_steer_bev_conv"].accepts("harness") and not EXPERIMENTS["rh_steer_bev_conv"].accepts("participant")
     assert EXPERIMENTS["rh_px_bev_conv"].accepts("participant") and not EXPERIMENTS["rh_px_bev_conv"].accepts("harness")

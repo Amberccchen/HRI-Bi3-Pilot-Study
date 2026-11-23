@@ -4,8 +4,9 @@ A harness is eight settings:
   episode     single_shot (one query at the trip start), rolling (re-plan every execute_s, each time in a fresh chat) or rolling_conv
               (the same in one growing conversation, harness.episodes.ConversationEpisode)
   output      the output mode: positions (one point per step in the world frame, outputs.positions.PositionPlanner), steer (a turn and a
-              distance per step from the current heading, with the harness prompts, outputs.steer.SteerPlanner), vel1 (one velocity step)
-              or velseq (a velocity sequence). vel1 and velseq (robot only) are deprecated: kept for the runs that used them, not for new runs
+              distance per step from the current heading, with the harness prompts, outputs.steer.SteerPlanner), steer_vel (a turn rate and
+              a speed held for each step, a circular arc, with steer's prompts otherwise, outputs.steer.SteerVelocityPlanner), vel1 (one
+              velocity step) or velseq (a velocity sequence). vel1 and velseq (robot only) are deprecated: kept for the runs that used them, not for new runs
   units       px (pixels of the map: u right, v down) or m (metres of the room frame: x right, y up), for every number the model reads or
               writes (outputs.planner.UNITS). px needs a map (images bev or bev_cam)
   images      text (no image), bev (the top-down map) or bev_cam (the map and the camera view)
@@ -17,7 +18,7 @@ A harness is eight settings:
               Only with prediction=true_future
   execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 2.0 s, 0.4 s for vel1). None for single shot
 
-Pairing rules: the harness framings (observation.prompting.HARNESS_FRAMINGS) go only with steer, and steer only with them; vel1 and velseq have
+Pairing rules: the harness framings (observation.prompting.HARNESS_FRAMINGS) go only with steer and steer_vel, and those only with them; vel1 and velseq have
 no person templates, so they go only with a robot framing; px units need a map.
 
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
@@ -41,15 +42,15 @@ from traj_gen.observation.prompting import FRAMINGS, HARNESS_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.planner import UNITS
 from traj_gen.outputs.positions import PositionPlanner
-from traj_gen.outputs.steer import SteerPlanner
+from traj_gen.outputs.steer import SteerPlanner, SteerVelocityPlanner
 from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 
 HARNESS_FILE = "harness.json"
 EPISODES = {"single_shot": SingleShotEpisode, "rolling": RollingEpisode, "rolling_conv": ConversationEpisode}
-OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "vel1": StepVelocityPlanner, "velseq": VelocityPlanner}
+OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "steer_vel": SteerVelocityPlanner, "vel1": StepVelocityPlanner, "velseq": VelocityPlanner}
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
 PREDICTIONS = ("none", "true_future", "constvel_future")  # constvel_future is deprecated
-DEFAULT_EXECUTE_S = {"positions": 2.0, "steer": 2.0, "vel1": 0.4, "velseq": 2.0}  # 2.0 s: 5 steps, about 7 queries per trip; vel1 re-plans every step
+DEFAULT_EXECUTE_S = {"positions": 2.0, "steer": 2.0, "steer_vel": 2.0, "vel1": 0.4, "velseq": 2.0}  # 2.0 s: 5 steps, about 7 queries per trip; vel1 re-plans every step
 ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # deprecated. No person output templates: only prompts/output/robot/ has them
 
 
@@ -69,8 +70,9 @@ class Harness:
                                      ("framing", self.framing, FRAMINGS), ("prediction", self.prediction, PREDICTIONS)):
             if value not in allowed:
                 raise ValueError(f"{name}={value!r} is not one of {', '.join(allowed)}")
-        if (self.framing in HARNESS_FRAMINGS) != (self.output == "steer"):
-            raise ValueError(f"framing {self.framing!r} does not go with output {self.output!r}: the harness framings ({', '.join(sorted(HARNESS_FRAMINGS))}) go only with steer, and steer only with them")
+        if (self.framing in HARNESS_FRAMINGS) != OUTPUTS[self.output].harness:
+            with_harness = ", ".join(k for k, v in OUTPUTS.items() if v.harness)
+            raise ValueError(f"framing {self.framing!r} does not go with output {self.output!r}: the harness framings ({', '.join(sorted(HARNESS_FRAMINGS))}) go only with {with_harness}, and those only with them")
         if self.output in ROBOT_ONLY_OUTPUTS and self.kind != "robot":
             raise ValueError(f"output {self.output!r} has no person templates, so it does not go with the person framing {self.framing!r}")
         if self.units == "px" and "bev" not in IMAGES[self.images]:

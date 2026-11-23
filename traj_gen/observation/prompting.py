@@ -8,7 +8,7 @@ The planned agent's kind picks the templates (observation.load_prompt): a planne
 prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
-text after the state; the steer mode (outputs.steer.SteerPlanner) uses these, and the harness framings go only with it.
+text after the state; the steer and steer_vel modes (outputs.steer) use these, and the harness framings go only with them.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
 """
@@ -27,7 +27,7 @@ from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, p
 
 # Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
 # participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer mode.
+# harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer and steer_vel modes.
 FRAMINGS = {"neutral": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
 HARNESS_FRAMINGS = {"harness", "robot_harness"}
 
@@ -47,7 +47,7 @@ class PromptBuilder:
         if FRAMINGS[framing] != self.kind:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
         if (framing in HARNESS_FRAMINGS) != mode.harness:
-            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the steer mode")
+            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the steer and steer_vel modes")
 
     def output_text(self) -> str:
         output = load_prompt("output", self.mode.template, self.kind).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,

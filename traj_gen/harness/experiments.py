@@ -58,7 +58,7 @@ class Experiment:
         return issubclass(self.planner, QueryPlanner)
 
     def accepts(self, framing: str) -> bool:
-        """Whether a run should pair this experiment with the framing: harness framings go only with the steer mode."""
+        """Whether a run should pair this experiment with the framing: harness framings go only with the steer and steer_vel modes."""
         return self.uses_model and (framing in HARNESS_FRAMINGS) == self.planner.harness
 
 
