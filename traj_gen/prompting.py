@@ -5,7 +5,7 @@ the system prompt and the first user turn of a Scene, or for the short follow-up
 conversation. The output mode is a planners.QueryPlanner: it supplies the template, reply key,
 example, units and how the example is written in those units. Everything else is shared.
 The planned agent's kind picks the templates: a planned person reads the "_human" version of the
-system prompt, output format, map captions and follow-up (TEMPLATE_SUFFIX), and its own framings.
+system prompt, output format, map captions, follow-up and plan-check feedback (TEMPLATE_SUFFIX), and its own framings.
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
 text after the state; the steer mode (planners.SteerPlanner) uses these, and the harness framings go only with it.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),

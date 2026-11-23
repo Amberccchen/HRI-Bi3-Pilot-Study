@@ -17,8 +17,7 @@ Experiment id parts, in order:
 straight and replay are the baselines (no model).
 
 The harness experiments (planners.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
-the other agents' recorded future trajectories (future, a proxy for a forecaster); and that plus the plan check (check_rounds, robot
-only), which tests each plan against the recorded futures and reports the first conflict back for revision.
+the other agents' recorded future trajectories (future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
 
 from dataclasses import dataclass, replace
@@ -38,7 +37,7 @@ class Experiment:
     execute_s: float | None  # executed motion between queries (rolling only)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
     future: bool = False  # give the other agents' recorded future positions in the text each turn
-    check_rounds: int = 0  # check each plan against the recorded futures and report the first conflict back, up to this many revisions (robot only)
+    check_rounds: int = 0  # check each plan against the recorded futures and report the first conflict back, up to this many revisions
 
     def __post_init__(self):
         if issubclass(self.episode, (RollingEpisode, ConversationEpisode)):
