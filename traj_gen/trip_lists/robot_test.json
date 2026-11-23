@@ -1,0 +1,66 @@
+[
+ {
+  "id": "laas_laas18_static_robot_02",
+  "stratum": "close"
+ },
+ {
+  "id": "laas_laas18_static_robot_15",
+  "stratum": "close"
+ },
+ {
+  "id": "laas_laas18_hst_robot_04",
+  "stratum": "close"
+ },
+ {
+  "id": "laas_laas18_blind_robot_16",
+  "stratum": "close"
+ },
+ {
+  "id": "laas_laas18_blind_robot_17",
+  "stratum": "close"
+ },
+ {
+  "id": "laas_laas18_hst_robot_05",
+  "stratum": "duration_tercile_1"
+ },
+ {
+  "id": "laas_laas18_cv_robot_07",
+  "stratum": "duration_tercile_2"
+ },
+ {
+  "id": "laas_laas18_cv_robot_11",
+  "stratum": "duration_tercile_3"
+ },
+ {
+  "id": "um_um13_static_robot_05",
+  "stratum": "close"
+ },
+ {
+  "id": "um_um13_cohan_robot_09",
+  "stratum": "close"
+ },
+ {
+  "id": "um_um13_static_robot_04",
+  "stratum": "close"
+ },
+ {
+  "id": "um_um13_cv_robot_10",
+  "stratum": "close"
+ },
+ {
+  "id": "um_um13_hst_robot_06",
+  "stratum": "close"
+ },
+ {
+  "id": "um_um13_blind_robot_04",
+  "stratum": "duration_tercile_1"
+ },
+ {
+  "id": "um_um13_cv_robot_08",
+  "stratum": "duration_tercile_2"
+ },
+ {
+  "id": "um_um13_hst_robot_03",
+  "stratum": "duration_tercile_3"
+ }
+]

@@ -3,7 +3,7 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
 
   select        choose the 16 robot test trips from --trips-dir and write <run>/test_trips.json and <run>/run.json
   select-human  the same for person trips: --close and --random trips per site
-  run           run experiments (resumable, one folder per episode, see episodes.py)
+  run           run harnesses and baselines on a trip list (resumable, one folder per episode, see episodes.py and harnesses.py)
   analyze       tables and figures of a (partial) run into <run>/analysis (see analyze.py)
   animate       animation.gif and timeline.png (colour = time) in given episode folders, or one animation.gif of all samples in a condition folder (see animate.py)
 
@@ -16,6 +16,8 @@ Run folders live outside the repository (they hold mocap-derived outputs):
 import argparse
 import json
 import os
+import shlex
+import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,9 +33,9 @@ from traj_gen.analyze import OVERLAY, analyze
 from traj_gen.animate import animate, animate_samples, load_episode, timeline
 from traj_gen.client import BACKENDS, CLAUDE_MODEL, CLAUDE_THINKING_EFFORT, backend_label, select_backend
 from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
-from traj_gen.experiments import EXPERIMENTS
+from traj_gen.experiments import BASELINES, EXPERIMENTS
+from traj_gen.harnesses import DEFAULT_PRESET, PRESETS, Harness, parse_overrides, write_harness_file
 from traj_gen.planners import THINKING
-from traj_gen.prompting import FRAMINGS
 from traj_gen.scene import DT, PROMPT_HISTORY_STEPS
 
 
@@ -46,6 +48,10 @@ MAX_PER_CONTROLLER = 2  # per site, so no controller dominates the test set
 CONCURRENCY = 32     # episodes in parallel. The server gives ~780 tok/s in total (up to 64 sequences), so 32 streams get ~24 tok/s each and more would only add waiting time. Nothink episodes mostly wait on the server and use less
 SEED = 20261022      # fixed so the tercile picks are reproducible. The value is a date with no other meaning
 HUMAN_DURATION_S = (2.0, 6.0)  # person test trips: the duration of most moves between two stations (median 3 s)
+TRIP_LISTS = Path(__file__).parent / "trip_lists"
+DEFAULT_TRIPS = {"human": TRIP_LISTS / "person_pilot.json",  # the 100 person trips of the person pilot, run 20261115_pilot_52d7b27
+                 "robot": TRIP_LISTS / "robot_test.json"}    # the 16 robot test trips (DESIGN.md, Generation test set), run 20261116_robot_px_f379f0c
+TRIPS_DIRS = {"human": Path("/persistent/data/Bi3_derived/trips_v2_human"), "robot": Path("/persistent/data/Bi3_derived/trips_v2")}  # run.json's trips folder for a new run folder
 
 
 def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
@@ -106,12 +112,13 @@ def select_human_trips(trips: list[dict], n_close: int, n_random: int, rng: np.r
             + [{"id": rest[i]["id"], "stratum": "random"} for i in sorted(rng.choice(len(rest), n_random, replace=False))])
 
 
-def load_run(run: Path, trip_list: Path) -> tuple[dict, list[dict], dict, dict]:
-    """(run.json, trip list, trips by id, site frames) of a run folder: the trip list read from trip_list, and the trips and sites of the folder run.json names.
+def load_run(run: Path, trip_list: Path, config: dict | None = None) -> tuple[dict, list[dict], dict, dict]:
+    """(run.json, trip list, trips by id, site frames) of a run folder: the trip list read from trip_list, and the trips and sites of the folder run.json names
+    (or config, for a run folder whose run.json is not written yet).
 
     Raises ValueError when a listed trip is missing, is not sampled at DT, or starts before the history the prompt reads.
     """
-    config = json.loads((run / RUN_CONFIG).read_text())
+    config = config or json.loads((run / RUN_CONFIG).read_text())
     trips_dir = Path(config["trips_dir"])
     trips = {t["id"]: t for t in load_trips(trips_dir)}
     chosen = json.loads(trip_list.read_text())
@@ -155,29 +162,59 @@ def check_run_model(run: Path, config: dict, label: dict) -> None:
         raise ValueError(f"{run} holds {other or sorted(saved)} but this run selects {label}: a run folder takes one model, start a new run folder")
 
 
+def resolve_harnesses(names: list[str], overrides: dict, kind: str) -> dict[tuple[str, str], tuple[str, Harness]]:
+    """(id, framing) -> (preset name, harness) of the named presets with the overrides applied, each one checked against the planned agent's kind.
+    Two presets that come out as the same harness run once."""
+    out = {}
+    for name in names:
+        try:
+            harness = PRESETS[name].with_overrides(overrides)
+        except ValueError as e:
+            raise ValueError(f"harness {name} with overrides {overrides}: {e}") from None
+        if harness.kind != kind:
+            raise ValueError(f"harness {name} has the {harness.kind} framing {harness.framing!r}, but this run plans a {kind}: "
+                             f"{'pass --robot for a robot framing' if harness.kind == 'robot' else 'drop --robot for a person framing'}")
+        out.setdefault((harness.id, harness.framing), (name, harness))
+    return out
+
+
 def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
-    config, chosen, trips, sites = load_run(args.run, args.trips or args.run / TEST_TRIPS)
-    kinds = {agent_kind(trips[c["id"]]["agent"]) for c in chosen}
-    framings = args.framings or [f for f, kind in FRAMINGS.items() if kind in kinds]
-    if wrong := [f for f in framings if FRAMINGS[f] not in kinds]:
-        raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
-    if unpaired := [e for e in args.experiments if EXPERIMENTS[e].uses_model and not any(EXPERIMENTS[e].accepts(f) for f in framings)]:
-        raise ValueError(f"experiments {unpaired} go with none of the framings {framings}: the harness framings go only with the steer experiments")
+    kind = "robot" if args.robot else "human"
+    names = args.harness or [DEFAULT_PRESET[kind]]
+    overrides = parse_overrides(args.overrides)
+    chosen_harnesses = resolve_harnesses(names, overrides, kind)
+    baselines = [] if args.baselines == ["none"] else list(dict.fromkeys(args.baselines))
+    if "none" in baselines:
+        raise ValueError(f"--baselines none cannot be combined with baseline names, got {args.baselines}")
+    trip_list = args.trips or (args.run / TEST_TRIPS if (args.run / TEST_TRIPS).exists() else DEFAULT_TRIPS[kind])
     select_backend(args.backend, args.model, args.effort)
     label = backend_label()
-    check_run_model(args.run, config, label)
     code = provenance()
     if code["git_dirty"]:
         raise ValueError("the code has uncommitted changes, so its commit does not identify it: commit before running episodes")
+    new = not (args.run / RUN_CONFIG).exists()  # a new run folder gets the run.json select would write
+    config, chosen, trips, sites = load_run(args.run, trip_list, {"trips_dir": str(TRIPS_DIRS[kind]), "git_commit": code["git_commit"]} if new else None)
+    if wrong := sorted({agent_kind(trips[c["id"]]["agent"]) for c in chosen} - {kind}):
+        raise ValueError(f"{trip_list} has trips that plan a {', '.join(wrong)}, but this run plans a {kind}: {'drop' if args.robot else 'pass'} --robot or pass another trip list")
+    check_run_model(args.run, config, label)
     if code["git_commit"] != config["git_commit"]:  # episodes of two code versions would mix in one run folder
         raise ValueError(f"{args.run} was started at commit {config['git_commit']} but the code is at {code['git_commit']}: start a new run folder")
+    args.run.mkdir(parents=True, exist_ok=True)
+    if not (args.run / TEST_TRIPS).exists():
+        (args.run / TEST_TRIPS).write_text(trip_list.read_text())
+    for name, harness in chosen_harnesses.values():  # check every stored harness.json before writing any
+        write_harness_file(args.run, name, harness, overrides, check_only=True)
+    for name, harness in chosen_harnesses.values():
+        write_harness_file(args.run, name, harness, overrides)
+    command = {"harnesses": names, "overrides": overrides, "baselines": baselines, "trips": str(trip_list), "command": shlex.join([sys.executable, "-m", "traj_gen.run", *sys.argv[1:]])}
+    config = {**config, **label, "commands": config.get("commands", []) + ([command] if command not in config.get("commands", []) else [])}
+    (args.run / RUN_CONFIG).write_text(json.dumps(config, indent=2) + "\n")
+    experiments = [(harness.experiment(), [harness.framing]) for _, harness in chosen_harnesses.values()] + [(EXPERIMENTS[b], []) for b in baselines]
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
-                for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
-                for framing, thinking, k in exp.episode.conditions([f for f in framings if exp.accepts(f)], args.thinking, args.samples)]
-    if any(k not in config for k in label):
-        (args.run / RUN_CONFIG).write_text(json.dumps({**config, **label}, indent=2) + "\n")
+                for exp, framings in experiments for c in chosen
+                for framing, thinking, k in exp.episode.conditions(framings, args.thinking, args.samples)]
     todo = [ep for ep in episodes if not ep.done()]
     print(f"{len(todo)} episodes to run, {len(episodes) - len(todo)} already done; concurrency {args.concurrency}", flush=True)
     pool = ThreadPoolExecutor(args.concurrency)
@@ -225,20 +262,26 @@ def main() -> None:
     p.add_argument("--close", type=int, required=True, help="per site: trips with the smallest real distance to the robot")
     p.add_argument("--random", type=int, required=True, help="per site: trips drawn at random from the other candidates")
     p.set_defaults(func=select)
-    p = sub.add_parser("run", help="run experiments")
-    p.add_argument("--experiments", nargs="+", choices=list(EXPERIMENTS), default=list(EXPERIMENTS), help="experiment ids (default: all)")
-    p.add_argument("--framings", nargs="+", choices=list(FRAMINGS), help="prompt framings (default: every framing for the trips' planned agent)")
+    p = sub.add_parser("run", help="run harnesses and baselines", description="Run harness presets (traj_gen/harnesses.py) and the baselines on a trip list. "
+                       f"The planned agent is a person unless --robot is given. A new run folder gets {RUN_CONFIG} (trips folder and commit) and a copy of the trip list.")
+    p.add_argument("--robot", action="store_true", help=f"the robot is the planned agent: default harness {DEFAULT_PRESET['robot']}, the robot trip list, robot framings only")
+    p.add_argument("--harness", nargs="+", choices=list(PRESETS), metavar="NAME", help=f"harness presets, from {', '.join(PRESETS)} "
+                   f"(default: {DEFAULT_PRESET['human']}, or {DEFAULT_PRESET['robot']} with --robot)")
+    p.add_argument("--overrides", nargs="+", default=[], metavar="KEY=VALUE", help="settings applied to every harness of the command, e.g. prediction=true_future check=2 "
+                   "(keys: episode, output, images, framing, prediction, check, execute_s)")
+    p.add_argument("--baselines", nargs="+", choices=[*BASELINES, "none"], default=list(BASELINES), help="baselines to run, or none (default: all)")
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
     p.add_argument("--backend", choices=list(BACKENDS), default="qwen", help="model backend: qwen (local vLLM server) or claude (Anthropic API, key in ANTHROPIC_API_KEY)")
     p.add_argument("--model", help=f"Claude model id (claude backend only, default {CLAUDE_MODEL})")
     p.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"], help=f"Claude effort with thinking on (claude backend only, default {CLAUDE_THINKING_EFFORT})")
     p.add_argument("--samples", type=int, default=3, help="samples per trip and condition")
-    p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS})")
+    p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS} if it exists, else {DEFAULT_TRIPS['human'].relative_to(TRIP_LISTS.parent.parent)}, "
+                   f"or {DEFAULT_TRIPS['robot'].relative_to(TRIP_LISTS.parent.parent)} with --robot)")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
     p.set_defaults(func=run)
     p = sub.add_parser("analyze", help="summary tables and figures")
     p.add_argument("--trips", type=Path, help=f"trip list the run was made with (default: <run>/{TEST_TRIPS})")
-    p.add_argument("--overlay", nargs="+", choices=list(EXPERIMENTS), default=OVERLAY, help="experiments shown in the per-trip overlay figures")
+    p.add_argument("--overlay", nargs="+", default=OVERLAY, help="experiments shown in the per-trip overlay figures")
     p.set_defaults(func=analysis)
     p = sub.add_parser("animate", help="animation.gif (and timeline.png) for finished episodes or conditions")
     p.add_argument("folders", nargs="+", type=Path, help="episode folders (each with a manifest.json), or condition folders <experiment>/<framing>/<thinking>/<trip> holding the samples s0, s1, ...")
