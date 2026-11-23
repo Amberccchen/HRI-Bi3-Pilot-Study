@@ -242,21 +242,14 @@ def style(ax, xlabel: str) -> None:
     ax.spines["bottom"].set_color(GRID)
 
 
-def pooled_trip_means(by_cond: dict, experiments: list[str], framing: str, thinking: str, metric: str) -> pd.Series | None:
-    """Per-trip value of a metric for a row that pools experiments: the mean over the experiments of their per-trip means (by_cond from
-    per_trip_means). None if any of the experiments has no condition with this framing and thinking."""
-    if any((e, framing, thinking) not in by_cond for e in experiments):
-        return None
-    return pd.concat([by_cond[(e, framing, thinking)][metric] for e in experiments], axis=1).mean(axis=1)
-
-
 def condition_figure(path: Path, panels: list[tuple[str, list[tuple[str, list[str], str]]]], metrics: dict[str, str], by_cond: dict,
                      experiments: dict[str, Experiment], title: str) -> None:
     """Panels stacked as the rows of one figure, with a row per condition and a column per metric (metrics: metric -> axis label), the x
     axis shared down each column. A panel is (title, rows) and a row (label, experiment ids pooled per trip, framing). Each row has a dot
-    for thinking off (hollow) and on (filled): the mean over trips of pooled_trip_means with its 95% bootstrap interval, coloured by the
-    episode family of its first experiment. The baselines (straight line, replay) are vertical lines at their mean over trips. Any set of
-    conditions of one planned-agent kind can be drawn this way (by_cond from per_trip_means, experiments id -> Experiment)."""
+    for thinking off (hollow) and on (filled): the mean over trips of the row's per-trip values (the mean over its experiments of their
+    per-trip means) with its 95% bootstrap interval, coloured by the episode family of its first experiment. A row missing one of its
+    experiments for a thinking mode gets no dot for it. The baselines (straight line, replay) are vertical lines at their mean over trips.
+    Any set of conditions of one planned-agent kind can be drawn this way (by_cond from per_trip_means, experiments id -> Experiment)."""
     heights = [len(rows) for _, rows in panels]
     fig = Figure(figsize=(max(3.0 * len(metrics) + 2.0, 7.5), 1.2 + 0.35 * len(panels) + 0.42 * sum(heights)), dpi=150, layout="constrained")
     grid = fig.subplots(len(panels), len(metrics), sharex="col", sharey="row", squeeze=False, gridspec_kw={"height_ratios": heights})
@@ -268,10 +261,10 @@ def condition_figure(path: Path, panels: list[tuple[str, list[tuple[str, list[st
             for r, (_, pooled, framing) in enumerate(rows):
                 colour = FAMILY_COLOUR[FAMILY[experiments[pooled[0]].episode]]
                 for (thinking, filled), off in zip(THINKING_DOTS, (-0.17, 0.17)):
-                    values = pooled_trip_means(by_cond, pooled, framing, thinking, metric)
-                    if values is None:
+                    conds = [(e, framing, thinking) for e in pooled]
+                    if any(c not in by_cond for c in conds):
                         continue
-                    m, lo, hi = ci(values)
+                    m, lo, hi = ci(pd.concat([by_cond[c][metric] for c in conds], axis=1).mean(axis=1))
                     ax.plot([lo, hi], [r + off] * 2, color=colour, lw=1.5, zorder=3)
                     ax.plot(m, r + off, "o", ms=6, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
             ax.set_yticks(range(len(rows)), [name for name, _, _ in rows])

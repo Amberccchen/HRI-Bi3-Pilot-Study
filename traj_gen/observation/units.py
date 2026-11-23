@@ -53,11 +53,6 @@ class Metres:
     def len_text(self, m: float) -> str:
         return self.num(self.length(m))
 
-    def axis_words(self) -> dict:
-        """The template fields that name the axes, the coordinates and the turn sense."""
-        return {"c0": self.axes[0], "c1": self.axes[1], "c0_direction": self.directions[0], "c1_direction": self.directions[1],
-                "coordinates": self.coordinates, "positive_turn": self.positive_turn, "negative_turn": self.negative_turn}
-
     def bounds(self, room_m: float) -> dict:
         """The room's extent along the two coordinates, for the frame description."""
         corners = self.pos([[-room_m / 2, -room_m / 2], [room_m / 2, room_m / 2]])

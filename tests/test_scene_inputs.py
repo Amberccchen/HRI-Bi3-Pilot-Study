@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from tests.test_human_prompt import SERIES_WIGGLE_M, SITE, person_trip
+from tests.fake_trips import SERIES_WIGGLE_M, SITE, person_trip
 from traj_gen.harness.episodes import Episode
 from traj_gen.harness.presets import PRESETS
 from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene

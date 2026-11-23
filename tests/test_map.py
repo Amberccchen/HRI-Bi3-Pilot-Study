@@ -5,7 +5,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from tests.test_human_prompt import SITE, person_trip
+from tests.fake_trips import SITE, person_trip
 from traj_gen.observation.bev import EXTENT_M, SIZE_PX, bev_transform, render_bev
 from traj_gen.observation.scene import Scene
 

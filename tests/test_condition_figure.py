@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from traj_gen.analysis.analyze import PAIRED, condition_figure, condition_figures, pooled_trip_means
+from traj_gen.analysis import analyze
+from traj_gen.analysis.analyze import PAIRED, condition_figure, condition_figures
 from traj_gen.harness.experiments import BASELINES
 from traj_gen.harness.presets import PRESETS
 
@@ -22,13 +23,15 @@ def by_cond_and_experiments():
     return by_cond, {pilot.id: pilot, steer.id: steer, **BASELINES}, pilot.id, steer.id
 
 
-def test_pooled_rows_average_the_experiments_per_trip_and_skip_missing_conditions():
+def test_pooled_rows_average_the_experiments_per_trip_and_skip_missing_conditions(tmp_path, monkeypatch):
     """A pooled row is the mean over experiments of each trip's mean, so each trip weighs the same whatever its sample counts; a row missing
     one of its experiments for a thinking mode gets no dot rather than the mean of the others."""
-    by_cond, _, pilot, steer = by_cond_and_experiments()
-    pooled = pooled_trip_means(by_cond, [pilot, steer], "participant", "nothink", "path_efficiency")
-    assert pooled.to_dict() == pytest.approx({"a": 2.0, "b": 5.0})
-    assert pooled_trip_means(by_cond, [pilot, steer], "participant", "think", "path_efficiency") is None
+    by_cond, experiments, pilot, steer = by_cond_and_experiments()
+    dots = []
+    monkeypatch.setattr(analyze, "ci", lambda values: (dots.append(values.to_dict()), (0.0, 0.0, 0.0))[1])
+    condition_figure(tmp_path / "pooled.png", [("", [("both", [pilot, steer], "participant")])], {"path_efficiency": "path efficiency"},
+                     by_cond, experiments, "test")
+    assert dots == [pytest.approx({"a": 2.0, "b": 5.0})]
 
 
 def test_condition_figures_are_written_for_any_rows(tmp_path):

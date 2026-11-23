@@ -11,6 +11,8 @@ converted back to metres through them.
 - velocities: each clipped to the speed cap, then integrated (outputs.velocity).
 - steer: steps [turn, distance] from the current heading, each turn and distance cut to the agent's limits, with
   the steer prompts (outputs.steer.SteerPlanner).
+- steer_vel: steps [turn rate, speed], each held for the step along a circular arc, cut to the agent's limits, with the steer prompts
+  (outputs.steer.SteerVelocityPlanner).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions (outputs.baselines).
 

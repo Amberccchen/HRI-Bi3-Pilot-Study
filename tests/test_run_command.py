@@ -5,8 +5,7 @@ from pathlib import Path
 import pytest
 
 import traj_gen.run as run_module
-from tests.test_harness import robot_trip
-from tests.test_human_prompt import SITE, person_trip
+from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.harness.episodes import Episode
 from traj_gen.harness.presets import HARNESS_FILE
 

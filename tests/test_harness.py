@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.test_human_prompt import SITE, person_trip, with_input_series
+from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
 from traj_gen.harness.clients import QwenClient
 from traj_gen.harness.episodes import Episode
@@ -9,16 +9,6 @@ from traj_gen.harness.presets import Harness
 from traj_gen.harness.experiments import Experiment
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene
-
-
-def robot_trip() -> dict:
-    """The person trip with the robot as the planned agent: the robot drives up the middle, human0 stands at the centre, in its way."""
-    trip = person_trip()
-    n = len(trip["time"])
-    trip = {**trip, "id": "um_um99_cv_robot_01", "agent": "robot", "goal": "3", "goal_xy": SITE["stations"]["3"]["xy"]}
-    trip["tracks"] = {**trip["tracks"], "robot": np.c_[np.zeros(n), np.linspace(-1.0, 0.0, n), np.zeros(n)].tolist(),
-                      "human0": np.c_[np.zeros(n), np.zeros(n), np.zeros(n)].tolist()}
-    return with_input_series(trip)
 
 
 # The experiments of the tests: positions in pixels and steer in one conversation on the map, steer with the recorded futures, and with the plan check.

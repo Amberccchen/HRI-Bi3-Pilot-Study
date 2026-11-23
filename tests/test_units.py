@@ -3,8 +3,7 @@
 import numpy as np
 import pytest
 
-from tests.test_harness import robot_trip
-from tests.test_human_prompt import SITE, person_trip
+from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.harness.presets import Harness
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import DT, Scene

@@ -50,9 +50,11 @@ class PromptBuilder:
             raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer and steer_vel modes")
 
     def output_text(self) -> str:
-        output = load_prompt("output", self.mode.template, self.kind).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
-                                                                        **self.mode.units.axis_words(), **self.mode.output_fields(),
-                                                                        **PLANNED_AGENT_WORDS[self.kind])
+        u = self.mode.units
+        axis_words = {"c0": u.axes[0], "c1": u.axes[1], "c0_direction": u.directions[0], "c1_direction": u.directions[1],
+                      "coordinates": u.coordinates, "positive_turn": u.positive_turn, "negative_turn": u.negative_turn}
+        output = load_prompt("output", self.mode.template, self.kind).format(unit=u.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
+                                                                        **axis_words, **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.mode.example_text())
 
     def system(self, scene: Scene) -> str:
