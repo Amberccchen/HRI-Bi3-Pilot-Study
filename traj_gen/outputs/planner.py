@@ -1,7 +1,7 @@
 """The shared base of the output modes: turn a model reply into the planned agent's positions, one per time step from where it is now.
 
 A planner is made per episode from a harness.experiments.Experiment. Model planners (QueryPlanner
-subclasses) also open the chats and render the images for the queries. Each subclass is one
+subclasses) also build the prompts and render the images for the queries. Each subclass is one
 output mode: its class attributes (name, prompt template, reply key, example, units) and
 methods (to_units, max_steps, positions) say how it is prompted and how a reply becomes positions:
 
@@ -23,7 +23,6 @@ from functools import cached_property
 import numpy as np
 
 from traj_gen.agents import SPEED_CAP_M_S, agent_kind
-from traj_gen.harness.clients import THINK_MAX_TOKENS, Chat, make_client
 from traj_gen.observation.bev import bev_transform, render_bev
 from traj_gen.observation.camera import camera_frame
 from traj_gen.observation.prompting import PromptBuilder
@@ -78,7 +77,9 @@ class QueryPlanner(Planner):
     system_template = "default"
     followup_template = "default"
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
-    think_max_tokens = THINK_MAX_TOKENS  # Qwen thinking budget with thinking on
+    # Qwen thinking budget with thinking on: thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k
+    # (8 of 12 are forced at 8192). Beyond this the answer is forced
+    think_max_tokens = 16384
 
     def to_units(self, value) -> np.ndarray:
         """An example position in metres, written in the units of the output mode."""
@@ -113,10 +114,9 @@ class QueryPlanner(Planner):
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""
         return min(MAX_PLAN_STEPS, remaining)
 
-    def chat(self, scene: Scene) -> Chat:
-        """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
-        return make_client(builder, self.thinking == "think").chat(builder.system(scene))
+    def prompt_builder(self, scene: Scene) -> PromptBuilder:
+        """The prompts of a new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
+        return PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
 
     @cached_property
     def cam(self) -> bytes:

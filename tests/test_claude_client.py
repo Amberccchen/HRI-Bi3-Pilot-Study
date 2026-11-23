@@ -91,7 +91,7 @@ def test_qwen_request_unchanged(monkeypatch):
     s = chat.ask(Turn("go", []), {})[0]
     assert sent[0]["messages"][0] == {"role": "system", "content": [{"type": "text", "text": "system text"}]}
     assert sent[0]["chat_template_kwargs"] == {"enable_thinking": True, "preserve_thinking": False, "reasoning_effort": "medium"}
-    assert sent[0]["temperature"] == 1.0 and sent[0]["max_tokens"] == clients.THINK_MAX_TOKENS and s.reasoning == "r"
+    assert sent[0]["temperature"] == 1.0 and sent[0]["max_tokens"] == FakeMode.think_max_tokens and s.reasoning == "r"
 
 
 def test_select_backend(monkeypatch):

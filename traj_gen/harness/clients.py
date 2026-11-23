@@ -36,7 +36,6 @@ BASE = "http://localhost:8000"
 MODEL = "Qwen/Qwen3.8-27B-FP8"
 MAX_IMAGES = 10  # the server's --limit-mm-per-prompt (hri-sim scripts/serve.sh)
 THINKING_EFFORT = "medium"  # the template's default "xhigh" does not finish within 24000 tokens (8 of 8 runs), and "low" is not shorter than medium
-THINK_MAX_TOKENS = 16384  # default thinking budget (an output mode may set its own, outputs.planner.QueryPlanner.think_max_tokens): thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k (8 of 12 are forced at 8192). Beyond this the answer is forced
 SERVER_MAX_LEN = 65536  # hri-sim scripts/serve.sh MAX_LEN. A forced answer must fit prompt + thinking + answer into it
 ANSWER_MAX_TOKENS = 1280  # longest allowed answer is 75 pairs (outputs.planner.MAX_PLAN_STEPS) at about 15 tokens per pair = 1125. Also the cap for a forced answer
 TIMEOUT_S = 3600  # a thinking reply of the full budget takes minutes on a busy server

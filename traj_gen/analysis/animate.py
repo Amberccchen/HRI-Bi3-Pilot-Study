@@ -27,7 +27,8 @@ from PIL import Image
 
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.harness.episodes import load_trajectory, real_path
+from traj_gen.harness.episodes import load_trajectory
+from traj_gen.outputs.baselines import real_path
 from traj_gen.observation.bev import (EXTENT_M, KIND_COLOUR, KIND_MARKER, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_others, draw_reference, draw_room,
                           figure_png, trajectory_legend)
 from traj_gen.observation.scene import DT, person_name
