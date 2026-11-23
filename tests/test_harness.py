@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_human_prompt import SITE, person_trip
-from traj_gen.agents import comfort_distance, contact_distance
+from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
 from traj_gen.client import QwenClient
 from traj_gen.episodes import Episode
 from traj_gen.experiments import EXPERIMENTS
@@ -72,7 +72,7 @@ def test_harness_steps_are_cut_to_the_turn_and_speed_limits():
     assert np.allclose(uv[1], uv[0])  # a negative distance waits
 
 
-def test_plan_check_counts_contact_against_the_recorded_future_and_needs_a_robot_trip(tmp_path):
+def test_plan_check_counts_contact_against_the_recorded_future(tmp_path):
     """The plan check must score the plan against where the people really are, with the scored contact and personal-space distances."""
     exp = EXPERIMENTS["rh_steer_bev_conv_future_check"]
     trip = robot_trip()
@@ -85,8 +85,55 @@ def test_plan_check_counts_contact_against_the_recorded_future_and_needs_a_robot
     i = len(episode.track)
     near = np.linalg.norm(positions[: len(trip["time"]) - i] - np.asarray(trip["tracks"]["human0"])[i:, :2][: len(positions)], axis=1)
     assert counts == (int((near < contact_distance(SITE)).sum()), int(((near >= contact_distance(SITE)) & (near < comfort_distance(SITE))).sum()))
-    with pytest.raises(ValueError, match="needs a robot trip"):
-        Episode(tmp_path, exp, person_trip(), SITE, "harness", "think", 0)
+
+
+def person_check(tmp_path, robot: list[float], other: list[float]) -> tuple[tuple[int, int], str | None]:
+    """Plan check of a person who waits in place for 3 steps, while the robot and the other participant stand at the given x offsets (m)
+    from the person at each of those steps."""
+    trip = person_trip()
+    i = trip["start_index"] + 1
+    here = np.asarray(trip["tracks"]["human0"])[trip["start_index"]]
+    tracks = {a: np.asarray(trip["tracks"][a], float).copy() for a in ("robot", "human1")}
+    for agent, offsets in (("robot", robot), ("human1", other)):
+        tracks[agent][i: i + 3] = here + np.c_[offsets, np.zeros(3), np.zeros(3)]
+    trip["tracks"] = {**trip["tracks"], **{a: t.tolist() for a, t in tracks.items()}}
+    episode = Episode(tmp_path, EXPERIMENTS["rh_steer_bev_conv_future_check"], trip, SITE, "harness", "think", 0)
+    return episode.conflicts(np.zeros((3, 2)), episode.scene())
+
+
+def test_person_plan_check_uses_the_thresholds_of_each_pair(tmp_path):
+    """A planned person touches the robot below the robot-person contact distance (0.315 m here), and the other participant below 0.30 m,
+    with that participant's personal space below 0.40 m. The robot has no personal space, so 0.39 m from it is nothing, though it is
+    inside the robot's own personal-space distance to a person (0.415 m) and the person-person one. Using the robot's distances for the
+    person pair, or giving the robot a personal space, would change these counts."""
+    assert pair_distances("human0", "robot", SITE) == pytest.approx((contact_distance(SITE), contact_distance(SITE)))
+    assert pair_distances("human0", "human1", SITE) == pytest.approx((2 * PERSON_BODY_RADIUS_M, PERSON_BODY_RADIUS_M + PERSONAL_SPACE_RADIUS_M["human"]))
+    far = [3.0] * 3
+    counts, text = person_check(tmp_path, [0.0, 3.0, 3.0], far)
+    assert counts == (1, 0) and "from the robot at" in text and "so you are in contact" in text
+    counts, text = person_check(tmp_path, far, [0.35, 0.35, 3.0])
+    assert counts == (0, 2) and "from the other participant (P2) at" in text and "so you are inside personal space" in text
+    assert person_check(tmp_path, [0.39] * 3, far) == ((0, 0), None)
+    counts, text = person_check(tmp_path, [3.0, 0.39, 3.0], [3.0, 0.29, 0.35])
+    assert counts == (1, 1) and "at t + 0.8 s" in text and "from the other participant (P2)" in text
+
+
+def test_person_plan_check_reports_the_worst_agent_at_the_first_conflict(tmp_path):
+    """At one step the robot is in contact at 0.31 m and the other participant only inside personal space at 0.305 m: contact comes first,
+    though the participant is nearer. With both in contact, the nearer one is reported."""
+    counts, text = person_check(tmp_path, [0.31, 3.0, 3.0], [0.305, 0.25, 3.0])
+    assert counts == (2, 0) and "at t + 0.4 s" in text and "62 px from the robot" in text
+    counts, text = person_check(tmp_path, [0.2, 3.0, 3.0], [0.1, 3.0, 3.0])
+    assert "20 px from the other participant (P2)" in text
+
+
+def test_person_plan_check_text_gives_the_person_thresholds(tmp_path):
+    """The person's feedback must speak to the person and give the distances of the person task prompt, not the robot's personal space."""
+    _, text = person_check(tmp_path, [0.0, 3.0, 3.0], [3.0] * 3)
+    assert text.startswith("Check of your plan against where the other participant and the robot will actually be: at t + 0.4 s you would be at")
+    assert ("contact with the robot below 63 px, contact with the other participant below 60 px, the other participant's personal space below 80 px,"
+            " the robot has none") in text  # 0.315, 0.30 and 0.40 m at 200 px/m
+    assert "the robot would be" not in text and "83 px" not in text
 
 
 def test_harness_thinking_budget_is_recorded():

@@ -27,11 +27,11 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
-from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii, body_radius, comfort_distance,
-                             contact_distance)
+from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii,
+                             body_radius, comfort_distance, contact_distance, pair_distances)
 from traj_gen.bev import render_result
 from traj_gen.client import TRANSPORT_ERRORS, Chat, Sample, describe_model
-from traj_gen.prompting import Turn
+from traj_gen.prompting import TEMPLATE_SUFFIX, Turn
 from traj_gen.scene import DT, Scene, load_prompt, person_name
 
 # Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
@@ -68,8 +68,6 @@ class Episode:
         self.folder = self.folder_for(run, exp.id, trip["id"], framing, thinking, sample)
         self.planner = exp.planner(exp, trip, framing, thinking)
         self.agent, self.start = trip["agent"], trip["start_index"]
-        if exp.check_rounds and agent_kind(self.agent) != "robot":
-            raise ValueError(f"{exp.id}: the plan check scores the robot against the people, so it needs a robot trip, not {trip['id']}")
         self.goal = np.asarray(trip["goal_xy"], float)
         self.arrival_radius = ARRIVAL_RADIUS_M[agent_kind(self.agent)]
         self.track = np.asarray(trip["tracks"][self.agent], float)[: self.start + 1, :2]
@@ -119,27 +117,34 @@ class Episode:
         return self.revise(scene, chat, sample.value, retries)
 
     def conflicts(self, value: np.ndarray, scene: Scene) -> tuple[tuple[int, int], str | None]:
-        """(contact steps, personal-space steps) of a plan against the people's recorded future, and the feedback text on its first conflict (None if none)."""
+        """(contact steps, personal-space steps) of a plan against the other agents' recorded future, and the feedback text on its first conflict
+        (None if none). Each pair has its own scored distances (agents.pair_distances). A step counts as contact if any pair is in contact, else as
+        personal space if any pair is inside personal space. The reported agent at the first conflict is the worst: contact first, then the nearest."""
         positions, _ = self.planner.positions(value, scene)
         i, u = len(self.track), self.planner.units
-        people = [o for o in self.others if agent_kind(o) == "human"]
         n = min(len(positions), len(self.trip["time"]) - i)
         if n <= 0:
             return (0, 0), None
-        future = {o: np.asarray(self.trip["tracks"][o], float)[i: i + n, :2] for o in people}
-        dist = np.stack([np.linalg.norm(positions[:n] - future[o], axis=1) for o in people], axis=1)  # (n, people)
-        contact, comfort = contact_distance(self.site), comfort_distance(self.site)
-        near = dist.min(axis=1)
-        counts = (int((near < contact).sum()), int(((near >= contact) & (near < comfort)).sum()))
-        bad = np.flatnonzero(near < comfort)
+        future = {o: np.asarray(self.trip["tracks"][o], float)[i: i + n, :2] for o in self.others}
+        dist = np.stack([np.linalg.norm(positions[:n] - future[o], axis=1) for o in self.others], axis=1)  # (n, others)
+        contact, comfort = np.array([pair_distances(self.agent, o, self.site) for o in self.others]).T
+        touching, inside = dist < contact, dist < comfort
+        counts = (int(touching.any(axis=1).sum()), int((inside.any(axis=1) & ~touching.any(axis=1)).sum()))
+        bad = np.flatnonzero(inside.any(axis=1))
         if not bad.size:
             return counts, None
         k = bad[0]
-        j = int(dist[k].argmin())
-        text = load_prompt("plan_check").format(
-            t=f"{DT * (k + 1):.1f}", robot=u.pos_text(positions[k]), dist=u.len_text(near[k]), person=person_name(people[j]), person_at=u.pos_text(future[people[j]][k]),
-            kind="in contact" if near[k] < contact else "inside personal space", contact=u.len_text(contact), comfort=u.len_text(comfort),
-            n_contact=counts[0], n_space=counts[1], unit=u.name)
+        j = min(np.flatnonzero(inside[k]), key=lambda j: (not touching[k, j], dist[k, j]))
+        other = self.others[j]
+        if agent_kind(other) == "robot":
+            name = "the robot"
+        else:
+            name = person_name(other) if agent_kind(self.agent) == "robot" else f"the other participant ({person_name(other)})"
+        text = load_prompt("plan_check" + TEMPLATE_SUFFIX[agent_kind(self.agent)]).format(
+            t=f"{DT * (k + 1):.1f}", at=u.pos_text(positions[k]), dist=u.len_text(dist[k, j]), other=name, other_at=u.pos_text(future[other][k]),
+            kind="in contact" if touching[k, j] else "inside personal space", contact=u.len_text(contact_distance(self.site)),
+            comfort=u.len_text(comfort_distance(self.site)), contact_person=u.len_text(2 * PERSON_BODY_RADIUS_M),
+            comfort_person=u.len_text(PERSON_BODY_RADIUS_M + PERSONAL_SPACE_RADIUS_M["human"]), n_contact=counts[0], n_space=counts[1], unit=u.name)
         return counts, text
 
     def revise(self, scene: Scene, chat: Chat, value: np.ndarray, retries: int) -> np.ndarray:

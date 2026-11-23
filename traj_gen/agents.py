@@ -59,6 +59,16 @@ def comfort_distance(site: dict) -> float:
     return body_radius("robot", site) + PERSONAL_SPACE_RADIUS_M["human"]
 
 
+def pair_distances(agent_id: str, other_id: str, site: dict) -> tuple[float, float]:
+    """(contact, personal space) centre distances (m) between the planned agent and another agent, as scored: contact below the sum
+    of the body radii, personal space below the planned agent's body radius plus the other's personal-space radius. For an other
+    without a personal space (the robot) the second is the contact distance, so nothing counts as personal space alone."""
+    radius = body_radius(agent_id, site)
+    contact = radius + body_radius(other_id, site)
+    kind = agent_kind(other_id)
+    return contact, radius + PERSONAL_SPACE_RADIUS_M[kind] if kind in PERSONAL_SPACE_RADIUS_M else contact
+
+
 def body_radii(agent_ids, site: dict) -> list[float]:
     """body_radius of each agent id, for the other agents of an episode."""
     return [body_radius(a, site) for a in agent_ids]
