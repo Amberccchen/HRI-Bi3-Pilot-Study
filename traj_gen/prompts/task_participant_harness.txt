@@ -1,0 +1,3 @@
+Your task: walk from where you are to your goal station, as you would in this study. The other participant and the robot are in the room.
+You touch the robot when your centre and the robot's centre are less than {contact} {unit} apart, and the other participant when your centres are less than {contact_person} {unit} apart. That must not happen. The other participant also has personal space: keep your centres at least {comfort_person} {unit} apart whenever you can.
+You may wait in place (a step of distance 0), for example to let someone pass.

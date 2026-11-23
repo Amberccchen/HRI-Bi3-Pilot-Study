@@ -49,6 +49,16 @@ def body_radius(agent_id: str, site: dict) -> float:
     return min(site["footprint_m"]) / 2 if agent_kind(agent_id) == "robot" else PERSON_BODY_RADIUS_M
 
 
+def contact_distance(site: dict) -> float:
+    """Centre distance (m) below which the robot and a person are in contact, as scored."""
+    return body_radius("robot", site) + PERSON_BODY_RADIUS_M
+
+
+def comfort_distance(site: dict) -> float:
+    """Centre distance (m) below which the robot's body is inside a person's personal space, as scored."""
+    return body_radius("robot", site) + PERSONAL_SPACE_RADIUS_M["human"]
+
+
 def body_radii(agent_ids, site: dict) -> list[float]:
     """body_radius of each agent id, for the other agents of an episode."""
     return [body_radius(a, site) for a in agent_ids]

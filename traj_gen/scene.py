@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from preprocessing.bi3_derived import TRIP_HISTORY_S, TRIP_HZ, label_members
-from traj_gen.agents import STATION_POSITION, agent_kind, prompt_radius
+from traj_gen.agents import STATION_POSITION, agent_kind, body_radius, prompt_radius
 
 
 PROMPTS = Path(__file__).parent / "prompts"
@@ -144,15 +144,16 @@ class Scene:
                   for k, s in stations.items() if len(s["members"]) == 2 for a, b in [s["members"]]]
         return "\n".join(lines)
 
-    def other_text(self, p: dict, units: Metres, predict: bool) -> str:
-        """One other agent's line: position, motion, goal and next goal (for the robot, its goal only, as a station name)."""
+    def other_text(self, p: dict, units: Metres, predict: bool, scored_sizes: bool = False) -> str:
+        """One other agent's line: position, motion, goal and next goal (for the robot, its goal only, as a station name).
+        scored_sizes gives the robot's scoring radius instead of its drawn (enclosing) radius."""
         human_planned = agent_kind(self.agent) == "human"
         fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
                   "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),
                   "hist_s": PROMPT_HISTORY_S, "dt": DT}
         if p["kind"] == "robot":
             name = "the robot"
-            text = load_prompt("robot_other_human").format(radius=units.len_text(prompt_radius(p["id"], self.site)),
+            text = load_prompt("robot_other_human").format(radius=units.len_text((body_radius if scored_sizes else prompt_radius)(p["id"], self.site)),
                                                            goal=station_text(p["goal"], self.site["stations"]), **fields)
         else:
             name = person_name(p["id"])
@@ -165,7 +166,7 @@ class Scene:
             text += " " + load_prompt("person_prediction").format(name=name, h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
         return text
 
-    def text(self, units: Metres, predict: bool) -> str:
+    def text(self, units: Metres, predict: bool, scored_sizes: bool = False) -> str:
         """The per-turn state block of the planned agent, with the other agents. predict adds each other agent's constant-velocity positions."""
         fields = {"time_s": f"{self.time_s:.1f}", "unit": units.name, "dt": DT, "hist_s": PROMPT_HISTORY_S,
                   "goal": station_text(self.goal, self.site["stations"]), "goal_pos": units.pos_text(self.goal_xy),
@@ -176,4 +177,4 @@ class Scene:
                                                people="\n".join(self.other_text(p, units, predict) for p in self.others if p["kind"] == "human"))
         return load_prompt("scene_human").format(
             name=person_name(self.agent), **own, **fields, next_goal=station_text(self.next_goal, self.site["stations"]),
-            others="\n".join(self.other_text(p, units, predict) for p in self.others))
+            others="\n".join(self.other_text(p, units, predict, scored_sizes) for p in self.others))

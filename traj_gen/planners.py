@@ -8,6 +8,8 @@ methods (to_units, max_steps, positions) say how it is prompted and how a reply 
 - waypoints (metres): the speed limit keeps the path's shape and stretches its timing.
 - pixels: the same after mapping the BEV pixels to metres.
 - velocities: each clipped to the speed cap, then integrated.
+- harness: steps [turn, distance] on the BEV from the current heading, each turn and distance cut to the agent's limits, with
+  the harness prompts (planners.HarnessPlanner).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions.
 
@@ -23,10 +25,10 @@ import numpy as np
 from traj_gen.agents import SPEED_CAP_M_S, STRAIGHT_LINE_SPEED_M_S, agent_kind
 from traj_gen.bev import bev_transform, render_bev
 from traj_gen.camera import camera_frame
-from traj_gen.client import Chat, make_client
+from traj_gen.client import THINK_MAX_TOKENS, Chat, make_client
 from traj_gen.episodes import real_path
 from traj_gen.prompting import PromptBuilder
-from traj_gen.scene import DT, Metres, Pixels, Scene
+from traj_gen.scene import DT, Metres, Pixels, Scene, person_name
 
 
 THINKING = ("nothink", "think")  # run option of the model conditions: the model's thinking off, on
@@ -72,10 +74,40 @@ class QueryPlanner(Planner):
 
     units = METRES
     pixel_ticks = False  # BEV grid labelled in metres
+    harness = False  # whether the mode goes with the harness framings (prompting.HARNESS_FRAMINGS)
+    system_template = "system"  # + "_human" for a planned person
+    followup_template = "followup"
+    scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
+    think_max_tokens = THINK_MAX_TOKENS  # Qwen thinking budget with thinking on
 
     def to_units(self, value) -> np.ndarray:
         """An example position in metres, written in the units of the output mode."""
         return self.units.pos(value)
+
+    def example_text(self) -> str:
+        """The example pairs of the reply format, written in the output units."""
+        return ", ".join("[" + ", ".join(self.units.num(c) for c in self.to_units(p)) + "]" for p in self.example[self.kind])
+
+    def output_fields(self) -> dict:
+        """Fields of the output template beyond the shared ones."""
+        return {}
+
+    def extra_text(self, scene: Scene) -> str:
+        """Text after the state: the other agents' recorded future positions when the experiment gives them, else nothing."""
+        if not self.exp.future:
+            return ""
+        i = len(scene.track) - 1
+        if self.kind == "robot":
+            lines = ["Where each person will actually be (recorded in the study; they walk exactly this way whatever the robot does):"]
+        else:  # a planned person is also given the robot's recorded future
+            lines = ["Where the other participant and the robot will actually be (recorded in the study; they move exactly this way whatever you do):"]
+        for other, track in self.trip["tracks"].items():
+            if other == self.trip["agent"] or (self.kind == "robot" and agent_kind(other) != "human"):
+                continue
+            future = np.asarray(track, float)[i + 1:, :2]
+            points = ", ".join(f"t+{DT * (k + 1):.1f} s {self.units.pos_text(xy)}" for k, xy in enumerate(future))
+            lines.append(f"{'Robot' if agent_kind(other) == 'robot' else person_name(other)}: {points}.")
+        return "\n".join(lines)
 
     def max_steps(self, remaining: int) -> int:
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""
@@ -120,6 +152,59 @@ class PixelPlanner(WaypointPlanner):
     def positions(self, value, scene):
         return super().positions(self.units.transform.to_metre(value), scene)
 
+
+
+class HarnessPlanner(PixelPlanner):
+    """The harness: steps [turn in degrees, distance in pixels] on the BEV, with the harness prompts (the scored contact and personal-space
+    distances, waiting allowed, the scored body sizes, the current heading each turn) and a larger thinking budget. The heading starts as the
+    direction of the agent's last movement; each step first turns by its turn (positive: clockwise on the map, from +u toward +v), cut to
+    the agent's largest turn, then moves its distance, cut to [0, step]. The robot's prompt states the largest distance per step; a
+    person's gives only the top speed (with the stated maximum, people asked for exactly it in 75-82% of steps, run 20261117_human_m4a_f2b3123)."""
+
+    name = "harness"
+    template = "output_harness"
+    key = "steps"
+    harness = True
+    system_template = "system_harness"
+    followup_template = "followup_harness"
+    scored_sizes = True
+    think_max_tokens = 32768  # most harness calls ran past 16384 tokens (robot test runs, 2026-11-16)
+    # Largest turn per 0.4 s step. Robot: the real robots' largest body yaw change, 35.8 deg at LAAS and 34.4 at UM (trips_v2, 144 robot trips).
+    # Person: the 99th percentile of the change in walking direction between consecutive steps both above 0.2 m/s, 115.6 deg over the
+    # trips_v2_human goal-to-goal moves (14292 trips; the median is 9 deg), the same percentile as the person's speed cap.
+    MAX_TURN_DEG = {"robot": 35.0, "human": 115.0}
+    # Example steps at about each kind's walking or driving scale: robot 20-22 px (0.10-0.11 m, near its 24 px limit), person 80 px (0.4 m, about 1.0 m/s).
+    EXAMPLE = {"robot": "[0, 20], [-15, 22], [0, 0]", "human": "[0, 80], [-15, 80], [0, 0]"}
+
+    @property
+    def max_turn_deg(self) -> float:
+        return self.MAX_TURN_DEG[self.kind]
+
+    def example_text(self) -> str:
+        return self.EXAMPLE[self.kind]
+
+    def output_fields(self) -> dict:
+        return {"max_turn": f"{self.max_turn_deg:g}"}
+
+    def heading(self, scene: Scene) -> float:
+        """Direction of the agent's last movement of at least 1 px, in degrees on the map (0 = +u, 90 = +v); 0 if it has not moved."""
+        uv = self.units.pos(scene.track)
+        moves = np.diff(uv, axis=0)
+        moved = np.flatnonzero(np.linalg.norm(moves, axis=1) >= 1.0)
+        return float(np.degrees(np.arctan2(*moves[moved[-1]][::-1]))) if moved.size else 0.0
+
+    def extra_text(self, scene: Scene) -> str:
+        future = super().extra_text(scene)
+        who, whose = ("Robot heading", "its") if self.kind == "robot" else ("Your heading", "your")
+        return (future + "\n\n" if future else "") + f"{who} now: {self.heading(scene):.0f} degrees (0 = +u, right; 90 = +v, down), the direction of {whose} last movement."
+
+    def positions(self, value, scene):
+        step_px = self.units.length(self.step_m)
+        turn = np.clip(value[:, 0], -self.max_turn_deg, self.max_turn_deg)
+        theta = np.radians(self.heading(scene) + np.cumsum(turn))
+        d = np.clip(value[:, 1], 0.0, step_px)
+        uv = self.units.pos(scene.track[-1]) + np.cumsum(d[:, None] * np.stack([np.cos(theta), np.sin(theta)], axis=1), axis=0)
+        return self.units.transform.to_metre(uv), np.abs(value[:, 1]) / self.units.length(1.0) / DT
 
 class VelocityPlanner(QueryPlanner):
     """One velocity per step in m/s, each scaled down to the speed cap and integrated."""

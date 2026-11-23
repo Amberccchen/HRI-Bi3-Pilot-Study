@@ -4,12 +4,17 @@ Framing (one of prompting.FRAMINGS) and thinking (nothink/think) are run options
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
 execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_pred` ones are their
 base experiment plus each person's constant-velocity prediction (text and map).
+
+The harness experiments (planners.HarnessPlanner, with the harness framings only) come in three levels: the harness; the harness plus
+the other agents' recorded future trajectories (future, a proxy for a forecaster); and that plus the plan check (check_rounds, robot
+only), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
 
 from dataclasses import dataclass, replace
 
 from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.planners import PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.planners import HarnessPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.prompting import HARNESS_FRAMINGS
 from traj_gen.scene import DT
 
 
@@ -21,6 +26,8 @@ class Experiment:
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
     base: str | None = None  # id of the experiment without the prediction (_pred rows only)
+    future: bool = False  # give the other agents' recorded future positions in the text each turn
+    check_rounds: int = 0  # check each plan against the recorded futures and report the first conflict back, up to this many revisions (robot only)
 
     def __post_init__(self):
         if issubclass(self.episode, (RollingEpisode, ConversationEpisode)):
@@ -39,6 +46,10 @@ class Experiment:
     def uses_model(self) -> bool:
         return issubclass(self.planner, QueryPlanner)
 
+    def accepts(self, framing: str) -> bool:
+        """Whether a run should pair this experiment with the framing: harness framings go only with the harness mode."""
+        return self.uses_model and (framing in HARNESS_FRAMINGS) == self.planner.harness
+
 
 _ROLLING_S = 2.0  # 5 steps, about 7 queries per trip
 _experiments = [
@@ -54,6 +65,9 @@ _experiments = [
     Experiment("rh_wp_bev_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_harness_bev_conv", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_harness_bev_conv_future", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
+    Experiment("rh_harness_bev_conv_future_check", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]

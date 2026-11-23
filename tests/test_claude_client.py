@@ -9,8 +9,13 @@ from traj_gen.client import Chat, ClaudeClient
 from traj_gen.prompting import Turn
 
 
+class FakeMode:
+    think_max_tokens = 16384
+
+
 class FakeBuilder:
     prefill = ""
+    mode = FakeMode()
 
     def parse(self, text):
         return text if text.startswith("{") else None
@@ -95,8 +100,8 @@ def test_select_backend(monkeypatch):
         client.select_backend("qwen", "claude-opus-5-5")
     client.select_backend("claude", "claude-opus-5-5", "medium")
     assert client.backend_label() == {"backend": "claude", "model": "claude-opus-5-5", "effort": "medium"}
-    assert client.describe_model(True)["output_config"] == {"effort": "medium"}
-    assert client.describe_model(True)["backend"] == "claude"
+    assert client.describe_model(True, 16384)["output_config"] == {"effort": "medium"}
+    assert client.describe_model(True, 16384)["backend"] == "claude"
     monkeypatch.setattr(ClaudeClient, "model", client.CLAUDE_MODEL)
     monkeypatch.setattr(ClaudeClient, "effort", client.CLAUDE_THINKING_EFFORT)
 

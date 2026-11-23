@@ -163,6 +163,8 @@ def run(args: argparse.Namespace) -> None:
     framings = args.framings or [f for f, kind in FRAMINGS.items() if kind in kinds]
     if wrong := [f for f in framings if FRAMINGS[f] not in kinds]:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
+    if unpaired := [e for e in args.experiments if EXPERIMENTS[e].uses_model and not any(EXPERIMENTS[e].accepts(f) for f in framings)]:
+        raise ValueError(f"experiments {unpaired} go with none of the framings {framings}: the harness framings go only with the harness experiments")
     select_backend(args.backend, args.model, args.effort)
     label = backend_label()
     check_run_model(args.run, config, label)
@@ -173,7 +175,7 @@ def run(args: argparse.Namespace) -> None:
         raise ValueError(f"{args.run} was started at commit {config['git_commit']} but the code is at {code['git_commit']}: start a new run folder")
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
-                for framing, thinking, k in exp.episode.conditions(framings, args.thinking, args.samples)]
+                for framing, thinking, k in exp.episode.conditions([f for f in framings if exp.accepts(f)], args.thinking, args.samples)]
     if any(k not in config for k in label):
         (args.run / RUN_CONFIG).write_text(json.dumps({**config, **label}, indent=2) + "\n")
     todo = [ep for ep in episodes if not ep.done()]
