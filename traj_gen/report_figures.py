@@ -27,7 +27,7 @@ from metrics.traj_gen_metrics import clearance_metrics
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
 from traj_gen.analyze import INK, ci, per_trip_means, scored, style
 from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
-from traj_gen.experiments import BASELINES
+from traj_gen.experiments import BASELINES, LEGACY_IDS
 from traj_gen.run import load_run
 
 STRAIGHT, REPLAY = "straight", "replay"  # experiment ids of the baselines
@@ -50,7 +50,7 @@ OUTPUT_TYPES = [("waypoints", ["rh_wp_bev"], "social"), ("pixels", ["rh_px_bev"]
 # and in one conversation), and every step exists only for velocities.
 # horizon: waypoints, except the per-step row, which only exists for velocities
 HORIZONS = [("single shot", ["ss_wp_bev"], "social"), ("rolling", ["rh_wp_bev"], "social"), ("* one step (vel)", ["rh_vel1_bev"], "social"),
-            ("rolling, convo", ["rh_wp_bev_conv"], "social")]
+            ("rolling, convo", ["rh_wp_bev_cam_conv"], "social")]
 PROMPT_EXPERIMENTS = ["ss_wp_bev", "rh_wp_bev", "rh_vel1_bev"]  # the experiments pooled in the prompt panel, each needs all four framings
 PROMPTS = [(label, PROMPT_EXPERIMENTS, framing) for label, framing in
            [("neutral", "neutral"), ("social", "social"), ("social + size", "social_body"), ("cautious", "cautious")]]
@@ -139,6 +139,7 @@ def sensitivity(run: Path, sites: dict) -> None:
 def report(run: Path) -> None:
     _, _, _, sites = load_run(run, run / TEST_TRIPS)
     episodes = pd.read_csv(run / ANALYSIS_DIR / "episodes.csv")
+    episodes["experiment"] = episodes.experiment.replace(LEGACY_IDS)  # episodes.csv written before the derived ids
     by_cond = per_trip_means(scored(episodes[episodes.kind == "robot"]))  # the write-up covers robot generation
     panels = [("(a) Perception ladder", LADDER), ("(b) Output type", OUTPUT_TYPES), ("(c) Replanning horizon", HORIZONS), ("(d) Prompt", PROMPTS)]
     for contact, first in CONTACT.items():  # the two ways to count contact, as separate figures to compare

@@ -1,7 +1,8 @@
 """Analysis of a trajectory generation run: tables, comparisons and figures.
 
-Reads every finished episode under a run folder, whose trips must all be in the trip list (default <run>/test_trips.json, as for `run`). Only folders of experiments in
-the registry are read, so other folders such as smoke/ are ignored. A run still in progress is fine,
+Reads every finished episode under a run folder, whose trips must all be in the trip list (default <run>/test_trips.json, as for `run`). Only experiment folders
+are read: those with a <id>/<framing>/harness.json, whose settings define the experiment, and those named by the registry of the runs before
+harness presets (experiments.EXPERIMENTS and its LEGACY_IDS), so other folders such as smoke/ are ignored (harnesses.run_experiments). A run still in progress is fine,
 and missing conditions are simply absent. Writes into <run>/analysis/:
 
   episodes.csv          one row per episode: condition, trip, planned agent and its kind, status, metrics, queries, tokens, latency
@@ -55,7 +56,8 @@ from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind
 from traj_gen.bev import render_overlay, trajectory_legend
 from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
-from traj_gen.experiments import BASELINES, EXPERIMENTS
+from traj_gen.experiments import BASELINES, EXPERIMENTS, Experiment
+from traj_gen.harnesses import run_experiments
 from traj_gen.planners import THINKING
 from traj_gen.prompting import FRAMINGS
 
@@ -89,12 +91,15 @@ BASELINE_STYLE = {"replay": ("#52514e", "--"), "straight": ("#6250d6", ":")}
 INK, GRID = "#0b0b0b", "#e4e3df"
 
 
-def collect(run: Path, chosen: list[dict]) -> pd.DataFrame:
-    """One row per finished episode of the chosen trips (id and stratum each). Raises ValueError when the run folder holds episodes of other trips."""
+def collect(run: Path, chosen: list[dict], folders: dict[str, Experiment]) -> pd.DataFrame:
+    """One row per finished episode of the chosen trips (id and stratum each), from the experiment folders (folder name -> Experiment, as
+    harnesses.run_experiments returns them). The experiment column is the experiment's id. Raises ValueError when the run folder holds
+    episodes of other trips."""
     strata = {c["id"]: c["stratum"] for c in chosen}
     rows, other_trips = [], set()
-    for exp in EXPERIMENTS:
-        for path in sorted((run / exp).glob("**/manifest.json")):
+    for folder, experiment in folders.items():
+        exp = experiment.id
+        for path in sorted((run / folder).glob("**/manifest.json")):
             m = json.loads(path.read_text())
             if m["trip"] not in strata:
                 other_trips.add(m["trip"])
@@ -121,7 +126,7 @@ def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     df["goal_reached"] = df.goal_reached.fillna(0.0)
     df["invalid_unusable_reply"] = (df.status == "invalid_reply").astype(float)
     df["invalid_error"] = (df.status == "error").astype(float)
-    df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(df.experiment.map(lambda e: EXPERIMENTS[e].uses_model))
+    df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(~df.experiment.isin(BASELINES))
     df["invalid_goal"] = (ok & (df.goal_reached == 0)).astype(float)
     df["invalid_room"] = (df.out_of_room == 1).astype(float)
     df["invalid"] = (df[INVALID_PARTS] == 1).any(axis=1).astype(float)
@@ -189,7 +194,7 @@ EXPERIMENT_COMPARISONS = {
     "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
     "cam + bev - bev only (waypoints)": [("ss_wp_bev_cam", "ss_wp_bev"), ("rh_wp_bev_cam", "rh_wp_bev")],
     "rolling - single shot (bev)": [("rh_wp_bev", "ss_wp_bev"), ("rh_px_bev", "ss_px_bev")],
-    "conversation - fresh query each time": [("rh_wp_bev_conv", "rh_wp_bev_cam"), ("rh_px_bev_conv", "rh_px_bev"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
+    "conversation - fresh query each time": [("rh_wp_bev_cam_conv", "rh_wp_bev_cam"), ("rh_px_bev_conv", "rh_px_bev"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
     "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
     "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
 }
@@ -197,10 +202,10 @@ if unknown := ({e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs
     raise ValueError(f"experiment ids not in the registry: {sorted(unknown)}")
 
 
-def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
-    """(comparison, scope, A condition, B condition), with the difference reported as A - B. The scope is the factor the pairs are split by."""
-    models = [e for e in EXPERIMENTS if e not in BASELINES]
-    by_experiment = EXPERIMENT_COMPARISONS | {"prediction - none": [(e, EXPERIMENTS[e].base) for e in models if EXPERIMENTS[e].predict]}
+def comparison_pairs(experiments: dict[str, Experiment]) -> list[tuple[str, str, tuple, tuple]]:
+    """(comparison, scope, A condition, B condition) over the experiments (id -> Experiment), with the difference reported as A - B. The scope is the factor the pairs are split by."""
+    models = [e for e in experiments if e not in BASELINES]
+    by_experiment = EXPERIMENT_COMPARISONS | {"prediction - none": [(e, experiments[e].base) for e in models if experiments[e].predict]}
     pairs = []
     for e in models:
         for th in THINKING:
@@ -217,9 +222,9 @@ def comparison_pairs() -> list[tuple[str, str, tuple, tuple]]:
     return pairs
 
 
-def comparisons(by_cond: dict) -> pd.DataFrame:
+def comparisons(by_cond: dict, experiments: dict[str, Experiment]) -> pd.DataFrame:
     rows = []
-    pairs = [p for p in comparison_pairs() if p[2] in by_cond and p[3] in by_cond]
+    pairs = [p for p in comparison_pairs(experiments) if p[2] in by_cond and p[3] in by_cond]
     for name in dict.fromkeys(p[0] for p in pairs):
         for scope in ["all"] + sorted({p[1] for p in pairs if p[0] == name}):
             chosen = [p for p in pairs if p[0] == name and scope in ("all", p[1])]
@@ -239,8 +244,8 @@ def style(ax, xlabel: str) -> None:
     ax.spines["bottom"].set_color(GRID)
 
 
-def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list, by_cond: dict, key, marker, title: str, legend: list) -> None:
-    """Rows are experiments, with one panel per metric. Each offset label gets one dot with a bootstrap interval, drawn as marker(label) = (shape, filled). Baselines are vertical lines."""
+def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list, by_cond: dict, experiments: dict[str, Experiment], key, marker, title: str, legend: list) -> None:
+    """Rows are experiments (ids of experiments, id -> Experiment), with one panel per metric. Each offset label gets one dot with a bootstrap interval, drawn as marker(label) = (shape, filled). Baselines are vertical lines."""
     fig = Figure(figsize=(max(3.4 * len(panels) + 1.6, 7.5), 0.36 * len(rows) * len(offsets) + 2.6), dpi=150)
     axes = fig.subplots(1, len(panels), sharey=True, squeeze=False)[0]
     for ax, (metric, label) in zip(axes, panels.items()):
@@ -250,7 +255,7 @@ def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list,
                 if cond not in by_cond:
                     continue
                 m, lo, hi = ci(by_cond[cond][metric])
-                colour = FAMILY_COLOUR[FAMILY[EXPERIMENTS[exp].episode]]
+                colour = FAMILY_COLOUR[FAMILY[experiments[exp].episode]]
                 shape, filled = marker(o)
                 ax.plot([lo, hi], [r + off] * 2, color=colour, lw=1.5, zorder=3)
                 ax.plot(m, r + off, shape, ms=7, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
@@ -266,9 +271,9 @@ def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list,
     fig.savefig(path)
 
 
-def present(by_cond: dict, **fixed) -> list[str]:
-    """Experiments (registry order) that have a condition with the given framing/thinking."""
-    return [e for e in EXPERIMENTS if e not in BASELINES and any(c[0] == e and all(c[COND.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
+def present(by_cond: dict, experiments: dict[str, Experiment], **fixed) -> list[str]:
+    """Experiments (in the order of experiments) that have a condition with the given framing/thinking."""
+    return [e for e in experiments if e not in BASELINES and any(c[0] == e and all(c[COND.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
 
 
 def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> list:
@@ -279,20 +284,20 @@ def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> lis
     return handles
 
 
-def condition_figures(by_cond: dict, kind: str, fig_dir: Path) -> None:
-    """Dot plots per thinking mode and of the speed-cap violations, of the episodes of one planned-agent kind (by_cond from per_trip_means)."""
+def condition_figures(by_cond: dict, kind: str, fig_dir: Path, experiments: dict[str, Experiment]) -> None:
+    """Dot plots per thinking mode and of the speed-cap violations, of the episodes of one planned-agent kind (by_cond from per_trip_means, experiments id -> Experiment)."""
     panels = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)", "path_efficiency": "path efficiency (1 = straight)"}
     baselines = any((b, "-", "-") in by_cond for b in BASELINES)
     for th in THINKING:
-        rows = present(by_cond, thinking=th)
+        rows = present(by_cond, experiments, thinking=th)
         if rows:
             framings = [f for f in FRAMINGS if any(c[1] == f and c[2] == th for c in by_cond)]
-            dot_plot(fig_dir / f"conditions_{kind}_{th}.png", panels, rows, framings, by_cond, lambda e, f: (e, f, th), FRAMING_MARKER.get,
+            dot_plot(fig_dir / f"conditions_{kind}_{th}.png", panels, rows, framings, by_cond, experiments, lambda e, f: (e, f, th), FRAMING_MARKER.get,
                      f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval",
                      legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
-    rows = [e for e in present(by_cond) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
+    rows = [e for e in present(by_cond, experiments) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
-        dot_plot(fig_dir / f"speed_violation_{kind}.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"}, rows, ["nothink", "think"], by_cond,
+        dot_plot(fig_dir / f"speed_violation_{kind}.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"}, rows, ["nothink", "think"], by_cond, experiments,
                  lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
 
 
@@ -391,16 +396,20 @@ def analyze(run: Path, overlay: list[str], chosen: list[dict], trips: dict, site
     """Write the tables and figures of the run's episodes into <run>/analysis, with the trip list, trips and sites as returned by run.load_run."""
     out = run / ANALYSIS_DIR
     (out / "figures").mkdir(parents=True, exist_ok=True)
-    episodes = collect(run, chosen)
+    folders = run_experiments(run)
+    by_id = {exp.id: exp for exp in folders.values()}
+    order = list(EXPERIMENTS)
+    experiments = {e: by_id[e] for e in sorted(by_id, key=lambda e: order.index(e) if e in order else len(order))}  # registry order, then the other harness ids
+    episodes = collect(run, chosen, folders)
     episodes.to_csv(out / "episodes.csv", index=False)
     df = scored(episodes)
     summary(df).to_csv(out / "summary.csv", index=False)
     paired, compared, n_conditions = [], [], 0
     for kind, d in df.groupby("kind"):
         by_cond = per_trip_means(d)
-        for tables, table in ((paired, paired_baselines(by_cond)), (compared, comparisons(by_cond))):
+        for tables, table in ((paired, paired_baselines(by_cond)), (compared, comparisons(by_cond, experiments))):
             tables.append(table.assign(kind=kind)[["kind", *table.columns]])
-        condition_figures(by_cond, kind, out / "figures")
+        condition_figures(by_cond, kind, out / "figures", experiments)
         n_conditions += len(by_cond)
     pd.concat(paired).to_csv(out / "paired_baselines.csv", index=False)
     pd.concat(compared).to_csv(out / "comparisons.csv", index=False)

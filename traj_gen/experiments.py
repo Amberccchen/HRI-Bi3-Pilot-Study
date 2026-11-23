@@ -1,20 +1,15 @@
-"""The experiment registry: each id maps to a planner (output mode), the images and an episode type.
+"""The experiment registry of the runs before harness presets: each id maps to a planner (output mode), the images and an episode type.
+
+New runs are set up with harnesses (traj_gen/harnesses.py), which derive the same ids from their settings and build Experiment objects
+the same way. The registry stays for the baselines (straight and replay, no model) and so that the analysis can read run folders
+without a harness.json. Every model id here is the id its settings derive (tests/test_harness_presets.py checks this), with one
+exception: the conversation experiment with waypoints, map and camera was registered as rh_wp_bev_conv, and its derived id is
+rh_wp_bev_cam_conv. LEGACY_IDS maps the old folder name to it.
 
 Framing (one of prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
 execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_constvel_future` ones are their
-base experiment plus each person's constant-velocity prediction (text and map).
-
-Experiment id parts, in order:
-  episode type   ss = single shot (one query at the trip start); rh = rolling horizon (re-plan every execute_s of executed motion)
-  output mode    wp = timed waypoints in metres; px = map positions in pixels; vel1 = one velocity step; velseq = a velocity sequence;
-                 steer = a turn from the current heading and a distance per step, with the harness prompts (planners.SteerPlanner, only with the harness framings)
-  images         text = no image; bev = the top-down (bird's-eye view) map; cam = plus the camera view
-  conv           all queries of an episode in one growing conversation (episodes.ConversationEpisode); without it each query is a fresh chat
-  true_future    the other agents' recorded future positions in the text each turn (Experiment.true_future)
-  check          the plan check: each plan is tested against those futures and the first conflict is reported back for revision (Experiment.check_rounds)
-  constvel_future  each person's position at t + 1 s and t + 2 s if it kept its current velocity, in the text and map (Experiment.base)
-straight and replay are the baselines (no model).
+base experiment plus each person's constant-velocity prediction (text and map). The id naming key is in traj_gen/harnesses.py.
 
 The harness experiments (planners.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
 the other agents' recorded future trajectories (true_future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
@@ -72,7 +67,7 @@ _experiments = [
     Experiment("rh_px_bev", PixelPlanner, ("bev",), RollingEpisode, _ROLLING_S),
     Experiment("rh_vel1_bev", StepVelocityPlanner, ("bev",), RollingEpisode, 0.4),
     Experiment("rh_velseq_bev", VelocityPlanner, ("bev",), RollingEpisode, _ROLLING_S),
-    Experiment("rh_wp_bev_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_wp_bev_cam_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_steer_bev_conv", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
@@ -83,4 +78,5 @@ _experiments = [
 ]
 _experiments += [replace(e, id=f"{e.id}_constvel_future", base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
 EXPERIMENTS = {e.id: e for e in _experiments}
+LEGACY_IDS = {"rh_wp_bev_conv": "rh_wp_bev_cam_conv"}  # experiment folder name before the derived ids -> id
 BASELINES = tuple(e.id for e in _experiments if not e.uses_model)  # registry order
