@@ -39,3 +39,25 @@ def test_person_prompt_has_no_robot_template_and_gives_the_others_goals_and_size
     assert "Goal: station 2." in robot and "Next goal" not in robot  # the robot's goal only
     assert "The robot is a disk of radius 0.24 m and the other participant takes up about a disk of radius 0.25 m." in turn  # UM robot, 0.237 m
     assert "[-0.50, 0.40], [-0.12, 0.52], [0.26, 0.64]" in turn  # the walking-pace example
+
+
+def test_rate_prompt_drops_only_the_largest_distance_per_step():
+    """The rate variant must differ from the heading prompt only where the heading prompt states the largest distance per step."""
+    trip = person_trip()
+    texts = {}
+    for exp in ("rh_heading_bev_conv", "rh_heading_rate_bev_conv"):
+        planner = EXPERIMENTS[exp].planner(EXPERIMENTS[exp], trip, "participant_space", "think")
+        builder = PromptBuilder("participant_space", planner, ("bev",), 20, False)
+        scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[:, :2])
+        texts[exp] = builder.system(scene) + "\n" + builder.first(scene).text
+    heading, rate = texts["rh_heading_bev_conv"], texts["rh_heading_rate_bev_conv"]
+    assert "So you move at most 120 px in one step." in heading and "px in one step" not in rate
+    assert "maximum per step" in heading and "maximum" not in rate
+    assert "You can walk at most 300 px/s." in rate
+    removed = [" So you move at most 120 px in one step.", ", from 0 to the maximum per step", " A longer distance is cut to the maximum."]
+    added = [" in that step", " If a step is longer than your top speed allows, you walk only as far as it allows."]
+    for a in added:
+        rate = rate.replace(a, "")
+    for r in removed:
+        heading = heading.replace(r, "")
+    assert rate == heading

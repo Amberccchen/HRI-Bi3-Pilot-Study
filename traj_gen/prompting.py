@@ -76,7 +76,7 @@ class PromptBuilder:
         fields["step"] = u.len_text(SPEED_CAP_M_S[self.kind] * DT)
         if self.kind == "robot":
             return load_prompt("system_heading" if self.mode.name == "heading" else "system_hard_cap" if self.framing in HARD_CAP_FRAMINGS else "system").format(robot_radius=u.len_text((body_radius if self.framing in SPACE_FRAMINGS else prompt_radius)(scene.agent, site)), **fields)
-        return load_prompt("system_heading_human" if self.mode.name == "heading" else "system_human").format(
+        return load_prompt(self.mode.system_template + "_human" if self.mode.name == "heading" else "system_human").format(
             name=person_name(scene.agent), person_radius=u.len_text(PERSON_BODY_RADIUS_M if self.framing in SPACE_FRAMINGS else prompt_radius(scene.agent, site)),
                                                   margin=u.len_text(ROOM_MARGIN_M[self.kind]), **fields)
 

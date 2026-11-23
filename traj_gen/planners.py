@@ -144,6 +144,7 @@ class HeadingPlanner(PixelPlanner):
 
     name = "heading"
     template = "output_heading"
+    system_template = "system_heading"  # + "_human" for people
     key = "steps"
     # Largest turn per 0.4 s step. Robot: the real robots' largest body yaw change, 35.8 deg at LAAS and 34.4 at UM (trips_v2, 144 robot trips).
     # Person: the 99th percentile of the change in walking direction between consecutive steps both above 0.2 m/s, 115.6 deg over the
@@ -177,6 +178,14 @@ class HeadingPlanner(PixelPlanner):
         uv = self.units.pos(scene.track[-1]) + np.cumsum(d[:, None] * np.stack([np.cos(theta), np.sin(theta)], axis=1), axis=0)
         return self.units.transform.to_metre(uv), np.abs(value[:, 1]) / self.units.length(1.0) / DT
 
+
+
+class HeadingRatePlanner(HeadingPlanner):
+    """HeadingPlanner whose prompts give only the top speed, not the largest distance per step (people only, test mode). Steps are
+    still cut to the speed cap. Run 20261117_human_m4a_f2b3123 asked for exactly the stated per-step maximum in 75-82% of steps."""
+
+    template = "output_heading_rate"
+    system_template = "system_heading_rate"
 
 class VelocityPlanner(QueryPlanner):
     """One velocity per step in m/s, each scaled down to the speed cap and integrated."""

@@ -9,7 +9,7 @@ base experiment plus each person's constant-velocity prediction (text and map).
 from dataclasses import dataclass, replace
 
 from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.planners import HeadingPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.planners import HeadingPlanner, HeadingRatePlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
 from traj_gen.scene import DT
 
 
@@ -57,6 +57,7 @@ _experiments = [
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_heading_bev_conv", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_heading_rate_bev_conv", HeadingRatePlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv_future", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
     Experiment("rh_heading_bev_conv_future", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
     Experiment("rh_heading_bev_conv_future_check", HeadingPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
