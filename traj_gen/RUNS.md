@@ -1,6 +1,6 @@
 # Runs log
 
-One line per notable run of the trajectory generation. Run folders are under `/persistent/experiments/HRI/bi3_traj_gen/`. "What it ran" gives the harness preset and planned agent, or, for runs before presets, the experiment and framing folders (`<experiment>/<framing>`) and the preset they match. The backend, model and effort come from each folder's `run.json` and episode manifests. Qwen's effort is the `reasoning_effort` its client sends. A new run adds its line here when it finishes.
+One line per notable run of the trajectory generation. The runs below used the `trips_v2` folders (the old extraction: tracks smoothed with a 0.5 s moving average): their folders are directly under `/persistent/experiments/HRI/bi3_traj_gen/`, and only the code at `traj_gen` ee7150f reads them. Runs on the `trips_v3` folders go under `/persistent/experiments/HRI/bi3_traj_gen/trips_v3/` and get their own table. "What it ran" gives the harness preset and planned agent, or, for runs before presets, the experiment and framing folders (`<experiment>/<framing>`) and the preset they match. The backend, model and effort come from each folder's `run.json` and episode manifests. Qwen's effort is the `reasoning_effort` its client sends. A new run adds its line here when it finishes.
 
 | Run folder | What it ran | Commit | Backend | Model | Effort | Thinking | Results |
 | --- | --- | --- | --- | --- | --- | --- | --- |
