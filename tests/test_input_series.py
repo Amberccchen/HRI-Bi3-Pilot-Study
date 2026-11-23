@@ -6,8 +6,8 @@ from scipy.interpolate import PchipInterpolator
 
 from metrics.bi3_metrics import bi3_metrics
 from preprocessing.bi3_derived import INPUT_HZ, RECORDINGS_FILE, SCORED_STEP, load_trips, trip_arrays
-from preprocessing.extract_trips import GAP_CONTEXT_S, INPUT_BIN_S, binned_track, drop_repeated, recording_arrays
-from tests.test_human_trips import OVERLAPPING_AND_SAME_STATION_VISITS, person_trips, visit
+from preprocessing.extract_trips import GAP_CONTEXT_S, INPUT_BIN_S, binned_track, recording_arrays, recording_series, to_room
+from tests.fake_recordings import OVERLAPPING_AND_SAME_STATION_VISITS, person_trips, visit
 
 
 def track(time, x, theta=None):
@@ -25,10 +25,13 @@ def test_sample_is_the_mean_of_its_centred_bin():
 
 def test_repeated_samples_are_dropped_before_averaging():
     """Mocap holds the last position between updates; counting the held copies would weight a position by how long it was held."""
-    time, xyt = track([0.96, 0.98, 1.0, 1.02, 1.04], [0.0, 0.0, 0.0, 0.0, 1.0])
-    t, p = drop_repeated(time, xyt)
-    values, _ = binned_track(t, p, np.array([1.0]))
-    assert values[0, 0] == pytest.approx(0.5)
+    time = np.array([1.0, 1.01, 1.02, 1.03, 1.04])
+    labels = np.full(len(time), "", dtype=object)
+    frames = {"human0": {"time": time, "x": np.array([0.0, 0.0, 0.0, 0.0, 1.0]), "y": np.zeros(len(time)), "theta": np.zeros(len(time)),
+                         "state": labels, "goal": labels, "next_goal": labels}}
+    grid, series = recording_series("um", frames)
+    assert grid[0] == 1.0  # the bin [0.95, 1.05) holds every raw sample
+    np.testing.assert_allclose(series["human0"]["xyt"][0, :2], to_room("um", np.array([[0.5, 0.0]]))[0], atol=1e-6)
 
 
 def test_heading_is_a_circular_mean():

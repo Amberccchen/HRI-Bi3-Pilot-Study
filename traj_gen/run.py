@@ -10,8 +10,8 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
 The write-up figures come from python -m traj_gen.report_figures --run <run folder>, after analyze.
 
 Run folders live outside the repository (they hold mocap-derived outputs): /persistent/experiments/HRI/bi3_traj_gen/trips_v3/<run> for runs
-on the trips_v3 folders. Run folders directly under /persistent/experiments/HRI/bi3_traj_gen/ used the trips_v2 folders, which only the
-code at traj_gen ee7150f reads, so analyze and animate them with that code.
+on the trips_v3 folders. Run folders directly under /persistent/experiments/HRI/bi3_traj_gen/ used the trips_v2 folders, which this code
+does not read (README.md names the code that does).
 """
 
 import argparse

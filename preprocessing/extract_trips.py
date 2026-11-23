@@ -75,25 +75,18 @@ def to_room_theta(site: str, theta: np.ndarray) -> np.ndarray:
     return np.angle(np.exp(1j * (np.asarray(theta) + np.radians(SITE_FRAMES[site]["rotation_deg"]))))
 
 
-def drop_repeated(time: np.ndarray, xyt: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Samples whose position differs from the previous sample's: mocap holds the last position between updates."""
-    keep = np.r_[True, np.any(np.diff(xyt[:, :2], axis=0) != 0, axis=1)]
-    return time[keep], xyt[keep]
-
-
-def binned_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray, bin_s: float = INPUT_BIN_S,
-                 context_s: float = GAP_CONTEXT_S) -> tuple[np.ndarray, np.ndarray]:
+def binned_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """[x, y, theta] at each grid time (n, 3) from raw samples (time (T,) strictly increasing, xyt (T, 3), repeated samples already
     dropped), and which grid times had an empty bin (n,).
 
-    A sample is the mean of the raw samples with time in [t - bin_s / 2, t + bin_s / 2), the heading their circular mean, so it uses
-    no raw sample bin_s / 2 or more after its time. The bins of a gap between raw samples a and b hold no sample. They take the PCHIP
-    interpolant through the raw samples from context_s before a to context_s after b, the heading unwrapped, interpolated and wrapped,
-    so inside a gap a sample uses raw samples up to context_s after the gap's end. Bins before the first or after the last raw sample
+    A sample is the mean of the raw samples with time in [t - INPUT_BIN_S / 2, t + INPUT_BIN_S / 2), the heading their circular mean, so
+    it uses no raw sample INPUT_BIN_S / 2 or more after its time. The bins of a gap between raw samples a and b hold no sample. They take
+    the PCHIP interpolant through the raw samples from GAP_CONTEXT_S before a to GAP_CONTEXT_S after b, the heading unwrapped, interpolated
+    and wrapped, so inside a gap a sample uses raw samples up to GAP_CONTEXT_S after the gap's end. Bins before the first or after the last raw sample
     take that sample.
     """
-    lo = np.searchsorted(time, grid - bin_s / 2, side="left")
-    hi = np.searchsorted(time, grid + bin_s / 2, side="left")
+    lo = np.searchsorted(time, grid - INPUT_BIN_S / 2, side="left")
+    hi = np.searchsorted(time, grid + INPUT_BIN_S / 2, side="left")
     values = np.c_[xyt[:, 0], xyt[:, 1], np.cos(xyt[:, 2]), np.sin(xyt[:, 2])]
     sums = np.vstack([np.zeros(4), np.cumsum(values, axis=0)])
     count = hi - lo
@@ -106,30 +99,28 @@ def binned_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray, bin_s: flo
             out[bins] = xyt[min(after, len(time) - 1)]
             continue
         before = after - 1
-        context = slice(np.searchsorted(time, time[before] - context_s, side="left"), np.searchsorted(time, time[after] + context_s, side="right"))
+        context = slice(np.searchsorted(time, time[before] - GAP_CONTEXT_S, side="left"), np.searchsorted(time, time[after] + GAP_CONTEXT_S, side="right"))
         path = np.c_[xyt[context, :2], np.unwrap(xyt[context, 2])]
         filled = PchipInterpolator(time[context], path)(grid[bins])
         out[bins] = np.c_[filled[:, :2], np.angle(np.exp(1j * filled[:, 2]))]
     return out, empty
 
 
-def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    """The label of the last sample at or before each grid time."""
-    return labels[np.clip(np.searchsorted(time, grid, side="right") - 1, 0, len(time) - 1)].astype(str)
-
-
 def recording_series(site: str, frames: dict) -> tuple[np.ndarray, dict]:
     """A recording's INPUT_HZ grid (n,) of mocap times, from its first sample to its last, and per agent (frames from load_frames, in its
-    order) the series fields of SERIES_FIELDS on it: xyt (n, 3) float32 [x, y, theta] in the room frame from binned_track, empty (n,) and
-    the labels."""
+    order) the series fields of SERIES_FIELDS on it: xyt (n, 3) float32 [x, y, theta] in the room frame from binned_track with repeated
+    samples dropped, empty (n,) and the labels of the last raw sample at or before each grid time."""
     t_first = min(f["time"][0] for f in frames.values())
     t_last = max(f["time"][-1] for f in frames.values())
     grid = t_first + np.arange(int(np.floor((t_last - t_first) * INPUT_HZ + 1e-9)) + 1) / INPUT_HZ
     series = {}
     for agent, f in frames.items():
-        xyt, empty = binned_track(*drop_repeated(f["time"], np.c_[f["x"], f["y"], f["theta"]]), grid)
+        raw = np.c_[f["x"], f["y"], f["theta"]]
+        keep = np.r_[True, np.any(np.diff(raw[:, :2], axis=0) != 0, axis=1)]  # mocap holds the last position between updates
+        xyt, empty = binned_track(f["time"][keep], raw[keep], grid)
+        last = np.clip(np.searchsorted(f["time"], grid, side="right") - 1, 0, len(f["time"]) - 1)
         series[agent] = {"xyt": np.c_[to_room(site, xyt[:, :2]), to_room_theta(site, xyt[:, 2])].astype(np.float32), "empty": empty,
-                         **{key: labels_at(f["time"], f[key], grid) for key in LABEL_KEYS}}
+                         **{key: f[key][last].astype(str) for key in LABEL_KEYS}}
     return grid, series
 
 
@@ -153,7 +144,6 @@ def trip_span(t0: float, t1: float, grid: np.ndarray, history_s: float) -> list[
 def trip_record(site: str, trial: str, controller: str, grid: np.ndarray, series: dict, agent: str, k: int, t0: float, t1: float,
                 start_goal: str, goal: str, goal_xy: list[float], next_goal: str, history_s: float) -> dict:
     """The trips.json entry of one trip of the planned agent from t0 to t1 of a recording, with grid and series from recording_series."""
-    meta = {"id": f"{site}_{trial}_{controller}_{agent}_{k:02d}", "site": site, "trial": trial, "controller": controller, "agent": agent, "trip": k}
     indices = trip_span(t0, t1, grid, history_s)
     t_start, t_end = grid[indices[1]], grid[indices[2]]
     arrays = trip_arrays({"recording_indices": indices}, series)
@@ -162,7 +152,8 @@ def trip_record(site: str, trial: str, controller: str, grid: np.ndarray, series
     others = np.stack([track[path, :2] for other, track in tracks.items() if other != agent], axis=1)
     metrics = bi3_metrics(arrays["time"][path], tracks[agent][path, :2], others)
     return {
-        **meta, "recording": f"{site}_{trial}_{controller}", "recording_indices": indices,
+        "id": f"{site}_{trial}_{controller}_{agent}_{k:02d}", "site": site, "trial": trial, "controller": controller, "agent": agent, "trip": k,
+        "recording": f"{site}_{trial}_{controller}", "recording_indices": indices,
         "t_start": round(float(t_start), 3), "t_end": round(float(t_end), 3), "duration_s": round(float(t_end - t_start), 3),
         "start_goal": start_goal, "goal": goal, "goal_xy": goal_xy, "next_goal": next_goal,
         "real_metrics": {name: (round(v, 4) if isinstance(v, float) else v) for name, v in metrics.items()},
