@@ -187,6 +187,10 @@ class HeadingRatePlanner(HeadingPlanner):
     template = "output_heading_rate"
     system_template = "system_heading_rate"
 
+    def example_text(self) -> str:
+        # Person scale, like the person waypoint example: steps of 0.4 m (80 px), about 1.0 m/s. The heading example's 20-22 px is robot scale.
+        return "[0, 80], [-15, 80], [0, 0]"
+
 class VelocityPlanner(QueryPlanner):
     """One velocity per step in m/s, each scaled down to the speed cap and integrated."""
 

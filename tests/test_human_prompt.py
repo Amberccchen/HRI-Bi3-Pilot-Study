@@ -42,7 +42,7 @@ def test_person_prompt_has_no_robot_template_and_gives_the_others_goals_and_size
 
 
 def test_rate_prompt_drops_only_the_largest_distance_per_step():
-    """The rate variant must differ from the heading prompt only where the heading prompt states the largest distance per step."""
+    """The rate variant must differ from the heading prompt only where the heading prompt states the largest distance per step, and in its person-scale example."""
     trip = person_trip()
     texts = {}
     for exp in ("rh_heading_bev_conv", "rh_heading_rate_bev_conv"):
@@ -55,6 +55,8 @@ def test_rate_prompt_drops_only_the_largest_distance_per_step():
     assert "maximum per step" in heading and "maximum" not in rate
     assert "You can walk at most 300 px/s." in rate
     removed = [" So you move at most 120 px in one step.", ", from 0 to the maximum per step", " A longer distance is cut to the maximum."]
+    assert '{"steps": [[0, 20], [-15, 22], [0, 0]]}' in heading and '{"steps": [[0, 80], [-15, 80], [0, 0]]}' in rate  # person-scale example
+    rate = rate.replace("[[0, 80], [-15, 80], [0, 0]]", "[[0, 20], [-15, 22], [0, 0]]")
     added = [" in that step", " If a step is longer than your top speed allows, you walk only as far as it allows."]
     for a in added:
         rate = rate.replace(a, "")
