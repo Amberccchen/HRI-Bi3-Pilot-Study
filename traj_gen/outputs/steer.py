@@ -21,10 +21,11 @@ class SteerPlanner(QueryPlanner):
     followup_template = "harness"
     scored_sizes = True
     think_max_tokens = 32768  # most harness calls ran past 16384 tokens (robot test runs, 2026-11-16)
-    # Largest turn per 0.4 s step. Robot: the real robots' largest body yaw change, 35.8 deg at LAAS and 34.4 at UM (trips_v2, 144 robot trips).
-    # Person: the 99th percentile of the change in walking direction between consecutive steps both above 0.2 m/s, 115.6 deg over the
-    # trips_v2_human goal-to-goal moves (14292 trips; the median is 9 deg), the same percentile as the person's speed cap.
-    MAX_TURN_DEG = {"robot": 35.0, "human": 115.0}
+    # Largest turn per 0.4 s step, rounded down to a whole degree. Robot: the real robots' largest body yaw change per step within a trip,
+    # 39.0 deg at LAAS and 35.7 at UM (the 144 robot trips of trips_v3). Person: the 99th percentile of the change in walking direction
+    # between consecutive steps both above 0.2 m/s, 131.5 deg over the goal-to-goal moves of the 14,292 trips of trips_v3_human (the median
+    # is 11 deg), the same percentile as the person's speed cap.
+    MAX_TURN_DEG = {"robot": 39.0, "human": 131.0}
     # Example steps [turn in degrees, distance in metres] at about each kind's walking or driving scale: robot 0.10-0.11 m (near its 0.12 m
     # limit per step), person 0.4 m (about 1.0 m/s). The distances are written in the units.
     example = {"robot": [(0, 0.10), (-15, 0.11), (0, 0.0)], "human": [(0, 0.40), (-15, 0.40), (0, 0.0)]}

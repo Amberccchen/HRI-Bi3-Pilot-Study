@@ -44,9 +44,9 @@ def test_person_harness_gives_only_the_top_speed_and_a_person_scale_example():
     """The person harness must not state the largest step (people asked for exactly it), while the robot harness keeps its stated 24 px."""
     person = prompts("rh_steer_bev_conv", person_trip(), "harness")
     assert "You can walk at most 300 px/s." in person and "px in one step" not in person and "maximum" not in person
-    assert '{"steps": [[0, 80], [-15, 80], [0, 0]]}' in person and "at most 115 degrees" in person
+    assert '{"steps": [[0, 80], [-15, 80], [0, 0]]}' in person and "at most 131 degrees" in person
     robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_harness")
-    assert "So it moves at most 24 px in one step." in robot and '{"steps": [[0, 20], [-15, 22], [0, 0]]}' in robot and "at most 35 degrees" in robot
+    assert "So it moves at most 24 px in one step." in robot and '{"steps": [[0, 20], [-15, 22], [0, 0]]}' in robot and "at most 39 degrees" in robot
 
 
 def test_future_trajectories_only_in_the_future_experiments():
@@ -68,7 +68,7 @@ def test_harness_steps_are_cut_to_the_turn_and_speed_limits():
     step_px = planner.units.length(planner.step_m)
     first = uv[0] - start
     assert np.linalg.norm(first) == pytest.approx(step_px)  # 500 px cut to one step (120 px at 1.5 m/s)
-    assert np.degrees(np.arctan2(first[1], first[0])) == pytest.approx(heading + 115.0)  # 170 deg cut to 115
+    assert np.degrees(np.arctan2(first[1], first[0])) == pytest.approx(heading + 131.0)  # 170 deg cut to 131
     assert np.allclose(uv[1], uv[0])  # a negative distance waits
 
 
