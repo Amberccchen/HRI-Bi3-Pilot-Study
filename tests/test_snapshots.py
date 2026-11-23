@@ -20,9 +20,9 @@ from traj_gen.observation.scene import Scene
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
 FOLLOWUP_STEPS = 2  # the follow-up turn is rendered this many steps after the trip start (the test trips have 3 steps of replay left)
-# A fixed reply per output mode, in its units: metres, map pixels, m/s or [turn in degrees, distance in pixels] steps.
-REPLY = {"wp": [[0.1, -0.2], [0.2, 0.1], [0.3, 0.4]], "px": [[460.0, 420.0], [480.0, 440.0], [500.0, 470.0]],
-         "vel1": [[0.2, 0.1]], "velseq": [[0.2, 0.1], [0.2, 0.15], [0.15, 0.2]], "steer": [[0.0, 20.0], [-15.0, 22.0], [30.0, 10.0]]}
+# A fixed reply per output mode and units: positions, [turn in degrees, distance] steps, or velocities.
+REPLY = {("positions", "m"): [[0.1, -0.2], [0.2, 0.1], [0.3, 0.4]], ("positions", "px"): [[460.0, 420.0], [480.0, 440.0], [500.0, 470.0]],
+         ("steer", "px"): [[0.0, 20.0], [-15.0, 22.0], [30.0, 10.0]], ("steer", "m"): [[0.0, 0.1], [-15.0, 0.11], [30.0, 0.05]]}
 
 
 KINDS = ("human", "robot")
@@ -40,7 +40,7 @@ def render(case: str) -> dict:
     builder = PromptBuilder(harness.framing, planner, exp.images, planner.max_steps(len(trip["time"]) - start - 1), exp.predict)
     scene = Scene(trip, SITE, start, track[: start + 1])
     later = Scene(trip, SITE, start + FOLLOWUP_STEPS, track[: start + FOLLOWUP_STEPS + 1])
-    reply = np.array(REPLY[harness.output])
+    reply = np.array(REPLY[harness.output, harness.units])
     snapshot = {"preset": name, "kind": kind, "id": harness.id, "settings": harness.settings(), "think_max_tokens": planner.think_max_tokens,
                 "system": builder.system(scene), "first": builder.first(scene).text,
                 "followup": builder.followup(later, exp.execute_s).text if exp.episode is ConversationEpisode else None,

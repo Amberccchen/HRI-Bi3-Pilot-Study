@@ -1,10 +1,11 @@
 {
  "preset": "harness_v1",
  "kind": "human",
- "id": "rh_steer_bev_conv",
+ "id": "rh_steer_px_bev_conv",
  "settings": {
   "episode": "rolling_conv",
   "output": "steer",
+  "units": "px",
   "images": "bev",
   "framing": "harness",
   "prediction": "none",

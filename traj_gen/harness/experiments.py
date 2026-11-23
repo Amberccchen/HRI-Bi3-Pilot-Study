@@ -2,9 +2,9 @@
 
 New runs are set up with harnesses (traj_gen/harness/presets.py), which derive the same ids from their settings and build Experiment objects
 the same way. The registry stays for the baselines (straight and replay, no model) and so that the analysis can read run folders
-without a harness.json. Every model id here is the id its settings derive (tests/test_harness_presets.py checks this), with one
-exception: the conversation experiment with waypoints, map and camera was registered as rh_wp_bev_conv, and its derived id is
-rh_wp_bev_cam_conv. LEGACY_IDS maps the old folder name to it.
+without a harness.json. The ids here are the run folder names of the runs before the units setting: wp is the positions output in metres and
+px the positions output in pixels, and the steer experiments are in pixels. The conversation experiment with waypoints, map and camera
+was registered as rh_wp_bev_conv and then as rh_wp_bev_cam_conv. LEGACY_IDS maps the old folder name to it.
 
 Framing (one of observation.prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
@@ -23,7 +23,7 @@ from traj_gen.observation.prompting import HARNESS_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.baselines import ReplayPlanner, StraightPlanner
 from traj_gen.outputs.planner import QueryPlanner
-from traj_gen.outputs.positions import PixelPlanner, WaypointPlanner
+from traj_gen.outputs.positions import PositionPlanner
 from traj_gen.outputs.steer import SteerPlanner
 from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 
@@ -32,6 +32,7 @@ from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 class Experiment:
     id: str
     planner: type
+    units: str | None  # the units setting (outputs.planner.UNITS), None for the baselines
     images: tuple[str, ...]
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
@@ -63,23 +64,23 @@ class Experiment:
 
 _ROLLING_S = 2.0  # 5 steps, about 7 queries per trip
 _experiments = [
-    Experiment("ss_wp_text", WaypointPlanner, (), SingleShotEpisode, None),
-    Experiment("ss_wp_bev", WaypointPlanner, ("bev",), SingleShotEpisode, None),
-    Experiment("ss_wp_bev_cam", WaypointPlanner, ("bev", "cam"), SingleShotEpisode, None),
-    Experiment("ss_px_bev", PixelPlanner, ("bev",), SingleShotEpisode, None),
-    Experiment("rh_wp_bev", WaypointPlanner, ("bev",), RollingEpisode, _ROLLING_S),
-    Experiment("rh_wp_bev_cam", WaypointPlanner, ("bev", "cam"), RollingEpisode, _ROLLING_S),
-    Experiment("rh_px_bev", PixelPlanner, ("bev",), RollingEpisode, _ROLLING_S),
-    Experiment("rh_vel1_bev", StepVelocityPlanner, ("bev",), RollingEpisode, 0.4),
-    Experiment("rh_velseq_bev", VelocityPlanner, ("bev",), RollingEpisode, _ROLLING_S),
-    Experiment("rh_wp_bev_cam_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_steer_bev_conv", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_steer_bev_conv_true_future", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, true_future=True),
-    Experiment("rh_steer_bev_conv_true_future_check", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, true_future=True, check_rounds=2),
-    Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
-    Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
+    Experiment("ss_wp_text", PositionPlanner, "m", (), SingleShotEpisode, None),
+    Experiment("ss_wp_bev", PositionPlanner, "m", ("bev",), SingleShotEpisode, None),
+    Experiment("ss_wp_bev_cam", PositionPlanner, "m", ("bev", "cam"), SingleShotEpisode, None),
+    Experiment("ss_px_bev", PositionPlanner, "px", ("bev",), SingleShotEpisode, None),
+    Experiment("rh_wp_bev", PositionPlanner, "m", ("bev",), RollingEpisode, _ROLLING_S),
+    Experiment("rh_wp_bev_cam", PositionPlanner, "m", ("bev", "cam"), RollingEpisode, _ROLLING_S),
+    Experiment("rh_px_bev", PositionPlanner, "px", ("bev",), RollingEpisode, _ROLLING_S),
+    Experiment("rh_vel1_bev", StepVelocityPlanner, "m", ("bev",), RollingEpisode, 0.4),
+    Experiment("rh_velseq_bev", VelocityPlanner, "m", ("bev",), RollingEpisode, _ROLLING_S),
+    Experiment("rh_wp_bev_cam_conv", PositionPlanner, "m", ("bev", "cam"), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_px_bev_conv", PositionPlanner, "px", ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_velseq_bev_conv", VelocityPlanner, "m", ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_steer_bev_conv", SteerPlanner, "px", ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_steer_bev_conv_true_future", SteerPlanner, "px", ("bev",), ConversationEpisode, _ROLLING_S, true_future=True),
+    Experiment("rh_steer_bev_conv_true_future_check", SteerPlanner, "px", ("bev",), ConversationEpisode, _ROLLING_S, true_future=True, check_rounds=2),
+    Experiment("straight", StraightPlanner, None, (), BaselineEpisode, None),
+    Experiment("replay", ReplayPlanner, None, (), BaselineEpisode, None),
 ]
 _experiments += [replace(e, id=f"{e.id}_constvel_future", base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
 EXPERIMENTS = {e.id: e for e in _experiments}

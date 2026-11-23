@@ -3,9 +3,9 @@
 A PromptBuilder is made once per condition (framing x output mode x images) and then asked for
 the system prompt and the first user turn of a Scene, or for the short follow-up turn of a
 conversation. The output mode is an outputs.planner.QueryPlanner: it supplies the template, reply key,
-example, units and how the example is written in those units. Everything else is shared.
+example, the units (from the units setting) and how the example is written in them. Everything else is shared.
 The planned agent's kind picks the templates (observation.load_prompt): a planned person reads the person version of the system
-prompt, steer output format, map captions and state, and its own framings. The follow-up and the waypoint and pixel output formats are one
+prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
 text after the state; the steer mode (outputs.steer.SteerPlanner) uses these, and the harness framings go only with it.
@@ -51,7 +51,8 @@ class PromptBuilder:
 
     def output_text(self) -> str:
         output = load_prompt("output", self.mode.template, self.kind).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
-                                                                        **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
+                                                                        **self.mode.units.axis_words(), **self.mode.output_fields(),
+                                                                        **PLANNED_AGENT_WORDS[self.kind])
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.mode.example_text())
 
     def system(self, scene: Scene) -> str:

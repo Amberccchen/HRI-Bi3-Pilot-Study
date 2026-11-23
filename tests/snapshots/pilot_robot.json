@@ -1,10 +1,11 @@
 {
  "preset": "pilot",
  "kind": "robot",
- "id": "rh_px_bev_conv",
+ "id": "rh_positions_px_bev_conv",
  "settings": {
   "episode": "rolling_conv",
-  "output": "px",
+  "output": "positions",
+  "units": "px",
   "images": "bev",
   "framing": "neutral",
   "prediction": "none",

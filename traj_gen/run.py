@@ -22,6 +22,7 @@ import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -269,7 +270,7 @@ def main() -> None:
     p.add_argument("--harness", nargs="+", choices=list(PRESETS), metavar="NAME", help=f"harness presets, from {', '.join(PRESETS)} "
                    f"(default: {DEFAULT_PRESET}), with the framing of the planned agent")
     p.add_argument("--overrides", nargs="+", default=[], metavar="KEY=VALUE", help="settings applied to every harness of the command, e.g. prediction=true_future check=2 "
-                   "(keys: episode, output, images, framing, prediction, check, execute_s)")
+                   f"(keys: {', '.join(f.name for f in fields(Harness))})")
     p.add_argument("--baselines", nargs="+", choices=[*BASELINES, "none"], default=list(BASELINES), help="baselines to run, or none (default: all)")
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
     p.add_argument("--backend", choices=list(BACKENDS), default="qwen", help="model backend: qwen (local vLLM server) or claude (Anthropic API, key in ANTHROPIC_API_KEY)")

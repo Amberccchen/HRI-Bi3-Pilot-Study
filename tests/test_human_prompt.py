@@ -5,7 +5,7 @@ from preprocessing.bi3_derived import INPUT_HZ, SCORED_STEP
 from traj_gen.harness.experiments import EXPERIMENTS
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene
-from traj_gen.outputs.positions import WaypointPlanner
+from traj_gen.outputs.positions import PositionPlanner
 
 SITE = {"room_m": 3.5, "footprint_m": [0.33, 0.34],
         "stations": {"2": {"members": ["2"], "xy": [0.1, -1.5], "human_xy": [0.15, -1.66]},
@@ -48,7 +48,7 @@ def test_person_prompt_has_no_robot_template_and_gives_the_others_goals_and_size
     """A robot template leaking into a person's prompt, the others' goals missing or swapped, or the planned person's own
     radius given as the robot's, would render without an error."""
     trip = person_trip()
-    planner = WaypointPlanner(EXPERIMENTS["ss_wp_text"], trip, "participant", "nothink")
+    planner = PositionPlanner(EXPERIMENTS["ss_wp_text"], trip, "participant", "nothink")
     builder = PromptBuilder("participant", planner, (), 20, False)
     scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[:, :2])
     system, turn = builder.system(scene), builder.first(scene).text

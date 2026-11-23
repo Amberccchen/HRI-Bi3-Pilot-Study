@@ -48,7 +48,7 @@ def test_new_run_folder_gets_run_json_trip_list_and_harness_files(tmp_path, no_e
     assert config["commands"][0]["harnesses"] == ["harness_v1"]
     assert config["commands"][0]["overrides"] == {"prediction": "true_future"} and "--overrides prediction=true_future" in config["commands"][0]["command"]
     assert json.loads((run / "test_trips.json").read_text()) == json.loads(Path(trips).read_text())
-    assert [p.relative_to(run).as_posix() for p in run.glob(f"*/*/{HARNESS_FILE}")] == [f"rh_steer_bev_conv_true_future/harness/{HARNESS_FILE}"]
+    assert [p.relative_to(run).as_posix() for p in run.glob(f"*/*/{HARNESS_FILE}")] == [f"rh_steer_px_bev_conv_true_future/harness/{HARNESS_FILE}"]
     assert "0 episodes to run, 4 already done" in capsys.readouterr().out  # 2 samples of one harness, plus the two baselines
 
 
@@ -64,7 +64,7 @@ def test_robot_flag_must_match_the_framings_and_the_trips(tmp_path, no_episodes)
 
 def test_robot_takes_the_default_presets_robot_framing_and_no_baselines(tmp_path, no_episodes, capsys):
     call(tmp_path, "--robot", "--baselines", "none", "--trips", trip_list(tmp_path, robot_trip()))
-    assert (tmp_path / "run" / "rh_px_bev_conv" / "neutral" / HARNESS_FILE).exists()
+    assert (tmp_path / "run" / "rh_positions_px_bev_conv" / "neutral" / HARNESS_FILE).exists()
     assert "0 episodes to run, 3 already done" in capsys.readouterr().out
     assert json.loads((tmp_path / "run" / "run.json").read_text())["trips_dir"] == "/persistent/data/Bi3_derived/trips_v3"
 
@@ -72,7 +72,7 @@ def test_robot_takes_the_default_presets_robot_framing_and_no_baselines(tmp_path
 def test_a_changed_harness_in_the_same_folder_is_refused(tmp_path, no_episodes):
     trips = trip_list(tmp_path, person_trip())
     call(tmp_path, "--harness", "harness_v1", "--trips", trips)
-    path = tmp_path / "run" / "rh_steer_bev_conv" / "harness" / HARNESS_FILE
+    path = tmp_path / "run" / "rh_steer_px_bev_conv" / "harness" / HARNESS_FILE
     stored = json.loads(path.read_text())
     stored["settings"]["images"] = "bev_cam"
     path.write_text(json.dumps(stored))

@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -6,45 +7,68 @@ from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS
 from traj_gen.harness.presets import HARNESS_FILE, PRESETS, Harness, parse_overrides, run_experiments, settings_of, write_harness_file
 
 
-def test_registered_experiments_come_out_of_their_settings_unchanged():
-    """Each registered model experiment, rebuilt from its settings, must give the same id, planner, images, episode, replanning interval,
-    prediction and plan check. The one renamed id keeps its old folder name as a legacy alias."""
+# Registered id (the folder name of the runs before the units setting) -> the id its settings derive.
+DERIVED_IDS = {
+    "ss_wp_text": "ss_positions_m_text", "ss_wp_bev": "ss_positions_m_bev", "ss_wp_bev_cam": "ss_positions_m_bev_cam", "ss_px_bev": "ss_positions_px_bev",
+    "rh_wp_bev": "rh_positions_m_bev", "rh_wp_bev_cam": "rh_positions_m_bev_cam", "rh_px_bev": "rh_positions_px_bev", "rh_vel1_bev": "rh_vel1_m_bev",
+    "rh_velseq_bev": "rh_velseq_m_bev", "rh_wp_bev_cam_conv": "rh_positions_m_bev_cam_conv", "rh_px_bev_conv": "rh_positions_px_bev_conv",
+    "rh_velseq_bev_conv": "rh_velseq_m_bev_conv", "rh_steer_bev_conv": "rh_steer_px_bev_conv",
+    "rh_steer_bev_conv_true_future": "rh_steer_px_bev_conv_true_future", "rh_steer_bev_conv_true_future_check": "rh_steer_px_bev_conv_true_future_check",
+    "ss_wp_bev_constvel_future": "ss_positions_m_bev_constvel_future", "rh_wp_bev_constvel_future": "rh_positions_m_bev_constvel_future",
+    "rh_vel1_bev_constvel_future": "rh_vel1_m_bev_constvel_future"}
+
+
+def framing_for(exp) -> str:
+    return "harness" if exp.planner.harness else "neutral"
+
+
+def test_registered_experiments_come_out_of_their_settings_unchanged_but_for_the_id():
+    """Each registered model experiment, rebuilt from its settings, must give the same planner, units, images, episode, replanning interval,
+    prediction and plan check, under the id the settings derive."""
     for exp_id, exp in EXPERIMENTS.items():
         if not exp.uses_model:
             continue
-        framing = "harness" if exp.planner.harness else "neutral"
-        assert Harness(**settings_of(exp, framing)).experiment() == exp, exp_id
+        rebuilt = Harness(**settings_of(exp, framing_for(exp))).experiment()
+        assert rebuilt.id == DERIVED_IDS[exp_id]
+        assert replace(rebuilt, id=exp.id, base=exp.base) == exp, exp_id
+        assert rebuilt.base == (DERIVED_IDS[exp.base] if exp.base else None)
     assert LEGACY_IDS == {"rh_wp_bev_conv": "rh_wp_bev_cam_conv"} and "rh_wp_bev_conv" not in EXPERIMENTS
 
 
 def test_preset_ids_and_framings_per_kind():
-    expected = {("pilot", "human"): ("rh_px_bev_conv", "participant"), ("pilot", "robot"): ("rh_px_bev_conv", "neutral"),
-                ("harness_v1", "human"): ("rh_steer_bev_conv", "harness"), ("harness_v1", "robot"): ("rh_steer_bev_conv", "robot_harness")}
+    expected = {("pilot", "human"): ("rh_positions_px_bev_conv", "participant"), ("pilot", "robot"): ("rh_positions_px_bev_conv", "neutral"),
+                ("harness_v1", "human"): ("rh_steer_px_bev_conv", "harness"), ("harness_v1", "robot"): ("rh_steer_px_bev_conv", "robot_harness")}
     assert {(name, kind): (p.harness(kind).id, p.harness(kind).framing) for name, p in PRESETS.items() for kind in ("human", "robot")} == expected
 
 
 def test_overrides_give_the_harness_levels_of_the_registry():
-    """harness_v1 plus prediction=true_future, and plus check=2, must be the registered true_future and plan-check experiments."""
+    """harness_v1 plus prediction=true_future, and plus check=2, must be the registered true_future and plan-check experiments (under their
+    derived ids)."""
+    def same(exp, exp_id):
+        return exp == replace(EXPERIMENTS[exp_id], id=DERIVED_IDS[exp_id])
     for kind in ("human", "robot"):
-        assert PRESETS["harness_v1"].harness(kind, {"prediction": "true_future"}).experiment() == EXPERIMENTS["rh_steer_bev_conv_true_future"]
-        assert PRESETS["harness_v1"].harness(kind, {"prediction": "true_future", "check": 2}).experiment() == EXPERIMENTS["rh_steer_bev_conv_true_future_check"]
-    assert PRESETS["pilot"].harness("robot", {"episode": "single_shot"}).experiment() == EXPERIMENTS["ss_px_bev"]
-    assert PRESETS["pilot"].harness("robot", {"output": "vel1", "episode": "rolling"}).experiment() == EXPERIMENTS["rh_vel1_bev"]  # vel1's own default interval
+        assert same(PRESETS["harness_v1"].harness(kind, {"prediction": "true_future"}).experiment(), "rh_steer_bev_conv_true_future")
+        assert same(PRESETS["harness_v1"].harness(kind, {"prediction": "true_future", "check": 2}).experiment(), "rh_steer_bev_conv_true_future_check")
+    assert same(PRESETS["pilot"].harness("robot", {"episode": "single_shot"}).experiment(), "ss_px_bev")
+    assert same(PRESETS["pilot"].harness("robot", {"output": "vel1", "episode": "rolling", "units": "m"}).experiment(), "rh_vel1_bev")  # vel1's own default interval
     assert PRESETS["pilot"].harness("human", {"framing": "harness", "output": "steer"}).framing == "harness"
 
 
 def test_id_suffixes_for_check_count_and_replanning_interval():
     def h(**overrides):
         return PRESETS["harness_v1"].harness("human", {"prediction": "true_future", **overrides})
-    assert h(check=3).id == "rh_steer_bev_conv_true_future_check3"
-    assert h(execute_s=0.8).id == "rh_steer_bev_conv_true_future_replan0.8s"
-    assert h(execute_s=2.0).id == "rh_steer_bev_conv_true_future"  # the default adds nothing
-    assert Harness("rolling", "vel1", "bev", "neutral").execute_s == 0.4 and Harness("single_shot", "px", "bev", "neutral").execute_s is None
+    assert h(check=3).id == "rh_steer_px_bev_conv_true_future_check3"
+    assert h(execute_s=0.8).id == "rh_steer_px_bev_conv_true_future_replan0.8s"
+    assert h(execute_s=2.0).id == "rh_steer_px_bev_conv_true_future"  # the default adds nothing
+    assert h(units="m").id == "rh_steer_m_bev_conv_true_future"
+    assert Harness("rolling", "vel1", "m", "bev", "neutral").execute_s == 0.4 and Harness("single_shot", "positions", "px", "bev", "neutral").execute_s is None
 
 
 @pytest.mark.parametrize("settings, message", [
     ({"check": 2}, "needs prediction=true_future"),
-    ({"output": "px"}, "harness framings"),
+    ({"output": "positions"}, "harness framings"),
+    ({"units": "cm"}, "units='cm' is not one of"),
+    ({"images": "text"}, "units px are pixels of the map"),
     ({"framing": "participant"}, "harness framings"),
     ({"episode": "single_shot", "execute_s": 2.0}, "only for rolling episodes"),
     ({"execute_s": 0.5}, "whole number of 0.4 s steps"),
@@ -59,7 +83,7 @@ def test_invalid_harness_settings_are_refused(settings, message):
 def test_velocity_outputs_are_refused_for_a_planned_person():
     """There are no person templates for the velocity outputs, so a person run would fail at its first query."""
     with pytest.raises(ValueError, match="no person templates"):
-        Harness("rolling", "velseq", "bev", "participant")
+        Harness("rolling", "velseq", "m", "bev", "participant")
 
 
 def test_overrides_are_parsed_and_checked():
@@ -73,7 +97,7 @@ def test_overrides_are_parsed_and_checked():
 def test_harness_file_is_written_once_and_a_changed_harness_is_refused(tmp_path):
     h = PRESETS["harness_v1"].harness("human")
     write_harness_file(tmp_path, "harness_v1", h, {})
-    path = tmp_path / "rh_steer_bev_conv" / "harness" / HARNESS_FILE
+    path = tmp_path / "rh_steer_px_bev_conv" / "harness" / HARNESS_FILE
     assert json.loads(path.read_text())["settings"] == h.settings()
     write_harness_file(tmp_path, "harness_v1", h, {})  # the same settings again: accepted
     stored = json.loads(path.read_text())
