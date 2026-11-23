@@ -1,9 +1,9 @@
 import numpy as np
 
-from traj_gen.experiments import EXPERIMENTS
-from traj_gen.planners import WaypointPlanner
-from traj_gen.prompting import PromptBuilder
-from traj_gen.scene import Scene
+from traj_gen.harness.experiments import EXPERIMENTS
+from traj_gen.observation.prompting import PromptBuilder
+from traj_gen.observation.scene import Scene
+from traj_gen.outputs.positions import WaypointPlanner
 
 SITE = {"room_m": 3.5, "footprint_m": [0.33, 0.34],
         "stations": {"2": {"members": ["2"], "xy": [0.1, -1.5], "human_xy": [0.15, -1.66]},

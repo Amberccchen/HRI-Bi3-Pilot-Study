@@ -2,18 +2,18 @@
 
 A harness is seven settings:
   episode     single_shot (one query at the trip start), rolling (re-plan every execute_s, each time in a fresh chat) or rolling_conv
-              (the same in one growing conversation, episodes.ConversationEpisode)
+              (the same in one growing conversation, harness.episodes.ConversationEpisode)
   output      the output mode: wp (timed waypoints in metres), px (map positions in pixels), vel1 (one velocity step), velseq (a velocity
-              sequence) or steer (a turn and a distance per step, with the harness prompts, planners.SteerPlanner)
+              sequence) or steer (a turn and a distance per step, with the harness prompts, outputs.steer.SteerPlanner)
   images      text (no image), bev (the top-down map) or bev_cam (the map and the camera view)
-  framing     the task prompt, one of prompting.FRAMINGS. Its kind (robot or human) is the planned agent's
+  framing     the task prompt, one of observation.prompting.FRAMINGS. Its kind (robot or human) is the planned agent's
   prediction  none, true_future (the other agents' recorded future positions in the text each turn) or constvel_future (each person's
               constant-velocity position at t + 1 s and t + 2 s, in the text and on the map)
   check       plan-check revision rounds, 0 = off (each plan is tested against the recorded futures, the first conflict is reported back).
               Only with prediction=true_future
   execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 2.0 s, 0.4 s for vel1). None for single shot
 
-Pairing rules: the harness framings (prompting.HARNESS_FRAMINGS) go only with steer, and steer only with them; vel1 and velseq have
+Pairing rules: the harness framings (observation.prompting.HARNESS_FRAMINGS) go only with steer, and steer only with them; vel1 and velseq have
 no person templates, so they go only with a robot framing.
 
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
@@ -30,11 +30,13 @@ import json
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from traj_gen.episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.experiments import EXPERIMENTS, LEGACY_IDS, Experiment
-from traj_gen.planners import PixelPlanner, SteerPlanner, StepVelocityPlanner, VelocityPlanner, WaypointPlanner
-from traj_gen.prompting import FRAMINGS, HARNESS_FRAMINGS
-from traj_gen.scene import DT
+from traj_gen.harness.episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
+from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS, Experiment
+from traj_gen.observation.prompting import FRAMINGS, HARNESS_FRAMINGS
+from traj_gen.observation.scene import DT
+from traj_gen.outputs.positions import PixelPlanner, WaypointPlanner
+from traj_gen.outputs.steer import SteerPlanner
+from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 
 HARNESS_FILE = "harness.json"
 EPISODES = {"single_shot": SingleShotEpisode, "rolling": RollingEpisode, "rolling_conv": ConversationEpisode}
@@ -182,7 +184,7 @@ def write_harness_file(run: Path, name: str, harness: Harness, overrides: dict, 
 
 def run_experiments(run: Path) -> dict[str, Experiment]:
     """Experiment folder name -> Experiment, for every experiment folder of a run: from <id>/<framing>/harness.json where one exists,
-    otherwise from the registry (experiments.EXPERIMENTS, with the old folder names of experiments.LEGACY_IDS)."""
+    otherwise from the registry (harness.experiments.EXPERIMENTS, with the old folder names of harness.experiments.LEGACY_IDS)."""
     out = {folder: exp for folder, exp in EXPERIMENTS.items() if (run / folder).is_dir()}
     out |= {old: EXPERIMENTS[new] for old, new in LEGACY_IDS.items() if (run / old).is_dir()}
     for path in sorted(run.glob(f"*/*/{HARNESS_FILE}")):

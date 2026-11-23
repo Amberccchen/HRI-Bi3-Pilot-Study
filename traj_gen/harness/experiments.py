@@ -1,26 +1,30 @@
 """The experiment registry of the runs before harness presets: each id maps to a planner (output mode), the images and an episode type.
 
-New runs are set up with harnesses (traj_gen/harnesses.py), which derive the same ids from their settings and build Experiment objects
+New runs are set up with harnesses (traj_gen/harness/presets.py), which derive the same ids from their settings and build Experiment objects
 the same way. The registry stays for the baselines (straight and replay, no model) and so that the analysis can read run folders
 without a harness.json. Every model id here is the id its settings derive (tests/test_harness_presets.py checks this), with one
 exception: the conversation experiment with waypoints, map and camera was registered as rh_wp_bev_conv, and its derived id is
 rh_wp_bev_cam_conv. LEGACY_IDS maps the old folder name to it.
 
-Framing (one of prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
+Framing (one of observation.prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
 execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_constvel_future` ones are their
-base experiment plus each person's constant-velocity prediction (text and map). The id naming key is in traj_gen/harnesses.py.
+base experiment plus each person's constant-velocity prediction (text and map). The id naming key is in traj_gen/harness/presets.py.
 
-The harness experiments (planners.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
+The harness experiments (outputs.steer.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
 the other agents' recorded future trajectories (true_future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
 
 from dataclasses import dataclass, replace
 
-from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.planners import SteerPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
-from traj_gen.prompting import HARNESS_FRAMINGS
-from traj_gen.scene import DT
+from traj_gen.harness.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
+from traj_gen.observation.prompting import HARNESS_FRAMINGS
+from traj_gen.observation.scene import DT
+from traj_gen.outputs.baselines import ReplayPlanner, StraightPlanner
+from traj_gen.outputs.planner import QueryPlanner
+from traj_gen.outputs.positions import PixelPlanner, WaypointPlanner
+from traj_gen.outputs.steer import SteerPlanner
+from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ from matplotlib.patches import Circle, Rectangle
 
 from preprocessing.bi3_derived import label_members
 from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind, body_radius, prompt_radius
-from traj_gen.scene import DT, Scene, person_name
+from traj_gen.observation.scene import DT, Scene, person_name
 
 
 # 896 = 32 * 28: Qwen's vision tower works on 28 px blocks (one token each), so this size is

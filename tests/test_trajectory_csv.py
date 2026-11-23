@@ -1,7 +1,7 @@
 import numpy as np
 
 from preprocessing.bi3_derived import TRIP_HZ
-from traj_gen.episodes import load_trajectory, save_trajectory
+from traj_gen.harness.episodes import load_trajectory, save_trajectory
 
 
 def test_round_trip_keeps_each_agent_under_its_own_id(tmp_path):

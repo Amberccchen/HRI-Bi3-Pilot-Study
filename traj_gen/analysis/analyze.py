@@ -2,7 +2,7 @@
 
 Reads every finished episode under a run folder, whose trips must all be in the trip list (default <run>/test_trips.json, as for `run`). Only experiment folders
 are read: those with a <id>/<framing>/harness.json, whose settings define the experiment, and those named by the registry of the runs before
-harness presets (experiments.EXPERIMENTS and its LEGACY_IDS), so other folders such as smoke/ are ignored (harnesses.run_experiments). A run still in progress is fine,
+harness presets (harness.experiments.EXPERIMENTS and its LEGACY_IDS), so other folders such as smoke/ are ignored (harness.presets.run_experiments). A run still in progress is fine,
 and missing conditions are simply absent. Writes into <run>/analysis/:
 
   episodes.csv          one row per episode: condition, trip, planned agent and its kind, status, metrics, queries, tokens, latency
@@ -54,12 +54,12 @@ from metrics.human_similarity import MIN_PERCENTILE_DRAWS, feature_distances, tr
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind
-from traj_gen.bev import render_overlay, trajectory_legend
-from traj_gen.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
-from traj_gen.experiments import BASELINES, EXPERIMENTS, Experiment
-from traj_gen.harnesses import run_experiments
-from traj_gen.planners import THINKING
-from traj_gen.prompting import FRAMINGS
+from traj_gen.harness.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
+from traj_gen.harness.experiments import BASELINES, EXPERIMENTS, Experiment
+from traj_gen.harness.presets import run_experiments
+from traj_gen.observation.bev import render_overlay, trajectory_legend
+from traj_gen.observation.prompting import FRAMINGS
+from traj_gen.outputs.planner import THINKING
 
 COND = ["experiment", "framing", "thinking"]  # a condition within one planned-agent kind
 KEY = ["kind", *COND]                         # a condition across kinds: robot and person episodes are never pooled
@@ -93,7 +93,7 @@ INK, GRID = "#0b0b0b", "#e4e3df"
 
 def collect(run: Path, chosen: list[dict], folders: dict[str, Experiment]) -> pd.DataFrame:
     """One row per finished episode of the chosen trips (id and stratum each), from the experiment folders (folder name -> Experiment, as
-    harnesses.run_experiments returns them). The experiment column is the experiment's id. Raises ValueError when the run folder holds
+    harness.presets.run_experiments returns them). The experiment column is the experiment's id. Raises ValueError when the run folder holds
     episodes of other trips."""
     strata = {c["id"]: c["stratum"] for c in chosen}
     rows, other_trips = [], set()

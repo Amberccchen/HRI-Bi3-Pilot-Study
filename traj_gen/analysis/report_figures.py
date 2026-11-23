@@ -25,9 +25,9 @@ from matplotlib.lines import Line2D
 
 from metrics.traj_gen_metrics import clearance_metrics
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
-from traj_gen.analyze import INK, ci, per_trip_means, scored, style
-from traj_gen.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
-from traj_gen.experiments import BASELINES, LEGACY_IDS
+from traj_gen.analysis.analyze import INK, ci, per_trip_means, scored, style
+from traj_gen.harness.episodes import ANALYSIS_DIR, REPORT_DIR, TEST_TRIPS, load_trajectory
+from traj_gen.harness.experiments import BASELINES, LEGACY_IDS
 from traj_gen.run import load_run
 
 STRAIGHT, REPLAY = "straight", "replay"  # experiment ids of the baselines

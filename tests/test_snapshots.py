@@ -13,10 +13,10 @@ import pytest
 
 from tests.test_harness import robot_trip
 from tests.test_human_prompt import SITE, person_trip
-from traj_gen.episodes import ConversationEpisode
-from traj_gen.harnesses import PRESETS
-from traj_gen.prompting import PromptBuilder
-from traj_gen.scene import Scene
+from traj_gen.harness.episodes import ConversationEpisode
+from traj_gen.harness.presets import PRESETS
+from traj_gen.observation.prompting import PromptBuilder
+from traj_gen.observation.scene import Scene
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
 FOLLOWUP_STEPS = 2  # the follow-up turn is rendered this many steps after the trip start (the test trips have 3 steps of replay left)

@@ -11,16 +11,14 @@ the BEV image (u right, v down), so the pixel output mode differs from the metre
 by the coordinate system. Text comes from the templates in prompts/ (str.format fields).
 """
 
-from functools import cache
-from pathlib import Path
-
 import numpy as np
 
 from preprocessing.bi3_derived import TRIP_HISTORY_S, TRIP_HZ, label_members
 from traj_gen.agents import STATION_POSITION, agent_kind, body_radius, prompt_radius
+from traj_gen.observation import load_prompt
+from traj_gen.observation.units import Metres
 
 
-PROMPTS = Path(__file__).parent / "prompts"
 DT = 1 / TRIP_HZ     # s between samples
 PROMPT_HISTORY_STEPS = int(TRIP_HISTORY_S * TRIP_HZ)    # the most whole steps that fit in the history the trips carry
 PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the prompts
@@ -29,67 +27,6 @@ PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the
 # middle and the end of the stretch the robot is committed to.
 PREDICT_S = (1.0, 2.0)
 VELOCITY_STEPS = 2   # velocity is the displacement over 0.8 s. The tracks are already smoothed over 0.5 s, but one step is noisy
-
-
-@cache
-def load_prompt(name: str) -> str:
-    return (PROMPTS / f"{name}.txt").read_text().strip()
-
-
-class Metres:
-    """Metres in the room frame: x right, y up."""
-
-    name = "m"
-    decimals = 2  # centimetres
-
-    def pos(self, xy) -> np.ndarray:
-        return np.asarray(xy, float)
-
-    def vec(self, v) -> np.ndarray:
-        return np.asarray(v, float)
-
-    def length(self, m: float) -> float:
-        return float(m)
-
-    def num(self, v: float) -> str:
-        return f"{v:.{self.decimals}f}"
-
-    def pair(self, a: np.ndarray) -> str:
-        return f"({self.num(a[0])}, {self.num(a[1])})"
-
-    def pos_text(self, xy) -> str:
-        return self.pair(self.pos(xy))
-
-    def vec_text(self, v) -> str:
-        return self.pair(self.vec(v))
-
-    def len_text(self, m: float) -> str:
-        return self.num(self.length(m))
-
-    def bounds(self, room_m: float) -> dict:
-        """The room's extent along the two coordinates, for the frame description."""
-        corners = self.pos([[-room_m / 2, -room_m / 2], [room_m / 2, room_m / 2]])
-        return {"c0_min": self.num(corners[:, 0].min()), "c0_max": self.num(corners[:, 0].max()),
-                "c1_min": self.num(corners[:, 1].min()), "c1_max": self.num(corners[:, 1].max())}
-
-
-class Pixels(Metres):
-    """Pixels of the BEV image (u right, v down, origin top-left). transform is a bev.BevTransform."""
-
-    name = "px"
-    decimals = 0
-
-    def __init__(self, transform):
-        self.transform = transform
-
-    def pos(self, xy) -> np.ndarray:
-        return self.transform.to_pixel(xy)
-
-    def vec(self, v) -> np.ndarray:
-        return self.transform.to_pixel(v) - self.transform.to_pixel([0.0, 0.0])
-
-    def length(self, m: float) -> float:
-        return float(m) * self.transform.scale
 
 
 def person_name(agent_id: str) -> str:

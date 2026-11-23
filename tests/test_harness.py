@@ -3,11 +3,11 @@ import pytest
 
 from tests.test_human_prompt import SITE, person_trip
 from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
-from traj_gen.client import QwenClient
-from traj_gen.episodes import Episode
-from traj_gen.experiments import EXPERIMENTS
-from traj_gen.prompting import PromptBuilder
-from traj_gen.scene import Scene
+from traj_gen.harness.clients import QwenClient
+from traj_gen.harness.episodes import Episode
+from traj_gen.harness.experiments import EXPERIMENTS
+from traj_gen.observation.prompting import PromptBuilder
+from traj_gen.observation.scene import Scene
 
 
 def robot_trip() -> dict:

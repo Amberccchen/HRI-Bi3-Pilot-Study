@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from traj_gen.experiments import EXPERIMENTS, LEGACY_IDS
-from traj_gen.harnesses import HARNESS_FILE, PRESETS, Harness, parse_overrides, run_experiments, settings_of, write_harness_file
+from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS
+from traj_gen.harness.presets import HARNESS_FILE, PRESETS, Harness, parse_overrides, run_experiments, settings_of, write_harness_file
 
 
 def test_registered_experiments_come_out_of_their_settings_unchanged():

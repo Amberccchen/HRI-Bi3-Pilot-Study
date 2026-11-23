@@ -2,12 +2,12 @@
 
 A PromptBuilder is made once per condition (framing x output mode x images) and then asked for
 the system prompt and the first user turn of a Scene, or for the short follow-up turn of a
-conversation. The output mode is a planners.QueryPlanner: it supplies the template, reply key,
+conversation. The output mode is an outputs.planner.QueryPlanner: it supplies the template, reply key,
 example, units and how the example is written in those units. Everything else is shared.
 The planned agent's kind picks the templates: a planned person reads the "_human" version of the
 system prompt, output format, map captions, follow-up and plan-check feedback (TEMPLATE_SUFFIX), and its own framings.
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
-text after the state; the steer mode (planners.SteerPlanner) uses these, and the harness framings go only with it.
+text after the state; the steer mode (outputs.steer.SteerPlanner) uses these, and the harness framings go only with it.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
 """
@@ -19,8 +19,9 @@ import numpy as np
 
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
                              comfort_distance, contact_distance, prompt_radius)
-from traj_gen.bev import SIZE_PX
-from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, person_name
+from traj_gen.observation import load_prompt
+from traj_gen.observation.bev import SIZE_PX
+from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, person_name
 
 
 # Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance

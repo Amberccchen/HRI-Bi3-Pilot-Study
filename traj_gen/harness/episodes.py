@@ -29,10 +29,11 @@ from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import provenance
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii,
                              body_radius, comfort_distance, contact_distance, pair_distances)
-from traj_gen.bev import render_result
-from traj_gen.client import TRANSPORT_ERRORS, Chat, Sample, describe_model
-from traj_gen.prompting import TEMPLATE_SUFFIX, Turn
-from traj_gen.scene import DT, Scene, load_prompt, person_name
+from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_model
+from traj_gen.observation import load_prompt
+from traj_gen.observation.bev import render_result
+from traj_gen.observation.prompting import TEMPLATE_SUFFIX, Turn
+from traj_gen.observation.scene import DT, Scene, person_name
 
 # Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
 TEST_TRIPS = "test_trips.json"
