@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from preprocessing import extract_trips
-from preprocessing.extract_trips import INPUT_BIN_S, INPUT_HZ, binned_track, drop_repeated, input_grid, trip_grid
-from tests.test_human_trips import OVERLAPPING_AND_SAME_STATION_VISITS, fake_recording
+from preprocessing.extract_trips import INPUT_BIN_S, INPUT_HZ, binned_track, drop_repeated
+from tests.test_human_trips import OVERLAPPING_AND_SAME_STATION_VISITS, fake_recording, visit
 
 
 def track(time, x, theta=None):
@@ -60,28 +60,33 @@ def test_no_sample_uses_a_raw_sample_half_a_bin_or_more_after_its_time():
     assert np.all(values[grid - INPUT_BIN_S / 2 >= step, 0] == 1)
 
 
-@pytest.mark.parametrize("t0, t_first, t_last", [(12.37, 0.0, 100.0), (1.3, 0.0, 10.0), (5.03, 4.9, 5.03 + 7.65)])
-def test_input_grid_spans_the_track_grid_and_every_fourth_sample_is_a_track_time(t0, t_first, t_last):
-    """Away from and at the recording's edges, the series starts and ends with the 2.5 Hz track and shares its times."""
-    t1, hz = t0 + 6.5, 2.5
-    grid, i0, i1 = trip_grid(t0, t1, t_first, t_last, hz, history_s=3.0)
-    dense, j0, j1 = input_grid(grid, t0, t1, t_first, t_last, history_s=3.0)
-    factor = int(round(INPUT_HZ / hz))
-    assert len(dense) == factor * (len(grid) - 1) + 1
-    np.testing.assert_allclose(dense[::factor], grid, atol=1e-9)
-    np.testing.assert_allclose(np.diff(dense), 1 / INPUT_HZ, atol=1e-9)
-    assert j0 == factor * i0 and np.round(dense[j0] - t0, 3) == 0
-    assert dense[j1] <= t1 + 1e-9 < dense[j1] + 1 / INPUT_HZ
+# Trip 0 starts at 1.3 s, so its history is cut at the recording start; trip 1 ends with its padding cut at the recording end (30 s).
+EDGE_VISITS = [visit(0, 0, "0", 0.2, 0.8, 1.3), visit(1, 2, "2", 6.0, 7.03, 8.0), visit(2, 5, "5", 16.0, 17.0, 18.0)]
+
+
+def test_series_spans_the_track_grid_and_every_fourth_sample_is_a_track_time(monkeypatch):
+    """At the recording's edges as well, the series starts and ends with the 2.5 Hz track, shares its times and its start, and its
+    end index is the last sample not after the trip end."""
+    fake_recording(monkeypatch, EDGE_VISITS)
+    human_xy = {label: [float(label), 1.0] for label in ("0", "2", "5")}
+    trips = extract_trips.human_trips("laas", "laas99", "cv", human_xy, hz=2.5, history_s=3.0)
+    assert [t["start_index"] for t in trips] == [3, 7] and trips[1]["time"][-1] < trips[1]["duration_s"] + extract_trips.POST_S
+    factor = int(round(INPUT_HZ / 2.5))
+    for trip in trips:
+        series = trip["input_tracks_10hz"]
+        assert len(series["time"]) == factor * (len(trip["time"]) - 1) + 1 and series["time"][::factor] == trip["time"]
+        np.testing.assert_allclose(np.diff(series["time"]), 1 / INPUT_HZ, atol=1.5e-3)  # times are stored to 1 ms
+        assert series["start_index"] == factor * trip["start_index"] and series["time"][series["start_index"]] == 0
+        duration = trip["t_end"] - trip["t_start"]
+        assert series["time"][series["end_index"]] <= duration + 1e-6 < series["time"][series["end_index"]] + 1 / INPUT_HZ
 
 
 def test_person_trip_series_matches_tracks_at_shared_times(monkeypatch):
-    """On a straight walk sampled at 10 Hz, the series at the track times equals the track away from the ends, and is in the room frame."""
+    """On a straight walk sampled at 10 Hz, the series at the track times equals the track away from the recording's ends, in the room frame."""
     fake_recording(monkeypatch, OVERLAPPING_AND_SAME_STATION_VISITS)
     human_xy = {label: [float(label), 1.0] for label in ("0", "2", "3", "5")}
     for trip in extract_trips.human_trips("laas", "laas99", "cv", human_xy, hz=2.5, history_s=3.0):
         series = trip["input_tracks_10hz"]
-        assert series["time"][::4] == trip["time"]
-        assert series["start_index"] == 4 * trip["start_index"] and series["time"][series["start_index"]] == 0
         for agent, rows in trip["tracks"].items():
             dense = np.asarray(series["tracks"][agent])[::4]
             middle = slice(2, -2)  # the 0.5 s average is cut at the recording's ends

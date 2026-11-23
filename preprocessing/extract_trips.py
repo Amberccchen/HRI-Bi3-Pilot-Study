@@ -111,14 +111,6 @@ def binned_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray, bin_s: flo
     return np.c_[mean[:, :2], np.arctan2(mean[:, 3], mean[:, 2])], empty
 
 
-def input_grid(grid: np.ndarray, t0: float, t1: float, t_first: float, t_last: float, history_s: float) -> tuple[np.ndarray, int, int]:
-    """The INPUT_HZ trip_grid of a trip, cut to the span of its track grid (grid): times, index of t0 and of the last sample not after t1."""
-    dense, j0, j1 = trip_grid(t0, t1, t_first, t_last, INPUT_HZ, history_s)
-    inside = (dense >= grid[0] - 1e-6) & (dense <= grid[-1] + 1e-6)
-    first = int(np.argmax(inside))
-    return dense[inside], j0 - first, j1 - first
-
-
 def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
     idx = np.clip(np.searchsorted(time, grid, side="right") - 1, 0, len(time) - 1)
     return [str(labels[i]) for i in idx]
@@ -146,7 +138,10 @@ def trip_record(site: str, trial: str, controller: str, frames: dict, cleaned: d
     path = slice(i0, i1 + 1)
     others = np.stack([track[path, :2] for other, track in tracks.items() if other != agent], axis=1)
     metrics = bi3_metrics(grid[path], tracks[agent][path, :2], others)
-    dense, j0, j1 = input_grid(grid, t0, t1, time[0], time[-1], history_s)
+    dense, j0, j1 = trip_grid(t0, t1, time[0], time[-1], INPUT_HZ, history_s)
+    inside = (dense >= grid[0] - 1e-6) & (dense <= grid[-1] + 1e-6)  # cut to the track grid's span, whose times it then contains
+    first = int(np.argmax(inside))
+    dense, j0, j1 = dense[inside], j0 - first, j1 - first
     binned = {other: binned_track(t, xyt, dense) for other, (t, xyt) in raw.items()}
     return {
         "id": f"{site}_{trial}_{controller}_{agent}_{k:02d}",
@@ -247,18 +242,6 @@ def site_frames(stations: dict, human_xy: dict) -> dict:
     return out
 
 
-def empty_bin_counts(trips: list[dict]) -> dict:
-    """{site: {"person" | "robot": {"bins", "empty"}}}: model-input samples over all trips and agents, and those with an empty bin."""
-    counts = {}
-    for t in trips:
-        series = t["input_tracks_10hz"]
-        for agent, empty in series["empty_bins"].items():
-            c = counts.setdefault(t["site"], {}).setdefault("robot" if agent == "robot" else "person", {"bins": 0, "empty": 0})
-            c["bins"] += len(series["time"])
-            c["empty"] += len(empty)
-    return counts
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trials", nargs="*", default=DEFAULT_TRIALS, help="<site>/<trial>, e.g. laas/laas18")
@@ -295,6 +278,13 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=list(summary[0]))
         writer.writeheader()
         writer.writerows(summary)
+    empty_bins = {}  # {site: {"person" | "robot": {"bins", "empty"}}} over all trips and agents
+    for t in trips:
+        series = t["input_tracks_10hz"]
+        for agent, empty in series["empty_bins"].items():
+            count = empty_bins.setdefault(t["site"], {}).setdefault("robot" if agent == "robot" else "person", {"bins": 0, "empty": 0})
+            count["bins"] += len(series["time"])
+            count["empty"] += len(empty)
     params = {"HZ": args.hz, "HISTORY_S": args.history_s, "SMOOTH_S": SMOOTH_S, "BASE_HZ": BASE_HZ, "POST_S": POST_S,
               "INPUT_HZ": INPUT_HZ, "INPUT_BIN_S": INPUT_BIN_S,
               "SITE_FRAMES": SITE_FRAMES, "trials": args.trials, "controllers": args.controllers, "agents": args.agents}
@@ -309,7 +299,7 @@ def main() -> None:
                              "over the same span as tracks, so its sample (INPUT_HZ / HZ) * i is at time[i]; start_index and end_index as for tracks; tracks[agent id] rows are "
                              "[x, y, theta] in the room frame, each the mean of the raw samples (repeated samples dropped) with time in [t - INPUT_BIN_S / 2, t + INPUT_BIN_S / 2), "
                              "theta their circular mean; empty_bins[agent id] lists the samples whose bin held no raw sample, which take the last raw sample before the bin's end",
-        "input_empty_bins": empty_bin_counts(trips),
+        "input_empty_bins": empty_bins,
     })
     print(f"{len(trips)} trips of {args.agents} from {len(args.trials)} trials x {len(args.controllers)} controllers -> {args.out}")
 
