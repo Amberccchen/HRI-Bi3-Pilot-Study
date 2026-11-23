@@ -36,12 +36,14 @@ Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw 
 
 ## Trajectory generation
 
-[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM, or Claude through the Anthropic API with `--backend claude`) can plan the path of the planned agent in a Bi³ trip, the robot or one of the people. Given the room, the other agents and the planned agent's goal station, as text and/or a top-down map, the model returns timed waypoints, map pixels or velocities. The executed path is scored against the real path and a straight line on the same trips, with the other agents replayed from the logs. The experiments are defined in [`traj_gen/experiments.py`](traj_gen/experiments.py), the agents' parameters in [`traj_gen/agents.py`](traj_gen/agents.py), the prompt templates in `traj_gen/prompts/` and the metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py) and [`metrics/human_similarity.py`](metrics/human_similarity.py). What each generator is told, the radii, speed caps, arrival rule, metric classes, similarity measures and map drawing are defined in [DESIGN.md](DESIGN.md), Sections 2 and 3.
+[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM, or Claude through the Anthropic API with `--backend claude`) can plan the path of the planned agent in a Bi³ trip, the robot or one of the people. Given the room, the other agents and the planned agent's goal station, as text and/or a top-down map, the model returns timed waypoints, map pixels or velocities. The executed path is scored against the real path and a straight line on the same trips, with the other agents replayed from the logs. A run is set up with harness presets, defined in [`traj_gen/harnesses.py`](traj_gen/harnesses.py): a harness is everything that sets the model's prompts and loop (episode type, output mode, images, framing, prediction, plan check and replanning interval), and the experiment id of its run folder is derived from those settings. The experiments of the runs before presets are in [`traj_gen/experiments.py`](traj_gen/experiments.py). The agents' parameters in [`traj_gen/agents.py`](traj_gen/agents.py), the prompt templates in `traj_gen/prompts/` and the metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py) and [`metrics/human_similarity.py`](metrics/human_similarity.py). What each generator is told, the radii, speed caps, arrival rule, metric classes, similarity measures and map drawing are defined in [DESIGN.md](DESIGN.md), Sections 2 and 3.
 
 ```
 python -m traj_gen.run --run <run> select --trips-dir <trips folder>  # choose 16 test trips, write <run>/test_trips.json and <run>/run.json
 python -m traj_gen.run --run <run> select-human --trips-dir <person trips folder> --close 2 --random 2  # person test trips per site
-python -m traj_gen.run --run <run> run --thinking nothink think       # resumable, needs the vLLM server on :8000, framings default to the trips' agent kind
+python -m traj_gen.run --run <run> run --thinking nothink think       # preset pilot for a planned person on the person trip list, plus both baselines; resumable, needs the vLLM server on :8000
+python -m traj_gen.run --run <run> run --robot --thinking think       # the same for the robot as the planned agent, on the robot test trips
+python -m traj_gen.run --run <run> run --harness harness_v1 --overrides prediction=true_future check=2 --baselines none  # another preset, with settings changed
 python -m traj_gen.run --run <run> run --backend claude [--model claude-opus-5-5] --concurrency 8  # the same through the Anthropic API (ANTHROPIC_API_KEY), no server; one backend and model per run folder
 python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
 python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
@@ -49,11 +51,22 @@ python -m traj_gen.run --run <run> animate <condition folder> ...     # one anim
 python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
 ```
 
+`run` takes:
+- `--harness NAME ...`: presets, `pilot` (default) or `harness_v1`. A preset gives a framing per planned agent: `pilot` is map positions in one conversation with the `participant` (person) or `neutral` (robot) task, and `harness_v1` the steer harness with the `harness` or `robot_harness` task.
+- `--robot`: the robot is the planned agent, so each preset's robot framing and the robot test trips. Without it, a person is planned. A trip list of the other kind is refused.
+- `--overrides KEY=VALUE ...`: settings applied to every harness of the command: `episode` (`single_shot`, `rolling`, `rolling_conv`), `output` (`wp`, `px`, `vel1`, `velseq`, `steer`), `images` (`text`, `bev`, `bev_cam`), `framing`, `prediction` (`none`, `true_future`, `constvel_future`), `check` (plan-check rounds, needs `prediction=true_future`) and `execute_s` (replanning interval of rolling episodes).
+- `--baselines straight replay` (default) or `--baselines none`.
+- `--trips FILE`: the trip list. The default is `<run>/test_trips.json` if it exists, else [`traj_gen/trip_lists/person_pilot.json`](traj_gen/trip_lists/person_pilot.json) (100 person trips) or, with `--robot`, [`traj_gen/trip_lists/robot_test.json`](traj_gen/trip_lists/robot_test.json) (the 16 robot test trips).
+
+The experiment id is `ss` or `rh`, the output, the images, then `conv` for a conversation, `true_future` or `constvel_future`, `check` (2 rounds) or `check<N>`, and `replan<s>s` when the replanning interval is not the output's default. For example `--harness harness_v1 --overrides prediction=true_future check=2` runs in `rh_steer_bev_conv_true_future_check/harness/`. The id of the conversation experiment with waypoints, map and camera is `rh_wp_bev_cam_conv`. Run folders made before it was derived name it `rh_wp_bev_conv`, and `analyze` still reads them.
+
+Scripts for the standard runs are in [`configs/runs/`](configs/runs): `person_pilot_qwen.sh`, `person_pilot_claude.sh` and `person_harness_v1_claude.sh`. Each writes to a new run folder `<YYYYMMDD>_<script>_<commit>` and passes extra options through to `run`. Notable runs are logged in [`traj_gen/RUNS.md`](traj_gen/RUNS.md).
+
 The `*_constvel_future` experiments (`ss_wp_bev_constvel_future`, `rh_wp_bev_constvel_future`, `rh_vel1_bev_constvel_future`) are their base experiment plus each person's constant-velocity position at t + 1 s and t + 2 s, in the text and drawn on the map.
 
 **Note:** the official scoring of generated trajectories has not been built yet. The metrics are exploratory definitions written for this pilot, not a validated scoring against the Bi³ ratings.
 
-`--run <folder>` (before the subcommand) is required and picks the run folder. `select` writes `<run>/run.json` with the trips folder and the git commit of the code. Every later command reads the trips from that folder. `run` refuses to add episodes when the code is at another commit or has uncommitted changes in `preprocessing/`, `metrics/` or `traj_gen/`, so the episodes of a run folder come from one commit. `analyze`, `animate` and `report_figures` read a run made at any commit.
+`--run <folder>` (before the subcommand) is required and picks the run folder. `select` writes `<run>/run.json` with the trips folder and the git commit of the code. `run` writes it too for a new run folder (trips folder `trips_v2_human` for a person, `trips_v2` for the robot), with a copy of the trip list as `test_trips.json`, and adds the harness names, overrides, baselines and command line of each call. Every later command reads the trips from that folder. Each harness writes its settings to `<run>/<experiment>/<framing>/harness.json` when it first runs, and `run` refuses a harness whose settings differ from the stored ones. `analyze` reads each experiment's settings from its `harness.json`, or from the registry for folders made before harness presets. `run` refuses to add episodes when the code is at another commit or has uncommitted changes in `preprocessing/`, `metrics/` or `traj_gen/`, so the episodes of a run folder come from one commit. `analyze`, `animate` and `report_figures` read a run made at any commit.
 
 Each model episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip>/s<k>/`, and each baseline episode (`straight`, `replay`) under `<run>/<experiment>/<trip>/`. An episode folder holds `inputs/` (the images sent), `trajectory.csv`, `plans.jsonl`, `queries.jsonl`, `result.png` and `manifest.json`. `trajectory.csv` has the columns `t, robot_x, robot_y, human0_x, human0_y, ...`, one per agent in the trip's track order, from the trip start (`t` = 0) to the end of the episode. The manifest records the episode's status, metrics, query counts and the code's git commit and dirty flag. The status is `ok`, `invalid_reply` (an unusable reply: single shot at once, rolling after one retry) or `error` (a server or transport error, with the traceback in the manifest). A resumed `run` runs episodes that ended in `error` again.
 
@@ -70,7 +83,7 @@ All of these are mocap-derived, so run folders stay outside the repository and m
 
 ## Tests
 
-Run the tests from the repository root with `python -m pytest tests`.
+Run the tests from the repository root with `python -m pytest tests`. `tests/test_snapshots.py` compares each preset's rendered prompts, the positions of a fixed reply, its settings and thinking budget, for a planned person and robot, with `tests/snapshots/<preset>_<kind>.json`. After an intended change to a preset or its prompts, regenerate them with `python -m tests.update_snapshots` and review the diff.
 
 ## Reproduce locally
 
