@@ -1,0 +1,58 @@
+{
+ "preset": "robot_simple",
+ "id": "rh_px_bev_conv",
+ "settings": {
+  "episode": "rolling_conv",
+  "output": "px",
+  "images": "bev",
+  "framing": "neutral",
+  "prediction": "none",
+  "check": 0,
+  "execute_s": 2.0
+ },
+ "think_max_tokens": 16384,
+ "system": "You are the motion planner of a mobile robot that works in a room shared with people. From the state you are given you plan the robot's path.\n\nThe room is a square, 700 px on each side. All coordinates are in pixels of the attached top-down map, which is 896 x 896 pixels: the origin (0, 0) is the top-left corner of the image, u points right and v points down. The room is the square dark outline on the map; it spans u from 126 to 826 and v from 90 to 790.\nStations stand along the walls. They are fixed obstacles: neither the robot nor people pass through a station or leave the room.\nstation 2: (496, 740)\nstation 3: (516, 160)\nstation 5: (796, 520)\n\nThe robot is a holonomic disk of radius 47 px: it can move in any direction at any time, and its orientation does not matter. Its maximum speed is 60 px/s. If a plan asks for more, the robot keeps the path you gave but is slowed down to the maximum speed, so it falls behind the timing of your plan.\nTime advances in steps of 0.4 s. The robot has one goal station and has arrived when its centre is within 100 px of that station's position.",
+ "first": "Your task: plan the robot's motion from its current position to its goal station, efficiently. There are people in the room.\n\nAttached images, in order:\nImage 1: top-down map at t = 0.0 s, drawn from the same state as the text. Grid lines every 100 pixels, labelled in pixels (u along the bottom, v along the left). Grey boxes labelled S0 to S5 are the stations, along the edge of the room (S3 = station 3; the two stations of a shared table sit in one long box), and the dark square is the room boundary. The blue disk is the robot, to scale, with a blue trail of its last 2.8 s; the green star is its goal station and the dashed green circle is the arrival distance of 100 px. Orange disks are people, to scale, with trails of their last 2.8 s and a label such as \"P1 -> S3 then S5\": person 1, goal station, then next goal station.\n\nState at t = 0.0 s (time since the start of this trip).\nRobot: at (476, 495). Previous positions, oldest first, every 0.4 s over the last 2.8 s: (476, 622), (476, 604), (476, 585), (476, 567), (476, 549), (476, 531), (476, 513).\nRobot goal: station 3 at (516, 160), 337 px from the robot now.\nPeople (goal = the station the person is at or walking to, next goal = the station after that):\nP1: at (476, 440), walking. Goal: station 3. Next goal: station 2. Velocity (0, 0) px/s, speed 0 px/s. Distance from the robot 55 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (476, 440), (476, 440), (476, 440), (476, 440), (476, 440), (476, 440), (476, 440).\nP2: at (774, 442), walking. Goal: station 5. Next goal: station 3. Velocity (18, 32) px/s, speed 37 px/s. Distance from the robot 303 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (723, 353), (731, 365), (738, 378), (745, 391), (752, 404), (760, 416), (767, 429).\n\nPlan the robot's path as points on the attached map, in pixels (u, v): one robot position every 0.4 s, the first for t + 0.4 s (the next step), the second for t + 0.8 s, and so on. Give as many as needed to reach the goal, at most 3.\nReply with only a JSON object, with nothing before or after it, in exactly this form (the numbers here are only an example):\n{\"points\": [[376, 360], [396, 350], [416, 340]]}",
+ "followup": "The robot followed your previous plan for 2 s (slowed down wherever it exceeded the maximum speed, so it may be behind your plan). The state is now:\n\nAttached images, in order:\nImage 1: top-down map at t = 0.8 s, drawn from the same state as the text. Grid lines every 100 pixels, labelled in pixels (u along the bottom, v along the left). Grey boxes labelled S0 to S5 are the stations, along the edge of the room (S3 = station 3; the two stations of a shared table sit in one long box), and the dark square is the room boundary. The blue disk is the robot, to scale, with a blue trail of its last 2.8 s; the green star is its goal station and the dashed green circle is the arrival distance of 100 px. Orange disks are people, to scale, with trails of their last 2.8 s and a label such as \"P1 -> S3 then S5\": person 1, goal station, then next goal station.\n\nState at t = 0.8 s (time since the start of this trip).\nRobot: at (476, 458). Previous positions, oldest first, every 0.4 s over the last 2.8 s: (476, 585), (476, 567), (476, 549), (476, 531), (476, 513), (476, 495), (476, 476).\nRobot goal: station 3 at (516, 160), 301 px from the robot now.\nPeople (goal = the station the person is at or walking to, next goal = the station after that):\nP1: at (476, 440), walking. Goal: station 3. Next goal: station 2. Velocity (0, 0) px/s, speed 0 px/s. Distance from the robot 18 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (476, 440), (476, 440), (476, 440), (476, 440), (476, 440), (476, 440), (476, 440).\nP2: at (789, 467), walking. Goal: station 5. Next goal: station 3. Velocity (18, 32) px/s, speed 37 px/s. Distance from the robot 313 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (738, 378), (745, 391), (752, 404), (760, 416), (767, 429), (774, 442), (781, 455).\n\nPlan again from the current state, in the same format as before.",
+ "plan_check": null,
+ "reply": [
+  [
+   460.0,
+   420.0
+  ],
+  [
+   480.0,
+   440.0
+  ],
+  [
+   500.0,
+   470.0
+  ]
+ ],
+ "positions_m": [
+  [
+   -0.025183,
+   -0.155399
+  ],
+  [
+   -0.050365,
+   -0.038071
+  ],
+  [
+   -0.075548,
+   0.079256
+  ],
+  [
+   -0.010149,
+   0.030149
+  ],
+  [
+   0.062913,
+   -0.06437
+  ],
+  [
+   0.12,
+   -0.15
+  ]
+ ]
+}
