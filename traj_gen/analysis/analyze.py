@@ -81,7 +81,7 @@ PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_over
 COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
-FRAMING_MARKER = {"neutral": ("o", False), "robot_harness": ("<", True), "participant": ("o", False), "harness": ("<", False)}  # (shape, filled) per prompt framing
+FRAMING_MARKER = {"neutral": ("o", False), "robot_scored_distances": ("<", True), "participant": ("o", False), "scored_distances": ("<", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
 REFERENCE_DRAWS_PER_TRIAL = 20  # matched subsets per reference trial, pooled: 300-400 reference draws per site from 16-19 trials
@@ -291,7 +291,7 @@ def condition_figures(by_cond: dict, kind: str, fig_dir: Path, experiments: dict
             framings = [f for f in FRAMINGS if any(c[1] == f and c[2] == th for c in by_cond)]
             dot_plot(fig_dir / f"conditions_{kind}_{th}.png", panels, rows, framings, by_cond, experiments, lambda e, f: (e, f, th), FRAMING_MARKER.get,
                      f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval",
-                     legend_handles(baselines, [(f"{f.replace('_', ' + ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
+                     legend_handles(baselines, [(f"{f.replace('_', ' ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
     rows = [e for e in present(by_cond, experiments) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
     if rows:
         dot_plot(fig_dir / f"speed_violation_{kind}.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"}, rows, ["nothink", "think"], by_cond, experiments,

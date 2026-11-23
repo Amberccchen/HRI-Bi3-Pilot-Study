@@ -35,7 +35,7 @@ def euler(start: np.ndarray, heading_deg: float, steps: np.ndarray, substeps: in
 @pytest.mark.parametrize("units", ["m", "px"])
 def test_steps_follow_the_integrated_unicycle(units):
     """The closed-form arcs must match the unicycle integrated in small steps, with the heading carried from step to step."""
-    planner, scene = setup(units, person_trip(), "harness")
+    planner, scene = setup(units, person_trip(), "scored_distances")
     scale = planner.units.length(1.0)
     steps = np.array([[90.0, 1.0 * scale], [0.0, 0.8 * scale], [-200.0, 1.2 * scale], [0.0, 0.0], [45.0, 0.5 * scale]])
     expected = euler(planner.units.pos(scene.track[-1]), planner.heading(scene), steps)
@@ -43,7 +43,7 @@ def test_steps_follow_the_integrated_unicycle(units):
 
 
 def test_zero_turn_rate_walks_straight_along_the_heading():
-    planner, scene = setup("m", person_trip(), "harness")
+    planner, scene = setup("m", person_trip(), "scored_distances")
     heading = np.radians(planner.heading(scene))
     positions, raw = planner.positions(np.array([[0.0, 1.0], [0.0, 1.0]]), scene)
     direction = np.array([np.cos(heading), np.sin(heading)])
@@ -53,7 +53,7 @@ def test_zero_turn_rate_walks_straight_along_the_heading():
 
 def test_a_held_turn_rate_stays_on_the_circle_of_radius_speed_over_turn_rate():
     """At 90 deg/s and 1 m/s the agent stays on a circle of radius 1 / (pi / 2) m through its start, tangent to its heading."""
-    planner, scene = setup("m", person_trip(), "harness")
+    planner, scene = setup("m", person_trip(), "scored_distances")
     heading = np.radians(planner.heading(scene))
     positions, _ = planner.positions(np.array([[90.0, 1.0]] * 4), scene)
     radius = 1.0 / np.radians(90.0)
@@ -67,7 +67,7 @@ def test_a_held_turn_rate_stays_on_the_circle_of_radius_speed_over_turn_rate():
 def test_turn_rate_and_speed_are_cut_to_the_caps(kind):
     """A turn rate beyond the steer turn cap per step divided by the step, or a speed beyond the cap (or below 0), must be cut, while
     the raw speed is kept for the speed-violation metric."""
-    trip, framing = (person_trip(), "harness") if kind == "human" else (robot_trip(), "robot_harness")
+    trip, framing = (person_trip(), "scored_distances") if kind == "human" else (robot_trip(), "robot_scored_distances")
     planner, scene = setup("m", trip, framing)
     cap_rate, cap_speed = SteerPlanner.MAX_TURN_DEG[kind] / DT, SPEED_CAP_M_S[kind]
     cut, raw = planner.positions(np.array([[5000.0, 9.0], [-5000.0, -1.0]]), scene)
@@ -77,10 +77,10 @@ def test_turn_rate_and_speed_are_cut_to_the_caps(kind):
 
 
 def test_prompt_states_the_turn_rate_cap_and_the_speed_unit():
-    planner, scene = setup("px", person_trip(), "harness")
-    text = PromptBuilder("harness", planner, ("bev",), 20, False).first(scene).text
+    planner, scene = setup("px", person_trip(), "scored_distances")
+    text = PromptBuilder("scored_distances", planner, ("bev",), 20, False).first(scene).text
     assert f"A turn rate is at most {SteerPlanner.MAX_TURN_DEG['human'] / DT:g} degrees per second" in text and "in px/s" in text
     assert '{"steps": [[0, 112], [-40, 112], [0, 0]]}' in text  # 1 m/s at 112 px per metre
-    robot, robot_scene = setup("m", robot_trip(), "robot_harness")
-    text = PromptBuilder("robot_harness", robot, ("bev",), 20, False).first(robot_scene).text
+    robot, robot_scene = setup("m", robot_trip(), "robot_scored_distances")
+    text = PromptBuilder("robot_scored_distances", robot, ("bev",), 20, False).first(robot_scene).text
     assert f"A turn rate is at most {SteerPlanner.MAX_TURN_DEG['robot'] / DT:g} degrees per second" in text and "in m/s, from 0 to the maximum speed" in text

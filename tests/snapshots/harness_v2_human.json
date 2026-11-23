@@ -7,7 +7,7 @@
   "output": "steer",
   "units": "px",
   "images": "bev",
-  "framing": "harness",
+  "framing": "scored_distances",
   "prediction": "none",
   "check": 0,
   "execute_s": 2.0

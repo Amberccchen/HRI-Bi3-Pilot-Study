@@ -48,7 +48,7 @@ def test_new_run_folder_gets_run_json_trip_list_and_harness_files(tmp_path, no_e
     assert config["commands"][0]["harnesses"] == ["harness_v2"]
     assert config["commands"][0]["overrides"] == {"prediction": "true_future"} and "--overrides prediction=true_future" in config["commands"][0]["command"]
     assert json.loads((run / "test_trips.json").read_text()) == json.loads(Path(trips).read_text())
-    assert [p.relative_to(run).as_posix() for p in run.glob(f"*/*/{HARNESS_FILE}")] == [f"rh_steer_px_bev_conv_true_future/harness/{HARNESS_FILE}"]
+    assert [p.relative_to(run).as_posix() for p in run.glob(f"*/*/{HARNESS_FILE}")] == [f"rh_steer_px_bev_conv_true_future/scored_distances/{HARNESS_FILE}"]
     assert "0 episodes to run, 4 already done" in capsys.readouterr().out  # 2 samples of one harness, plus the two baselines
 
 
@@ -72,7 +72,7 @@ def test_robot_takes_the_default_presets_robot_framing_and_no_baselines(tmp_path
 def test_a_changed_harness_in_the_same_folder_is_refused(tmp_path, no_episodes):
     trips = trip_list(tmp_path, person_trip())
     call(tmp_path, "--harness", "harness_v2", "--trips", trips)
-    path = tmp_path / "run" / "rh_steer_px_bev_conv" / "harness" / HARNESS_FILE
+    path = tmp_path / "run" / "rh_steer_px_bev_conv" / "scored_distances" / HARNESS_FILE
     stored = json.loads(path.read_text())
     stored["settings"]["images"] = "bev_cam"
     path.write_text(json.dumps(stored))

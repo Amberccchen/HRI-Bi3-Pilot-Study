@@ -1,4 +1,4 @@
-"""The steer output mode: steps [turn, distance] from the current heading, in the run's units, with the harness prompts."""
+"""The steer output mode: steps [turn, distance] from the current heading, in the run's units, with the steer prompts."""
 
 import numpy as np
 
@@ -7,7 +7,7 @@ from traj_gen.outputs.planner import QueryPlanner
 
 
 class SteerPlanner(QueryPlanner):
-    """The steer mode: steps [turn in degrees, distance in the units], with the harness prompts (the scored contact and personal-space
+    """The steer mode: steps [turn in degrees, distance in the units], with the steer prompts (the scored contact and personal-space
     distances, waiting allowed, the scored body sizes, the current heading each turn) and a larger thinking budget. The heading starts as the
     direction of the agent's last movement; each step first turns by its turn (positive: from the units' first axis toward the second,
     clockwise on the map in pixels, anticlockwise in metres), cut to the agent's largest turn, then moves its distance, cut to [0, step].
@@ -16,11 +16,11 @@ class SteerPlanner(QueryPlanner):
     name = "steer"
     template = "steer"
     key = "steps"
-    harness = True
-    system_template = "harness"
-    followup_template = "harness"
+    scored_distance_framings = True
+    system_template = "steer"
+    followup_template = "steer"
     scored_sizes = True
-    think_max_tokens = 32768  # most harness calls ran past 16384 tokens (robot test runs, 2026-11-16)
+    think_max_tokens = 32768  # most calls with the steer prompts ran past 16384 tokens (robot test runs, 2026-11-16)
     # Largest turn per 0.4 s step, rounded down to a whole degree. Robot: the real robots' largest body yaw change per step within a trip,
     # 39.0 deg at LAAS and 35.7 at UM (the 144 robot trips of trips_v3). Person: the 99th percentile of the change in walking direction
     # between consecutive steps both above 0.2 m/s, 131.5 deg over the goal-to-goal moves of the 14,292 trips of trips_v3_human (the median
@@ -66,7 +66,7 @@ class SteerVelocityPlanner(SteerPlanner):
     """The steer_vel mode: steps [turn rate in degrees per second, speed in the units per second], each held for the step, so the agent
     follows a circular arc of radius speed / turn rate (the unicycle model), straight at a turn rate of 0. The heading starts as steer's and
     continues from each step's end. The turn rate is cut to the kind's steer turn cap per step divided by the step (MAX_TURN_DEG / DT), the
-    speed to [0, the kind's speed cap]. Same harness prompts, system and follow-up texts as steer."""
+    speed to [0, the kind's speed cap]. Same framings, system and follow-up texts as steer."""
 
     name = "steer_velocity"
     template = "steer_vel"

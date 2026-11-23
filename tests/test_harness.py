@@ -28,39 +28,39 @@ def prompts(exp_id: str, trip: dict, framing: str) -> str:
     return builder.system(scene) + "\n" + builder.first(scene).text
 
 
-def test_harness_framings_go_only_with_the_harness_mode():
-    """A harness task (which says waiting is a step of distance 0) with a position reply, or the harness reply with a plain task, would render
+def test_scored_distance_framings_go_only_with_the_steer_modes():
+    """A scored-distance task (which says waiting is a step of distance 0) with a position reply, or the steer reply with a plain task, would render
     without an error and mix two setups."""
     trip = person_trip()
-    for exp_id, framing in (("rh_px_bev_conv", "harness"), ("rh_steer_bev_conv", "participant")):
+    for exp_id, framing in (("rh_px_bev_conv", "scored_distances"), ("rh_steer_bev_conv", "participant")):
         exp = EXPERIMENTS[exp_id]
-        with pytest.raises(ValueError, match="harness framings go only with the steer and steer_vel modes"):
+        with pytest.raises(ValueError, match="scored-distance framings go only with the steer and steer_vel modes"):
             PromptBuilder(framing, exp.planner(exp, trip, framing, "think"), exp.images, 20, exp.predict)
-    assert EXPERIMENTS["rh_steer_bev_conv"].accepts("harness") and not EXPERIMENTS["rh_steer_bev_conv"].accepts("participant")
-    assert EXPERIMENTS["rh_px_bev_conv"].accepts("participant") and not EXPERIMENTS["rh_px_bev_conv"].accepts("harness")
+    assert EXPERIMENTS["rh_steer_bev_conv"].accepts("scored_distances") and not EXPERIMENTS["rh_steer_bev_conv"].accepts("participant")
+    assert EXPERIMENTS["rh_px_bev_conv"].accepts("participant") and not EXPERIMENTS["rh_px_bev_conv"].accepts("scored_distances")
 
 
-def test_person_harness_gives_only_the_top_speed_and_a_person_scale_example():
-    """The person harness must not state the largest step (people asked for exactly it), while the robot harness keeps its stated 13 px (0.12 m at 112 px/m)."""
-    person = prompts("rh_steer_bev_conv", person_trip(), "harness")
+def test_person_steer_prompt_gives_only_the_top_speed_and_a_person_scale_example():
+    """The person steer prompt must not state the largest step (people asked for exactly it), while the robot one keeps its stated 13 px (0.12 m at 112 px/m)."""
+    person = prompts("rh_steer_bev_conv", person_trip(), "scored_distances")
     assert "You can walk at most 168 px/s." in person and "px in one step" not in person and "maximum" not in person
     assert '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in person and "at most 131 degrees" in person
-    robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_harness")
+    robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_scored_distances")
     assert "So it moves at most 13 px in one step." in robot and '{"steps": [[0, 11], [-15, 12], [0, 0]]}' in robot and "at most 39 degrees" in robot
 
 
 def test_future_trajectories_only_in_the_future_experiments():
     trip = person_trip()
-    assert "will actually be" not in prompts("rh_steer_bev_conv", trip, "harness")
-    future = prompts("rh_steer_bev_conv_true_future", trip, "harness")
+    assert "will actually be" not in prompts("rh_steer_bev_conv", trip, "scored_distances")
+    future = prompts("rh_steer_bev_conv_true_future", trip, "scored_distances")
     assert "Where the other participant and the robot will actually be" in future and "Robot: t+0.4 s" in future and "P2: t+0.4 s" in future
 
 
-def test_harness_steps_are_cut_to_the_turn_and_speed_limits():
+def test_steer_steps_are_cut_to_the_turn_and_speed_limits():
     """Turns beyond the largest turn and distances beyond one step's travel (or below 0) must be cut, as the prompt says."""
     trip = person_trip()
     exp = EXPERIMENTS["rh_steer_bev_conv"]
-    planner = exp.planner(exp, trip, "harness", "think")
+    planner = exp.planner(exp, trip, "scored_distances", "think")
     scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[: trip["start_index"] + 1, :2])
     heading = planner.heading(scene)
     start = planner.units.pos(scene.track[-1])
@@ -76,7 +76,7 @@ def test_plan_check_counts_contact_against_the_recorded_future(tmp_path):
     """The plan check must score the plan against where the people really are, with the scored contact and personal-space distances."""
     exp = EXPERIMENTS["rh_steer_bev_conv_true_future_check"]
     trip = robot_trip()
-    episode = Episode(tmp_path, exp, trip, SITE, "robot_harness", "think", 0)
+    episode = Episode(tmp_path, exp, trip, SITE, "robot_scored_distances", "think", 0)
     scene = episode.scene()
     straight = np.array([[0.0, 24.0]] * 7)  # keep driving along the current heading, into the person standing at y = 0 m
     counts, text = episode.conflicts(straight, scene)
@@ -97,7 +97,7 @@ def person_check(tmp_path, robot: list[float], other: list[float]) -> tuple[tupl
     for agent, offsets in (("robot", robot), ("human1", other)):
         tracks[agent][i: i + 3] = here + np.c_[offsets, np.zeros(3), np.zeros(3)]
     trip["tracks"] = {**trip["tracks"], **{a: t.tolist() for a, t in tracks.items()}}
-    episode = Episode(tmp_path, EXPERIMENTS["rh_steer_bev_conv_true_future_check"], trip, SITE, "harness", "think", 0)
+    episode = Episode(tmp_path, EXPERIMENTS["rh_steer_bev_conv_true_future_check"], trip, SITE, "scored_distances", "think", 0)
     return episode.conflicts(np.zeros((3, 2)), episode.scene())
 
 
@@ -136,15 +136,15 @@ def test_person_plan_check_text_gives_the_person_thresholds(tmp_path):
     assert "the robot would be" not in text and "46 px" not in text
 
 
-def test_harness_thinking_budget_is_recorded():
+def test_steer_thinking_budget_is_recorded():
     assert QwenClient.describe(True, EXPERIMENTS["rh_steer_bev_conv"].planner.think_max_tokens)["max_tokens"] == 32768
     assert QwenClient.describe(True, EXPERIMENTS["rh_px_bev_conv"].planner.think_max_tokens)["max_tokens"] == 16384
 
 
-def test_plan_check_and_harness_text_use_the_scored_distances():
+def test_plan_check_and_scored_distance_framings_use_the_scored_distances():
     """Contact is scored with the robot's inscribed disk (half the footprint's shorter side) plus the person's body radius, and personal
     space with the person's 0.25 m disk. A plan check or task text on the drawn (enclosing) disk would give the wrong threshold."""
     assert contact_distance(SITE) == pytest.approx(0.33 / 2 + 0.15)
     assert comfort_distance(SITE) == pytest.approx(0.33 / 2 + 0.25)
-    robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_harness")
+    robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_scored_distances")
     assert "less than 35 px apart" in robot and "at least 46 px apart" in robot  # 0.315 m and 0.415 m at 112 px/m

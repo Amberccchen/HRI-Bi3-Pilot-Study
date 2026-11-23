@@ -4,7 +4,7 @@ A harness is eight settings:
   episode     single_shot (one query at the trip start), rolling (re-plan every execute_s, each time in a fresh chat) or rolling_conv
               (the same in one growing conversation, harness.episodes.ConversationEpisode)
   output      the output mode: positions (one point per step in the world frame, outputs.positions.PositionPlanner), steer (a turn and a
-              distance per step from the current heading, with the harness prompts, outputs.steer.SteerPlanner), steer_vel (a turn rate and
+              distance per step from the current heading, with the steer prompts, outputs.steer.SteerPlanner), steer_vel (a turn rate and
               a speed held for each step, a circular arc, with steer's prompts otherwise, outputs.steer.SteerVelocityPlanner), vel1 (one
               velocity step) or velseq (a velocity sequence). vel1 and velseq (robot only) are deprecated: kept for the runs that used them, not for new runs
   units       px (pixels of the map: u right, v down) or m (metres of the room frame: x right, y up), for every number the model reads or
@@ -18,7 +18,7 @@ A harness is eight settings:
               Only with prediction=true_future
   execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 2.0 s, 0.4 s for vel1). None for single shot
 
-Pairing rules: the harness framings (observation.prompting.HARNESS_FRAMINGS) go only with steer and steer_vel, and those only with them; vel1 and velseq have
+Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer and steer_vel, and those only with them; vel1 and velseq have
 no person templates, so they go only with a robot framing; px units need a map.
 
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
@@ -38,7 +38,7 @@ from pathlib import Path
 
 from traj_gen.harness.episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
 from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS, Experiment
-from traj_gen.observation.prompting import FRAMINGS, HARNESS_FRAMINGS
+from traj_gen.observation.prompting import FRAMINGS, SCORED_DISTANCE_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.planner import UNITS
 from traj_gen.outputs.positions import PositionPlanner
@@ -70,9 +70,9 @@ class Harness:
                                      ("framing", self.framing, FRAMINGS), ("prediction", self.prediction, PREDICTIONS)):
             if value not in allowed:
                 raise ValueError(f"{name}={value!r} is not one of {', '.join(allowed)}")
-        if (self.framing in HARNESS_FRAMINGS) != OUTPUTS[self.output].harness:
-            with_harness = ", ".join(k for k, v in OUTPUTS.items() if v.harness)
-            raise ValueError(f"framing {self.framing!r} does not go with output {self.output!r}: the harness framings ({', '.join(sorted(HARNESS_FRAMINGS))}) go only with {with_harness}, and those only with them")
+        if (self.framing in SCORED_DISTANCE_FRAMINGS) != OUTPUTS[self.output].scored_distance_framings:
+            steer_outputs = ", ".join(k for k, v in OUTPUTS.items() if v.scored_distance_framings)
+            raise ValueError(f"framing {self.framing!r} does not go with output {self.output!r}: the scored-distance framings ({', '.join(sorted(SCORED_DISTANCE_FRAMINGS))}) go only with {steer_outputs}, and those only with them")
         if self.output in ROBOT_ONLY_OUTPUTS and self.kind != "robot":
             raise ValueError(f"output {self.output!r} has no person templates, so it does not go with the person framing {self.framing!r}")
         if self.units == "px" and "bev" not in IMAGES[self.images]:
@@ -145,8 +145,8 @@ class Preset:
 PRESETS = {
     # The simple setup: map positions in one conversation, with the participant task for a person and the neutral task for the robot.
     "pilot_v2": Preset("rolling_conv", "positions", "px", "bev", (("human", "participant"), ("robot", "neutral"))),
-    # The harness: steer steps with the scored distances in the task.
-    "harness_v2": Preset("rolling_conv", "steer", "px", "bev", (("human", "harness"), ("robot", "robot_harness"))),
+    # Steer steps, with the scored distances in the task.
+    "harness_v2": Preset("rolling_conv", "steer", "px", "bev", (("human", "scored_distances"), ("robot", "robot_scored_distances"))),
 }
 DEFAULT_PRESET = "pilot_v2"
 

@@ -10,7 +10,7 @@ converted back to metres through them.
 - positions: points in the world frame; the speed limit keeps the path's shape and stretches its timing (outputs.positions).
 - velocities: each clipped to the speed cap, then integrated (outputs.velocity).
 - steer: steps [turn, distance] from the current heading, each turn and distance cut to the agent's limits, with
-  the harness prompts (outputs.steer.SteerPlanner).
+  the steer prompts (outputs.steer.SteerPlanner).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions (outputs.baselines).
 
@@ -72,7 +72,7 @@ class QueryPlanner(Planner):
     """Planners that ask the model. A subclass sets name, template (prompt template), key (JSON key of the reply),
     example (metres, converted by to_units, per planned-agent kind) and overrides to_units, example_text and max_steps where its mode differs."""
 
-    harness = False  # whether the mode goes with the harness framings (observation.prompting.HARNESS_FRAMINGS)
+    scored_distance_framings = False  # whether the mode goes with the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS), and only with them
     system_template = "default"
     followup_template = "default"
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones

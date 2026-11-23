@@ -12,14 +12,14 @@ execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one g
 base experiment plus each person's constant-velocity prediction (text and map). This prediction is deprecated: it is not
 confirmed to be complete. The id naming key is in traj_gen/harness/presets.py.
 
-The harness experiments (outputs.steer.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
+The harness experiments (outputs.steer.SteerPlanner, with the scored-distance framings only: scored_distances for a person, robot_scored_distances for the robot) come in three levels: the harness; the harness plus
 the other agents' recorded future trajectories (true_future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
 
 from dataclasses import dataclass, replace
 
 from traj_gen.harness.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.observation.prompting import HARNESS_FRAMINGS
+from traj_gen.observation.prompting import SCORED_DISTANCE_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.baselines import ReplayPlanner, StraightPlanner
 from traj_gen.outputs.planner import QueryPlanner
@@ -58,8 +58,8 @@ class Experiment:
         return issubclass(self.planner, QueryPlanner)
 
     def accepts(self, framing: str) -> bool:
-        """Whether a run should pair this experiment with the framing: harness framings go only with the steer and steer_vel modes."""
-        return self.uses_model and (framing in HARNESS_FRAMINGS) == self.planner.harness
+        """Whether a run should pair this experiment with the framing: scored-distance framings go only with the steer and steer_vel modes."""
+        return self.uses_model and (framing in SCORED_DISTANCE_FRAMINGS) == self.planner.scored_distance_framings
 
 
 _ROLLING_S = 2.0  # 5 steps, about 7 queries per trip

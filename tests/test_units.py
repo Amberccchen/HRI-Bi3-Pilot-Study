@@ -50,8 +50,8 @@ def test_a_steer_reply_gives_the_same_path_in_either_units():
     """Distances scale with the units. A positive turn goes from the first axis toward the second, which is clockwise on the map in pixels
     (v down) and anticlockwise in metres (y up), so the same path has the opposite turns in the two units."""
     trip = person_trip()
-    planner_px, scene = setup("steer", "px", "harness", trip)
-    planner_m, _ = setup("steer", "m", "harness", trip)
+    planner_px, scene = setup("steer", "px", "scored_distances", trip)
+    planner_m, _ = setup("steer", "m", "scored_distances", trip)
     steps_m = np.array([[20.0, 0.3], [-40.0, 0.5], [10.0, 0.0], [5.0, 0.9]])  # the last one beyond a step at the speed cap (0.6 m)
     steps_px = np.c_[-steps_m[:, 0], PX.length(1.0) * steps_m[:, 1]]
     a, raw_a = planner_px.positions(steps_px, scene)
@@ -73,7 +73,7 @@ def test_a_velocity_reply_gives_the_same_path_in_either_units():
     np.testing.assert_allclose(raw_a, raw_b, atol=1e-9)
 
 
-@pytest.mark.parametrize("output, framing", [("positions", "participant"), ("steer", "harness")])
+@pytest.mark.parametrize("output, framing", [("positions", "participant"), ("steer", "scored_distances")])
 def test_metre_prompts_name_metres_and_the_metre_axes_only(output, framing):
     """Every number and axis word must follow the units: a pixel number or a u/v axis left in a metre prompt would render without an error."""
     planner, scene = setup(output, "m", framing, person_trip())
@@ -90,7 +90,7 @@ def test_metre_prompts_name_metres_and_the_metre_axes_only(output, framing):
 
 
 def test_pixel_prompts_keep_the_pixel_wording():
-    planner, scene = setup("steer", "px", "harness", person_trip())
-    text = PromptBuilder("harness", planner, ("bev",), 20, False).first(scene).text
+    planner, scene = setup("steer", "px", "scored_distances", person_trip())
+    text = PromptBuilder("scored_distances", planner, ("bev",), 20, False).first(scene).text
     assert "positive turns clockwise on the map, from +u toward +v; negative turns anticlockwise" in text
     assert "degrees (0 = +u, right; 90 = +v, down)" in text and '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in text  # 0.4 m at 112 px/m

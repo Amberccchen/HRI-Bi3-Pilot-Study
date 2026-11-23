@@ -19,7 +19,7 @@ DERIVED_IDS = {
 
 
 def framing_for(exp) -> str:
-    return "harness" if exp.planner.harness else "neutral"
+    return "scored_distances" if exp.planner.scored_distance_framings else "neutral"
 
 
 def test_registered_experiments_come_out_of_their_settings_unchanged_but_for_the_id():
@@ -37,7 +37,7 @@ def test_registered_experiments_come_out_of_their_settings_unchanged_but_for_the
 
 def test_preset_ids_and_framings_per_kind():
     expected = {("pilot_v2", "human"): ("rh_positions_px_bev_conv", "participant"), ("pilot_v2", "robot"): ("rh_positions_px_bev_conv", "neutral"),
-                ("harness_v2", "human"): ("rh_steer_px_bev_conv", "harness"), ("harness_v2", "robot"): ("rh_steer_px_bev_conv", "robot_harness")}
+                ("harness_v2", "human"): ("rh_steer_px_bev_conv", "scored_distances"), ("harness_v2", "robot"): ("rh_steer_px_bev_conv", "robot_scored_distances")}
     assert {(name, kind): (p.harness(kind).id, p.harness(kind).framing) for name, p in PRESETS.items() for kind in ("human", "robot")} == expected
 
 
@@ -51,7 +51,7 @@ def test_overrides_give_the_harness_levels_of_the_registry():
         assert same(PRESETS["harness_v2"].harness(kind, {"prediction": "true_future", "check": 2}).experiment(), "rh_steer_bev_conv_true_future_check")
     assert same(PRESETS["pilot_v2"].harness("robot", {"episode": "single_shot"}).experiment(), "ss_px_bev")
     assert same(PRESETS["pilot_v2"].harness("robot", {"output": "vel1", "episode": "rolling", "units": "m"}).experiment(), "rh_vel1_bev")  # vel1's own default interval
-    assert PRESETS["pilot_v2"].harness("human", {"framing": "harness", "output": "steer"}).framing == "harness"
+    assert PRESETS["pilot_v2"].harness("human", {"framing": "scored_distances", "output": "steer"}).framing == "scored_distances"
 
 
 def test_id_suffixes_for_check_count_and_replanning_interval():
@@ -66,11 +66,11 @@ def test_id_suffixes_for_check_count_and_replanning_interval():
 
 @pytest.mark.parametrize("settings, message", [
     ({"check": 2}, "needs prediction=true_future"),
-    ({"output": "positions"}, "harness framings"),
+    ({"output": "positions"}, "scored-distance framings"),
     ({"units": "cm"}, "units='cm' is not one of"),
     ({"images": "text"}, "units px are pixels of the map"),
-    ({"framing": "participant"}, "harness framings"),
-    ({"output": "steer_vel", "framing": "participant"}, "harness framings"),
+    ({"framing": "participant"}, "scored-distance framings"),
+    ({"output": "steer_vel", "framing": "participant"}, "scored-distance framings"),
     ({"episode": "single_shot", "execute_s": 2.0}, "only for rolling episodes"),
     ({"execute_s": 0.5}, "whole number of 0.4 s steps"),
     ({"prediction": "future"}, "prediction='future' is not one of"),
@@ -98,7 +98,7 @@ def test_overrides_are_parsed_and_checked():
 def test_harness_file_is_written_once_and_a_changed_harness_is_refused(tmp_path):
     h = PRESETS["harness_v2"].harness("human")
     write_harness_file(tmp_path, "harness_v2", h, {})
-    path = tmp_path / "rh_steer_px_bev_conv" / "harness" / HARNESS_FILE
+    path = tmp_path / "rh_steer_px_bev_conv" / "scored_distances" / HARNESS_FILE
     assert json.loads(path.read_text())["settings"] == h.settings()
     write_harness_file(tmp_path, "harness_v2", h, {})  # the same settings again: accepted
     stored = json.loads(path.read_text())
