@@ -1,0 +1,11 @@
+# Runs log
+
+One line per notable run of the trajectory generation. Run folders are under `/persistent/experiments/HRI/bi3_traj_gen/`. "What it ran" gives the harness preset and planned agent, or, for runs before presets, the experiment and framing folders (`<experiment>/<framing>`) and the preset they match. The backend, model and effort come from each folder's `run.json` and episode manifests. Qwen's effort is the `reasoning_effort` its client sends. A new run adds its line here when it finishes.
+
+| Run folder | What it ran | Commit | Backend | Model | Effort | Thinking | Results |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `20261115_pilot_52d7b27` | person pilot: `rh_px_bev_conv/participant` (= `pilot`, person), plus `ss_px_bev/participant`, `straight`, `replay`; 100 person trips, 3 samples | 52d7b27 | qwen | Qwen/Qwen3.8-27B-FP8 | medium | nothink, think | [Person generation measures](https://claude.ai/artifact/1qhLpDxXLitS2Spoq71jqP) (think) |
+| `20261116_robot_px_f379f0c` | robot simple harness: `rh_px_bev_conv/neutral` (= `pilot`, robot), plus `ss_px_bev/neutral`, `straight`, `replay`; 16 robot test trips | f379f0c | qwen | Qwen/Qwen3.8-27B-FP8 | medium | nothink, think | |
+| `20261117_human_m4a_f2b3123` | person harness before the port: `rh_heading_bev_conv/participant_space` and `rh_heading_bev_conv_future/participant_space`. Its prompt stated the largest step, which `harness_v1` drops, so it matches no preset | f2b3123 | qwen | Qwen/Qwen3.8-27B-FP8 | medium | think | |
+| `20261123_human_pilot_setup_claude_sonnet_01af90a` | `rh_px_bev_conv/participant` (= `pilot`, person); no baselines | 01af90a | claude | claude-sonnet-5-5 | medium | think | [Claude person episodes](https://claude.ai/artifact/F11CM1dCUsaurmbYuJGUmv) |
+| `20261123_human_harness_rate_claude_sonnet_b2aaeb7` | `rh_heading_rate_bev_conv/participant_space` on branch robot_wording_test (= `harness_v1`, person); no baselines | b2aaeb7 | claude | claude-sonnet-5-5 | medium | think | |
