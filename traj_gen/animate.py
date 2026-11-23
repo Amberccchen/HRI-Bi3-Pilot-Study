@@ -115,6 +115,8 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
         fig, ax, _ = bev_axes(False)
         draw_room(ax, site, agent, longest["goal"])
         draw_reference(ax, longest["goal"], longest["real"][0], longest["real"])
+        real = longest["real"]  # the real agent now, as a dashed ring at body size (held at its last logged position)
+        ax.add_patch(Circle(real[min(k, len(real) - 1)], body_radius(agent, site), fill=False, ec=REAL_PATH, ls="--", lw=2, zorder=6))
         draw_others(ax, site, {other: track[: k + 1] for other, track in others.items()})  # the logged agents up to this step
         for ep in eps:
             head = min(k, len(ep["t"]) - 1)  # a finished sample holds its final position
