@@ -7,7 +7,7 @@ example, units and how the example is written in those units. Everything else is
 The planned agent's kind picks the templates: a planned person reads the "_human" version of the
 system prompt, output format, map captions and follow-up (TEMPLATE_SUFFIX), and its own framings.
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
-text after the state; the harness mode (planners.HarnessPlanner) uses these, and the harness framings go only with it.
+text after the state; the steer mode (planners.SteerPlanner) uses these, and the harness framings go only with it.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
 """
@@ -25,9 +25,9 @@ from traj_gen.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, load_prompt, 
 
 # Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
 # the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# harness (robot) and participant_harness (person): the scored contact and personal-space distances, and that waiting is allowed; only with the harness mode.
-FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "harness": "robot", "participant": "human", "participant_harness": "human"}
-HARNESS_FRAMINGS = {"harness", "participant_harness"}
+# harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer mode.
+FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
+HARNESS_FRAMINGS = {"harness", "robot_harness"}
 TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that differ by the planned agent's kind
 
 
@@ -46,7 +46,7 @@ class PromptBuilder:
         if FRAMINGS[framing] != self.kind:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
         if (framing in HARNESS_FRAMINGS) != mode.harness:
-            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the harness mode")
+            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the steer mode")
         self.suffix = TEMPLATE_SUFFIX[self.kind]
 
     def output_text(self) -> str:

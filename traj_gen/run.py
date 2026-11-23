@@ -164,7 +164,7 @@ def run(args: argparse.Namespace) -> None:
     if wrong := [f for f in framings if FRAMINGS[f] not in kinds]:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
     if unpaired := [e for e in args.experiments if EXPERIMENTS[e].uses_model and not any(EXPERIMENTS[e].accepts(f) for f in framings)]:
-        raise ValueError(f"experiments {unpaired} go with none of the framings {framings}: the harness framings go only with the harness experiments")
+        raise ValueError(f"experiments {unpaired} go with none of the framings {framings}: the harness framings go only with the steer experiments")
     select_backend(args.backend, args.model, args.effort)
     label = backend_label()
     check_run_model(args.run, config, label)

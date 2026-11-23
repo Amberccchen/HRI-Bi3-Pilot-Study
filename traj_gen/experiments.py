@@ -5,7 +5,18 @@ single-shot experiments plan the whole path at the trip start. The rolling ones 
 execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_pred` ones are their
 base experiment plus each person's constant-velocity prediction (text and map).
 
-The harness experiments (planners.HarnessPlanner, with the harness framings only) come in three levels: the harness; the harness plus
+Experiment id parts, in order:
+  episode type   ss = single shot (one query at the trip start); rh = rolling horizon (re-plan every execute_s of executed motion)
+  output mode    wp = timed waypoints in metres; px = map positions in pixels; vel1 = one velocity step; velseq = a velocity sequence;
+                 steer = a turn from the current heading and a distance per step, with the harness prompts (planners.SteerPlanner, only with the harness framings)
+  images         text = no image; bev = the top-down (bird's-eye view) map; cam = plus the camera view
+  conv           all queries of an episode in one growing conversation (episodes.ConversationEpisode); without it each query is a fresh chat
+  future         the other agents' recorded future positions in the text each turn (Experiment.future)
+  check          the plan check: each plan is tested against those futures and the first conflict is reported back for revision (Experiment.check_rounds)
+  pred           each person's constant-velocity prediction in the text and map (Experiment.base)
+straight and replay are the baselines (no model).
+
+The harness experiments (planners.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
 the other agents' recorded future trajectories (future, a proxy for a forecaster); and that plus the plan check (check_rounds, robot
 only), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
@@ -13,7 +24,7 @@ only), which tests each plan against the recorded futures and reports the first 
 from dataclasses import dataclass, replace
 
 from traj_gen.episodes import BaselineEpisode, ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.planners import HarnessPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
+from traj_gen.planners import SteerPlanner, PixelPlanner, QueryPlanner, ReplayPlanner, StepVelocityPlanner, StraightPlanner, VelocityPlanner, WaypointPlanner
 from traj_gen.prompting import HARNESS_FRAMINGS
 from traj_gen.scene import DT
 
@@ -47,7 +58,7 @@ class Experiment:
         return issubclass(self.planner, QueryPlanner)
 
     def accepts(self, framing: str) -> bool:
-        """Whether a run should pair this experiment with the framing: harness framings go only with the harness mode."""
+        """Whether a run should pair this experiment with the framing: harness framings go only with the steer mode."""
         return self.uses_model and (framing in HARNESS_FRAMINGS) == self.planner.harness
 
 
@@ -65,9 +76,9 @@ _experiments = [
     Experiment("rh_wp_bev_conv", WaypointPlanner, ("bev", "cam"), ConversationEpisode, _ROLLING_S),
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_harness_bev_conv", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_harness_bev_conv_future", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
-    Experiment("rh_harness_bev_conv_future_check", HarnessPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
+    Experiment("rh_steer_bev_conv", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
+    Experiment("rh_steer_bev_conv_future", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
+    Experiment("rh_steer_bev_conv_future_check", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]

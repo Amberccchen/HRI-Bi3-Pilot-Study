@@ -8,8 +8,8 @@ methods (to_units, max_steps, positions) say how it is prompted and how a reply 
 - waypoints (metres): the speed limit keeps the path's shape and stretches its timing.
 - pixels: the same after mapping the BEV pixels to metres.
 - velocities: each clipped to the speed cap, then integrated.
-- harness: steps [turn, distance] on the BEV from the current heading, each turn and distance cut to the agent's limits, with
-  the harness prompts (planners.HarnessPlanner).
+- steer: steps [turn, distance] on the BEV from the current heading, each turn and distance cut to the agent's limits, with
+  the harness prompts (planners.SteerPlanner).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions.
 
@@ -154,15 +154,15 @@ class PixelPlanner(WaypointPlanner):
 
 
 
-class HarnessPlanner(PixelPlanner):
-    """The harness: steps [turn in degrees, distance in pixels] on the BEV, with the harness prompts (the scored contact and personal-space
+class SteerPlanner(PixelPlanner):
+    """The steer mode: steps [turn in degrees, distance in pixels] on the BEV, with the harness prompts (the scored contact and personal-space
     distances, waiting allowed, the scored body sizes, the current heading each turn) and a larger thinking budget. The heading starts as the
     direction of the agent's last movement; each step first turns by its turn (positive: clockwise on the map, from +u toward +v), cut to
     the agent's largest turn, then moves its distance, cut to [0, step]. The robot's prompt states the largest distance per step; a
     person's gives only the top speed (with the stated maximum, people asked for exactly it in 75-82% of steps, run 20261117_human_m4a_f2b3123)."""
 
-    name = "harness"
-    template = "output_harness"
+    name = "steer"
+    template = "output_steer"
     key = "steps"
     harness = True
     system_template = "system_harness"
