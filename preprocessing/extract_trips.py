@@ -12,7 +12,12 @@ against. end_index marks where the real trip ends and the metrics stop.
 
 Tracks are cleaned (repeated mocap samples dropped, 0.5 s moving average on a BASE_HZ grid,
 once per recording) and resampled to --hz on a grid anchored at the trip start, so the start state, the
-camera frame at the start and the real-path metrics share one time (time 0). Coordinates are room-centred: the origin is the centre of the
+camera frame at the start and the real-path metrics share one time (time 0). The 0.5 s average suits station-visit
+detection (annotate_goals.py), where the window comes from, and these tracks are what the metrics score.
+Each trip also holds a lighter model-input series, input_tracks_10hz: every agent at INPUT_HZ on the same grid
+anchored at the trip start and over the same span, each sample the mean of the raw samples (repeated ones dropped)
+in a centred INPUT_BIN_S bin, the heading a circular mean, with no further smoothing (binned_track). No sample
+draws on a raw sample INPUT_BIN_S / 2 or more after its time. Every INPUT_HZ / hz-th sample falls on a track sample. Coordinates are room-centred: the origin is the centre of the
 area people and the robot actually occupy. room_m is the traversable workspace the Bi3 paper
 states, 3.5 x 3.5 m (Stratton et al., ICRA 2026, Sec. IV-A). The workstations stand along its
 perimeter, so people working at them stand at or just beyond its edge. LAAS is rotated 180 degrees so both sites have the shared two-station table on the
@@ -56,6 +61,8 @@ SITE_FRAMES = {
 SMOOTH_S = 0.5          # moving-average window before resampling
 BASE_HZ = 10.0          # cleaning grid
 POST_S = 15.0           # replay padding after the trip end: generated robots may be slower, the humans must keep moving
+INPUT_HZ = 10.0         # rate of the model-input series (input_tracks_10hz)
+INPUT_BIN_S = 0.1       # each model-input sample is the mean of the raw samples in a centred bin this wide
 
 
 def to_room(site: str, xy: np.ndarray) -> np.ndarray:
@@ -69,13 +76,47 @@ def to_room_theta(site: str, theta: np.ndarray) -> np.ndarray:
     return np.angle(np.exp(1j * (np.asarray(theta) + np.radians(SITE_FRAMES[site]["rotation_deg"]))))
 
 
+def drop_repeated(time: np.ndarray, xyt: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Samples whose position differs from the previous sample's: mocap holds the last position between updates."""
+    keep = np.r_[True, np.any(np.diff(xyt[:, :2], axis=0) != 0, axis=1)]
+    return time[keep], xyt[keep]
+
+
 def clean_track(time: np.ndarray, xyt: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Drop repeated samples and smooth on a BASE_HZ grid: the grid (n,) and the smoothed [x, y, unwrapped theta] on it (n, 3)."""
-    keep = np.r_[True, np.any(np.diff(xyt[:, :2], axis=0) != 0, axis=1)]
-    t, p = time[keep], xyt[keep]
+    t, p = drop_repeated(time, xyt)
     base = np.arange(time[0], time[-1] + 1e-9, 1 / BASE_HZ)
     cols = [np.interp(base, t, p[:, 0]), np.interp(base, t, p[:, 1]), np.interp(base, t, np.unwrap(p[:, 2]))]
     return base, moving_average(np.stack(cols, axis=1), max(1, int(round(SMOOTH_S * BASE_HZ))))
+
+
+def binned_track(time: np.ndarray, xyt: np.ndarray, grid: np.ndarray, bin_s: float = INPUT_BIN_S) -> tuple[np.ndarray, np.ndarray]:
+    """[x, y, theta] at each grid time (n, 3) from raw samples (time (T,) increasing, xyt (T, 3), repeated samples already dropped),
+    and which grid times had an empty bin (n,).
+
+    A sample is the mean of the raw samples with time in [t - bin_s / 2, t + bin_s / 2), the heading their circular mean. An empty
+    bin takes the last raw sample before its end: the latest position known at that time, which is what the mocap log holds there.
+    So no sample uses a raw sample bin_s / 2 or more after its time. Raises ValueError for a grid time with no raw sample before
+    its bin's end."""
+    lo = np.searchsorted(time, grid - bin_s / 2, side="left")
+    hi = np.searchsorted(time, grid + bin_s / 2, side="left")
+    if np.any(hi == 0):
+        raise ValueError(f"grid times before the first raw sample's bin: {grid[hi == 0][:3]}")
+    values = np.c_[xyt[:, 0], xyt[:, 1], np.cos(xyt[:, 2]), np.sin(xyt[:, 2])]
+    sums = np.vstack([np.zeros(4), np.cumsum(values, axis=0)])
+    count = hi - lo
+    empty = count == 0
+    mean = (sums[hi] - sums[lo]) / np.maximum(count, 1)[:, None]
+    mean[empty] = values[hi[empty] - 1]
+    return np.c_[mean[:, :2], np.arctan2(mean[:, 3], mean[:, 2])], empty
+
+
+def input_grid(grid: np.ndarray, t0: float, t1: float, t_first: float, t_last: float, history_s: float) -> tuple[np.ndarray, int, int]:
+    """The INPUT_HZ trip_grid of a trip, cut to the span of its track grid (grid): times, index of t0 and of the last sample not after t1."""
+    dense, j0, j1 = trip_grid(t0, t1, t_first, t_last, INPUT_HZ, history_s)
+    inside = (dense >= grid[0] - 1e-6) & (dense <= grid[-1] + 1e-6)
+    first = int(np.argmax(inside))
+    return dense[inside], j0 - first, j1 - first
 
 
 def labels_at(time: np.ndarray, labels: np.ndarray, grid: np.ndarray) -> list:
@@ -92,9 +133,10 @@ def trip_grid(t0: float, t1: float, t_first: float, t_last: float, hz: float, hi
     return t0 + np.arange(k_first, k_last + 1) / hz, i0, i0 + int(np.floor((t1 - t0) * hz + 1e-9))
 
 
-def trip_record(site: str, trial: str, controller: str, frames: dict, cleaned: dict, agent: str, k: int, t0: float, t1: float,
+def trip_record(site: str, trial: str, controller: str, frames: dict, cleaned: dict, raw: dict, agent: str, k: int, t0: float, t1: float,
                 start_goal: str, goal: str, goal_xy: list[float], next_goal: str, hz: float, history_s: float) -> dict:
-    """One trip of the planned agent from t0 to t1 of a recording, with frames from load_frames and cleaned the clean_track of each agent."""
+    """One trip of the planned agent from t0 to t1 of a recording, with frames from load_frames, cleaned the clean_track of each agent
+    and raw the drop_repeated samples of each agent (recording_tracks)."""
     time = frames[agent]["time"]
     grid, i0, i1 = trip_grid(t0, t1, time[0], time[-1], hz, history_s)
     tracks = {}
@@ -104,6 +146,8 @@ def trip_record(site: str, trial: str, controller: str, frames: dict, cleaned: d
     path = slice(i0, i1 + 1)
     others = np.stack([track[path, :2] for other, track in tracks.items() if other != agent], axis=1)
     metrics = bi3_metrics(grid[path], tracks[agent][path, :2], others)
+    dense, j0, j1 = input_grid(grid, t0, t1, time[0], time[-1], history_s)
+    binned = {other: binned_track(t, xyt, dense) for other, (t, xyt) in raw.items()}
     return {
         "id": f"{site}_{trial}_{controller}_{agent}_{k:02d}",
         "site": site, "trial": trial, "controller": controller, "agent": agent, "trip": k,
@@ -114,13 +158,25 @@ def trip_record(site: str, trial: str, controller: str, frames: dict, cleaned: d
         "tracks": {other: np.round(track, 3).tolist() for other, track in tracks.items()},
         "labels": {other: {key: labels_at(f["time"], f[key], grid) for key in ("state", "goal", "next_goal")} for other, f in frames.items()},
         "real_metrics": {name: (round(v, 4) if isinstance(v, float) else v) for name, v in metrics.items()},
+        "input_tracks_10hz": {
+            "time": np.round(dense - t0, 3).tolist(), "start_index": j0, "end_index": j1,
+            "tracks": {other: np.round(np.c_[to_room(site, xyt[:, :2]), to_room_theta(site, xyt[:, 2])], 3).tolist() for other, (xyt, _) in binned.items()},
+            "empty_bins": {other: np.flatnonzero(empty).tolist() for other, (_, empty) in binned.items()},
+        },
     }
+
+
+def recording_tracks(frames: dict) -> tuple[dict, dict]:
+    """Per agent of a recording, once: its clean_track and its drop_repeated raw samples, as trip_record takes them."""
+    xyt = {agent: np.c_[f["x"], f["y"], f["theta"]] for agent, f in frames.items()}
+    return ({agent: clean_track(frames[agent]["time"], v) for agent, v in xyt.items()},
+            {agent: drop_repeated(frames[agent]["time"], v) for agent, v in xyt.items()})
 
 
 def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: float, history_s: float) -> list[dict]:
     """Trips of the robot in one recording, cut at its goal switches, with stations the site's from load_stations."""
     frames = load_frames(site, trial, controller)
-    cleaned = {agent: clean_track(f["time"], np.c_[f["x"], f["y"], f["theta"]]) for agent, f in frames.items()}
+    cleaned, raw = recording_tracks(frames)
     robot = frames["robot"]
     time, goal = robot["time"], robot["goal"]
     switches = np.flatnonzero(goal[1:] != goal[:-1]) + 1
@@ -128,7 +184,7 @@ def robot_trips(site: str, trial: str, controller: str, stations: dict, hz: floa
     trips = []
     for k, (s, e) in enumerate(zip(starts[:-1], starts[1:])):  # the last goal is never reached
         g = str(goal[s])
-        trips.append(trip_record(site, trial, controller, frames, cleaned, "robot", k, time[s], time[e], str(goal[s - 1]) if s else "", g,
+        trips.append(trip_record(site, trial, controller, frames, cleaned, raw, "robot", k, time[s], time[e], str(goal[s - 1]) if s else "", g,
                                  to_room(site, stations[g]["xy"]).round(3).tolist(), str(robot["next_goal"][s]), hz, history_s))
     return trips
 
@@ -142,7 +198,7 @@ def human_trips(site: str, trial: str, controller: str, human_xy: dict, hz: floa
     first later visit with a different label than its goal, as `label_from_visits` takes it.
     """
     frames = load_frames(site, trial, controller)
-    cleaned = {agent: clean_track(f["time"], np.c_[f["x"], f["y"], f["theta"]]) for agent, f in frames.items()}
+    cleaned, raw = recording_tracks(frames)
     visits = load_visits(site, trial, controller)
     trips = []
     for agent in frames:
@@ -153,7 +209,7 @@ def human_trips(site: str, trial: str, controller: str, human_xy: dict, hz: floa
             if there["t_arrive"] <= here["t_leave"] or there["station"] == here["station"]:
                 continue
             next_goal = next((v["label"] for v in own[k + 2 :] if v["label"] != there["label"]), "")
-            trips.append(trip_record(site, trial, controller, frames, cleaned, agent, here["visit"], here["t_leave"], there["t_turn"],
+            trips.append(trip_record(site, trial, controller, frames, cleaned, raw, agent, here["visit"], here["t_leave"], there["t_turn"],
                                      here["label"], there["label"], human_xy[there["label"]], next_goal, hz, history_s))
     return trips
 
@@ -189,6 +245,18 @@ def site_frames(stations: dict, human_xy: dict) -> dict:
                          for k, v in stations[site].items()}
         out[site] = {**frame, "stations": room_stations}
     return out
+
+
+def empty_bin_counts(trips: list[dict]) -> dict:
+    """{site: {"person" | "robot": {"bins", "empty"}}}: model-input samples over all trips and agents, and those with an empty bin."""
+    counts = {}
+    for t in trips:
+        series = t["input_tracks_10hz"]
+        for agent, empty in series["empty_bins"].items():
+            c = counts.setdefault(t["site"], {}).setdefault("robot" if agent == "robot" else "person", {"bins": 0, "empty": 0})
+            c["bins"] += len(series["time"])
+            c["empty"] += len(empty)
+    return counts
 
 
 def main() -> None:
@@ -228,6 +296,7 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(summary)
     params = {"HZ": args.hz, "HISTORY_S": args.history_s, "SMOOTH_S": SMOOTH_S, "BASE_HZ": BASE_HZ, "POST_S": POST_S,
+              "INPUT_HZ": INPUT_HZ, "INPUT_BIN_S": INPUT_BIN_S,
               "SITE_FRAMES": SITE_FRAMES, "trials": args.trials, "controllers": args.controllers, "agents": args.agents}
     write_manifest(args.out / "manifest.json", params, {
         "trips": len(trips),
@@ -236,6 +305,11 @@ def main() -> None:
                   "time is seconds from trip start (negative = history); start_index and end_index are the first and last (inclusive) sample of the trip, samples after end_index are POST_S replay padding; "
                   "tracks[agent id] rows are [x, y, theta] in the room frame for every agent (robot, human0, ...); labels[agent id] holds per-sample state, goal and next_goal labels "
                   "(goals are keys of site_frames stations; the robot's state is empty); real_metrics are bi3_metrics of the planned agent's real path against all other agents from start_index to end_index",
+        "input_tracks_10hz": "model-input series of every agent, not smoothed like tracks: time is seconds from trip start on an INPUT_HZ grid anchored at the trip start "
+                             "over the same span as tracks, so its sample (INPUT_HZ / HZ) * i is at time[i]; start_index and end_index as for tracks; tracks[agent id] rows are "
+                             "[x, y, theta] in the room frame, each the mean of the raw samples (repeated samples dropped) with time in [t - INPUT_BIN_S / 2, t + INPUT_BIN_S / 2), "
+                             "theta their circular mean; empty_bins[agent id] lists the samples whose bin held no raw sample, which take the last raw sample before the bin's end",
+        "input_empty_bins": empty_bin_counts(trips),
     })
     print(f"{len(trips)} trips of {args.agents} from {len(args.trials)} trials x {len(args.controllers)} controllers -> {args.out}")
 
