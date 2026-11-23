@@ -147,11 +147,17 @@ def recording_key(recording: str, *parts: str) -> str:
     return "/".join((recording, *parts))
 
 
+def scored_end_index(first: int, end: int, last: int) -> int:
+    """Index among a trip's scored samples (every SCORED_STEP-th grid sample from first) of the real end: the scored sample nearest the end
+    grid sample, the later one on a tie, and never past the last scored sample (last). Rounding down instead cut up to 0.3 s off the end."""
+    return min((end - first + SCORED_STEP // 2) // SCORED_STEP, (last - first) // SCORED_STEP)
+
+
 def trip_arrays(trip: dict, recording: dict[str, dict[str, np.ndarray]]) -> dict:
     """The sample arrays of a trip, cut from its recording's series ({agent id: {field: (n,) or (n, 3) array}} per SERIES_FIELDS, agents in
     file order) at trip["recording_indices"] (first sample with history, start, end, last sample with padding, on the recording's grid).
 
-    Returns time (seconds from the trip start), start_index, end_index, tracks ({agent: (T, 3) [x, y, theta]}) and labels
+    Returns time (seconds from the trip start), start_index, end_index (scored_end_index), tracks ({agent: (T, 3) [x, y, theta]}) and labels
     ({agent: {state, goal, next_goal: (T,)}}) at TRIP_HZ, every SCORED_STEP-th series sample from the start, and input_tracks_10hz:
     the INPUT_HZ series over the same span with its own time, start_index, end_index, tracks and empty_bins (indices of samples whose
     bin held no raw sample).
@@ -160,7 +166,7 @@ def trip_arrays(trip: dict, recording: dict[str, dict[str, np.ndarray]]) -> dict
     dense, scored = slice(first, last + 1), slice(first, last + 1, SCORED_STEP)
     time = np.round((np.arange(first, last + 1) - start) / INPUT_HZ, 3)
     return {
-        "time": time[::SCORED_STEP], "start_index": (start - first) // SCORED_STEP, "end_index": (end - first) // SCORED_STEP,
+        "time": time[::SCORED_STEP], "start_index": (start - first) // SCORED_STEP, "end_index": scored_end_index(first, end, last),
         "tracks": {agent: series["xyt"][scored] for agent, series in recording.items()},
         "labels": {agent: {key: series[key][scored] for key in LABEL_KEYS} for agent, series in recording.items()},
         "input_tracks_10hz": {
