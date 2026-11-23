@@ -41,9 +41,9 @@ Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw 
 ```
 python -m traj_gen.run --run <run> select --trips-dir <trips folder>  # choose 16 test trips, write <run>/test_trips.json and <run>/run.json
 python -m traj_gen.run --run <run> select-human --trips-dir <person trips folder> --close 2 --random 2  # person test trips per site
-python -m traj_gen.run --run <run> run --thinking nothink think       # preset pilot for a planned person on the person trip list, plus both baselines; resumable, needs the vLLM server on :8000
+python -m traj_gen.run --run <run> run --thinking nothink think       # preset pilot_v2 for a planned person on the person trip list, plus both baselines; resumable, needs the vLLM server on :8000
 python -m traj_gen.run --run <run> run --robot --thinking think       # the same for the robot as the planned agent, on the robot test trips
-python -m traj_gen.run --run <run> run --harness harness_v1 --overrides prediction=true_future check=2 --baselines none  # another preset, with settings changed
+python -m traj_gen.run --run <run> run --harness harness_v2 --overrides prediction=true_future check=2 --baselines none  # another preset, with settings changed
 python -m traj_gen.run --run <run> run --backend claude [--model claude-opus-5-5] --concurrency 8  # the same through the Anthropic API (ANTHROPIC_API_KEY), no server; one backend and model per run folder
 python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
 python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
@@ -52,15 +52,15 @@ python -m traj_gen.analysis.report_figures --run <run>                         #
 ```
 
 `run` takes:
-- `--harness NAME ...`: presets, `pilot` (default) or `harness_v1`. A preset gives a framing per planned agent: `pilot` is map positions in one conversation with the `participant` (person) or `neutral` (robot) task, and `harness_v1` the steer harness with the `harness` or `robot_harness` task.
+- `--harness NAME ...`: presets, `pilot_v2` (default) or `harness_v2`. A preset gives a framing per planned agent: `pilot_v2` is map positions in pixels in one conversation with the `participant` (person) or `neutral` (robot) task, and `harness_v2` the steer harness in pixels with the `harness` or `robot_harness` task. The earlier presets `pilot` and `harness_v1` reproduce their runs only at `traj_gen` ee7150f.
 - `--robot`: the robot is the planned agent, so each preset's robot framing and the robot test trips. Without it, a person is planned. A trip list of the other kind is refused.
 - `--overrides KEY=VALUE ...`: settings applied to every harness of the command: `episode` (`single_shot`, `rolling`, `rolling_conv`), `output` (`positions`, `steer`, `steer_vel`, `vel1`, `velseq`), `units` (`px` or `m`: every number the model reads or writes, `px` only with a map), `images` (`text`, `bev`, `bev_cam`), `framing`, `prediction` (`none`, `true_future`, `constvel_future`), `check` (plan-check rounds, needs `prediction=true_future`) and `execute_s` (replanning interval of rolling episodes).
 - `--baselines straight replay` (default) or `--baselines none`.
 - `--trips FILE`: the trip list. The default is `<run>/test_trips.json` if it exists, else [`traj_gen/trip_lists/person_pilot.json`](traj_gen/trip_lists/person_pilot.json) (100 person trips) or, with `--robot`, [`traj_gen/trip_lists/robot_test.json`](traj_gen/trip_lists/robot_test.json) (the 16 robot test trips).
 
-The experiment id is `ss` or `rh`, the output, the units, the images, then `conv` for a conversation, `true_future` or `constvel_future`, `check` (2 rounds) or `check<N>`, and `replan<s>s` when the replanning interval is not the output's default. For example `--harness harness_v1 --overrides prediction=true_future check=2` runs in `rh_steer_px_bev_conv_true_future_check/harness/`. Run folders made before the units setting name the positions output `wp` (metres) or `px` (pixels) and leave the units out of the steer ids (`rh_px_bev_conv`, `rh_steer_bev_conv`); the registry in `traj_gen/harness/experiments.py` reads them under those names.
+The experiment id is `ss` or `rh`, the output, the units, the images, then `conv` for a conversation, `true_future` or `constvel_future`, `check` (2 rounds) or `check<N>`, and `replan<s>s` when the replanning interval is not the output's default. For example `--harness harness_v2 --overrides prediction=true_future check=2` runs in `rh_steer_px_bev_conv_true_future_check/harness/`. Run folders made before the units setting name the positions output `wp` (metres) or `px` (pixels) and leave the units out of the steer ids (`rh_px_bev_conv`, `rh_steer_bev_conv`); the registry in `traj_gen/harness/experiments.py` reads them under those names.
 
-Scripts for the standard runs are in [`configs/runs/`](configs/runs): `person_pilot_qwen.sh`, `person_pilot_claude.sh` and `person_harness_v1_claude.sh`. Each writes to a new run folder `<YYYYMMDD>_<script>_<commit>` and passes extra options through to `run`. Notable runs are logged in [`traj_gen/RUNS.md`](traj_gen/RUNS.md).
+Scripts for the standard runs are in [`configs/runs/`](configs/runs): `person_pilot_v2_qwen.sh`, `person_pilot_v2_claude.sh` and `person_harness_v2_claude.sh`. Each writes to a new run folder `trips_v3/<YYYYMMDD>_<script>_<commit>` and passes extra options through to `run`. Notable runs are logged in [`traj_gen/RUNS.md`](traj_gen/RUNS.md).
 
 The `*_constvel_future` experiments (`ss_wp_bev_constvel_future`, `rh_wp_bev_constvel_future`, `rh_vel1_bev_constvel_future`) are their base experiment plus each person's constant-velocity position at t + 1 s and t + 2 s, in the text and drawn on the map.
 

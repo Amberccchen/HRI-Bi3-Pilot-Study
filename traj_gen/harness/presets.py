@@ -139,15 +139,16 @@ class Preset:
 
 
 # The true_future and plan-check levels are overrides of these: --overrides prediction=true_future, and prediction=true_future check=2.
+# Each keeps the episode type, output, images, framings and prompt wording of an earlier preset (pilot and harness_v1, whose runs the code
+# reproduces only up to the commit named in traj_gen/RUNS.md) and differs from it in the model inputs from the 10 Hz series, the units
+# setting and the 448 px map.
 PRESETS = {
-    # The simple setup: map positions in one conversation. Person: the person pilot, run 20261115_pilot_52d7b27 (rh_px_bev_conv/participant).
-    # Robot: the robot report's simple harness, run 20261116_robot_px_f379f0c (rh_px_bev_conv/neutral).
-    "pilot": Preset("rolling_conv", "positions", "px", "bev", (("human", "participant"), ("robot", "neutral"))),
-    # The harness: steer steps with the scored distances. Person: run 20261123_human_harness_rate_claude_sonnet_b2aaeb7 (rh_heading_rate_bev_conv/participant_space before the port).
-    # Robot: rh_steer_bev_conv/robot_harness, whose robot test runs (2026-11-16, 2026-11-17) predate the port.
-    "harness_v1": Preset("rolling_conv", "steer", "px", "bev", (("human", "harness"), ("robot", "robot_harness"))),
+    # The simple setup: map positions in one conversation, with the participant task for a person and the neutral task for the robot.
+    "pilot_v2": Preset("rolling_conv", "positions", "px", "bev", (("human", "participant"), ("robot", "neutral"))),
+    # The harness: steer steps with the scored distances in the task.
+    "harness_v2": Preset("rolling_conv", "steer", "px", "bev", (("human", "harness"), ("robot", "robot_harness"))),
 }
-DEFAULT_PRESET = "pilot"
+DEFAULT_PRESET = "pilot_v2"
 
 
 def parse_overrides(items: list[str]) -> dict:

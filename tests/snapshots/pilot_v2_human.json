@@ -1,5 +1,5 @@
 {
- "preset": "pilot",
+ "preset": "pilot_v2",
  "kind": "human",
  "id": "rh_positions_px_bev_conv",
  "settings": {

@@ -1,5 +1,5 @@
 {
- "preset": "harness_v1",
+ "preset": "harness_v2",
  "kind": "human",
  "id": "rh_steer_px_bev_conv",
  "settings": {
