@@ -37,7 +37,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from traj_gen.harness.episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
-from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS, Experiment
+from traj_gen.harness.experiments import BASELINES, Experiment
 from traj_gen.observation.prompting import FRAMINGS, SCORED_DISTANCE_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.planner import UNITS
@@ -171,15 +171,6 @@ def parse_overrides(items: list[str]) -> dict:
     return out
 
 
-def settings_of(exp: Experiment, framing: str) -> dict:
-    """The harness settings of a registered model experiment and a framing (the inverse of Harness.experiment)."""
-    def key(table: dict, value) -> str:
-        return next(k for k, v in table.items() if v == value)
-    prediction = "true_future" if exp.true_future else "constvel_future" if exp.predict else "none"
-    return {"episode": key(EPISODES, exp.episode), "output": key(OUTPUTS, exp.planner), "units": exp.units, "images": key(IMAGES, exp.images), "framing": framing,
-            "prediction": prediction, "check": exp.check_rounds, "execute_s": exp.execute_s}
-
-
 def write_harness_file(run: Path, name: str, harness: Harness, overrides: dict, check_only: bool = False) -> None:
     """Write <run>/<id>/<framing>/harness.json, or check it if it exists: raises ValueError if the stored settings differ from the harness's.
     With check_only, nothing is written."""
@@ -197,10 +188,9 @@ def write_harness_file(run: Path, name: str, harness: Harness, overrides: dict, 
 
 
 def run_experiments(run: Path) -> dict[str, Experiment]:
-    """Experiment folder name -> Experiment, for every experiment folder of a run: from <id>/<framing>/harness.json where one exists,
-    otherwise from the registry (harness.experiments.EXPERIMENTS, with the old folder names of harness.experiments.LEGACY_IDS)."""
-    out = {folder: exp for folder, exp in EXPERIMENTS.items() if (run / folder).is_dir()}
-    out |= {old: EXPERIMENTS[new] for old, new in LEGACY_IDS.items() if (run / old).is_dir()}
+    """Experiment folder name -> Experiment, for every experiment folder of a run: from <id>/<framing>/harness.json, and the baseline
+    folders (harness.experiments.BASELINES). Raises ValueError when a harness.json's settings give another folder than the one it is in."""
+    out = {name: exp for name, exp in BASELINES.items() if (run / name).is_dir()}
     for path in sorted(run.glob(f"*/*/{HARNESS_FILE}")):
         stored = json.loads(path.read_text())
         exp = Harness(**stored["settings"]).experiment()

@@ -1,38 +1,9 @@
 import json
-from dataclasses import replace
 
 import pytest
 
-from traj_gen.harness.experiments import EXPERIMENTS, LEGACY_IDS
-from traj_gen.harness.presets import HARNESS_FILE, PRESETS, Harness, parse_overrides, run_experiments, settings_of, write_harness_file
-
-
-# Registered id (the folder name of the runs before the units setting) -> the id its settings derive.
-DERIVED_IDS = {
-    "ss_wp_text": "ss_positions_m_text", "ss_wp_bev": "ss_positions_m_bev", "ss_wp_bev_cam": "ss_positions_m_bev_cam", "ss_px_bev": "ss_positions_px_bev",
-    "rh_wp_bev": "rh_positions_m_bev", "rh_wp_bev_cam": "rh_positions_m_bev_cam", "rh_px_bev": "rh_positions_px_bev", "rh_vel1_bev": "rh_vel1_m_bev",
-    "rh_velseq_bev": "rh_velseq_m_bev", "rh_wp_bev_cam_conv": "rh_positions_m_bev_cam_conv", "rh_px_bev_conv": "rh_positions_px_bev_conv",
-    "rh_velseq_bev_conv": "rh_velseq_m_bev_conv", "rh_steer_bev_conv": "rh_steer_px_bev_conv",
-    "rh_steer_bev_conv_true_future": "rh_steer_px_bev_conv_true_future", "rh_steer_bev_conv_true_future_check": "rh_steer_px_bev_conv_true_future_check",
-    "ss_wp_bev_constvel_future": "ss_positions_m_bev_constvel_future", "rh_wp_bev_constvel_future": "rh_positions_m_bev_constvel_future",
-    "rh_vel1_bev_constvel_future": "rh_vel1_m_bev_constvel_future"}
-
-
-def framing_for(exp) -> str:
-    return "scored_distances" if exp.planner.scored_distance_framings else "neutral"
-
-
-def test_registered_experiments_come_out_of_their_settings_unchanged_but_for_the_id():
-    """Each registered model experiment, rebuilt from its settings, must give the same planner, units, images, episode, replanning interval,
-    prediction and plan check, under the id the settings derive."""
-    for exp_id, exp in EXPERIMENTS.items():
-        if not exp.uses_model:
-            continue
-        rebuilt = Harness(**settings_of(exp, framing_for(exp))).experiment()
-        assert rebuilt.id == DERIVED_IDS[exp_id]
-        assert replace(rebuilt, id=exp.id, base=exp.base) == exp, exp_id
-        assert rebuilt.base == (DERIVED_IDS[exp.base] if exp.base else None)
-    assert LEGACY_IDS == {"rh_wp_bev_conv": "rh_wp_bev_cam_conv"} and "rh_wp_bev_conv" not in EXPERIMENTS
+from traj_gen.harness.experiments import BASELINES
+from traj_gen.harness.presets import HARNESS_FILE, PRESETS, Harness, parse_overrides, run_experiments, write_harness_file
 
 
 def test_preset_ids_and_framings_per_kind():
@@ -41,16 +12,18 @@ def test_preset_ids_and_framings_per_kind():
     assert {(name, kind): (p.harness(kind).id, p.harness(kind).framing) for name, p in PRESETS.items() for kind in ("human", "robot")} == expected
 
 
-def test_overrides_give_the_harness_levels_of_the_registry():
-    """harness_v2 plus prediction=true_future, and plus check=2, must be the registered true_future and plan-check experiments (under their
-    derived ids)."""
-    def same(exp, exp_id):
-        return exp == replace(EXPERIMENTS[exp_id], id=DERIVED_IDS[exp_id])
+def test_overrides_give_the_harness_levels():
+    """harness_v2 plus prediction=true_future, and plus check=2, must give the recorded futures and the plan check, vel1 its own default
+    interval, and a framing override must replace the kind's framing."""
     for kind in ("human", "robot"):
-        assert same(PRESETS["harness_v2"].harness(kind, {"prediction": "true_future"}).experiment(), "rh_steer_bev_conv_true_future")
-        assert same(PRESETS["harness_v2"].harness(kind, {"prediction": "true_future", "check": 2}).experiment(), "rh_steer_bev_conv_true_future_check")
-    assert same(PRESETS["pilot_v2"].harness("robot", {"episode": "single_shot"}).experiment(), "ss_px_bev")
-    assert same(PRESETS["pilot_v2"].harness("robot", {"output": "vel1", "episode": "rolling", "units": "m"}).experiment(), "rh_vel1_bev")  # vel1's own default interval
+        future = PRESETS["harness_v2"].harness(kind, {"prediction": "true_future"}).experiment()
+        check = PRESETS["harness_v2"].harness(kind, {"prediction": "true_future", "check": 2}).experiment()
+        assert (future.id, future.true_future, future.check_rounds) == ("rh_steer_px_bev_conv_true_future", True, 0)
+        assert (check.id, check.true_future, check.check_rounds) == ("rh_steer_px_bev_conv_true_future_check", True, 2)
+    single = PRESETS["pilot_v2"].harness("robot", {"episode": "single_shot"}).experiment()
+    assert (single.id, single.execute_s) == ("ss_positions_px_bev", None)
+    vel1 = PRESETS["pilot_v2"].harness("robot", {"output": "vel1", "episode": "rolling", "units": "m"}).experiment()
+    assert (vel1.id, vel1.execute_s) == ("rh_vel1_m_bev", 0.4)
     assert PRESETS["pilot_v2"].harness("human", {"framing": "scored_distances", "output": "steer"}).framing == "scored_distances"
 
 
@@ -108,13 +81,12 @@ def test_harness_file_is_written_once_and_a_changed_harness_is_refused(tmp_path)
         write_harness_file(tmp_path, "harness_v2", h, {})
 
 
-def test_analysis_reads_harness_files_and_falls_back_to_the_registry(tmp_path):
-    """A folder with harness.json is read from it (also an id the registry does not know), a folder without from the registry,
-    and the old folder name rh_wp_bev_conv as rh_wp_bev_cam_conv. Other folders are ignored."""
+def test_analysis_reads_harness_files_and_the_baseline_folders(tmp_path):
+    """A folder with harness.json is read from it, a baseline folder as its baseline. Other folders, without harness.json, are ignored."""
     new = PRESETS["harness_v2"].harness("human", {"execute_s": 0.8})
     write_harness_file(tmp_path, "harness_v2", new, {"execute_s": 0.8})
-    for folder in ("rh_px_bev_conv", "rh_wp_bev_conv", "replay", "smoke"):
+    for folder in ("rh_px_bev_conv", "replay", "smoke"):
         (tmp_path / folder).mkdir()
     found = run_experiments(tmp_path)
-    assert set(found) == {new.id, "rh_px_bev_conv", "rh_wp_bev_conv", "replay"}
-    assert found[new.id] == new.experiment() and found["rh_wp_bev_conv"].id == "rh_wp_bev_cam_conv" and found["replay"] == EXPERIMENTS["replay"]
+    assert set(found) == {new.id, "replay"}
+    assert found[new.id] == new.experiment() and found["replay"] == BASELINES["replay"]

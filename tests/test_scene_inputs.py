@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from tests.test_human_prompt import SERIES_WIGGLE_M, SITE, person_trip
-from traj_gen.harness.experiments import EXPERIMENTS
 from traj_gen.harness.episodes import Episode
+from traj_gen.harness.presets import PRESETS
 from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene
 
 
@@ -49,5 +49,5 @@ def test_velocity_at_the_ends_of_the_series_is_one_sided():
 def test_planned_persons_history_before_set_off_comes_from_the_series(tmp_path):
     trip = person_trip()
     trip["tracks"]["human0"] = (np.asarray(trip["tracks"]["human0"]) + 5.0).tolist()
-    episode = Episode(tmp_path, EXPERIMENTS["rh_px_bev_conv"], trip, SITE, "participant", "think", 0)
+    episode = Episode(tmp_path, PRESETS["pilot_v2"].harness("human").experiment(), trip, SITE, "participant", "think", 0)
     np.testing.assert_allclose(episode.track, trip["input_tracks_10hz"]["tracks"]["human0"][::4][: trip["start_index"] + 1, :2])

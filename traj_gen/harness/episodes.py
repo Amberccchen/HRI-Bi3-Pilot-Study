@@ -36,11 +36,10 @@ from traj_gen.observation.prompting import Turn
 from traj_gen.observation.scene import DT, Scene, person_name
 from traj_gen.outputs.baselines import real_path
 
-# Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
+# Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze.
 TEST_TRIPS = "test_trips.json"
 RUN_CONFIG = "run.json"
 ANALYSIS_DIR = "analysis"
-REPORT_DIR = "report"
 
 
 def save_trajectory(folder: Path, times: np.ndarray, positions: dict[str, np.ndarray]) -> None:

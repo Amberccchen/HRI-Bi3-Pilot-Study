@@ -1,9 +1,8 @@
 """Analysis of a trajectory generation run: tables, comparisons and figures.
 
 Reads every finished episode under a run folder, whose trips must all be in the trip list (default <run>/test_trips.json, as for `run`). Only experiment folders
-are read: those with a <id>/<framing>/harness.json, whose settings define the experiment, and those named by the registry of the runs before
-harness presets (harness.experiments.EXPERIMENTS and its LEGACY_IDS), so other folders such as smoke/ are ignored (harness.presets.run_experiments). A run still in progress is fine,
-and missing conditions are simply absent. Writes into <run>/analysis/:
+are read: those with a <id>/<framing>/harness.json, whose settings define the experiment, and the baseline folders, so other folders such as
+smoke/ are ignored (harness.presets.run_experiments). A run still in progress is fine, and missing conditions are simply absent. Writes into <run>/analysis/:
 
   episodes.csv          one row per episode: condition, trip, planned agent and its kind, status, metrics, queries, tokens, latency
   summary.csv           per planned-agent kind, condition (experiment x framing x thinking, plus the baselines) and
@@ -16,7 +15,7 @@ and missing conditions are simply absent. Writes into <run>/analysis/:
                         moves of the same test trips
   similarity_pool.csv   planned people only: per site, the person trips in the trips folder, the trips in the real pool, and the trips left
                         out because they start inside the arrival radius or have no move
-  figures/              conditions_<kind>_<thinking>.png, speed_violation_<kind>.png, trip_<id>.png (overlays)
+  figures/              conditions_<kind>.png, speed_violation_<kind>.png (condition_figure), trip_<id>.png (overlays)
 
 Robot and person episodes are never pooled: every table and figure is per planned-agent kind ("robot" or "human").
 
@@ -55,8 +54,8 @@ from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind
 from traj_gen.harness.episodes import ANALYSIS_DIR, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory
-from traj_gen.harness.experiments import BASELINES, EXPERIMENTS, Experiment
-from traj_gen.harness.presets import run_experiments
+from traj_gen.harness.experiments import BASELINES, Experiment
+from traj_gen.harness.presets import PRESETS, run_experiments
 from traj_gen.observation.bev import render_overlay, trajectory_legend
 from traj_gen.observation.prompting import FRAMINGS
 from traj_gen.outputs.baselines import real_path
@@ -79,9 +78,11 @@ MEANS = ["contact_events", "min_distance", "time_to_goal", "path_efficiency", "v
 CLASS_ORDER = ("invalid", "contact", "efficiency")
 PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
-OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
+OVERLAY = list(dict.fromkeys(preset.harness("human").id for preset in PRESETS.values()))  # default experiments in the per-trip overlays: the presets
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
-FRAMING_MARKER = {"neutral": ("o", False), "robot_scored_distances": ("<", True), "participant": ("o", False), "scored_distances": ("<", False)}  # (shape, filled) per prompt framing
+THINKING_DOTS = (("nothink", False), ("think", True))  # (thinking, filled) of the two dots of a row of condition_figure
+CONDITION_PANELS = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)",
+                    "path_efficiency": "path efficiency (1 = straight)"}
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
 REFERENCE_DRAWS_PER_TRIAL = 20  # matched subsets per reference trial, pooled: 300-400 reference draws per site from 16-19 trials
@@ -127,7 +128,7 @@ def scored(episodes: pd.DataFrame) -> pd.DataFrame:
     df["goal_reached"] = df.goal_reached.fillna(0.0)
     df["invalid_unusable_reply"] = (df.status == "invalid_reply").astype(float)
     df["invalid_error"] = (df.status == "error").astype(float)
-    df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(~df.experiment.isin(BASELINES))
+    df["invalid_speed_cap"] = (df.speed_violation_rate > 0).astype(float).where(~df.experiment.isin(list(BASELINES)))
     df["invalid_goal"] = (ok & (df.goal_reached == 0)).astype(float)
     df["invalid_room"] = (df.out_of_room == 1).astype(float)
     df["invalid"] = (df[INVALID_PARTS] == 1).any(axis=1).astype(float)
@@ -189,18 +190,18 @@ def paired_baselines(by_cond: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# Experiment pairs (A, B) per comparison. The difference reported is A - B. The conversation partner has the same images and output as rh_wp_bev_cam / rh_px_bev / rh_velseq_bev.
+# Experiment pairs (A, B) per comparison. The difference reported is A - B. The conversation partner has the same images and output as
+# rh_positions_m_bev_cam / rh_positions_px_bev / rh_velseq_m_bev.
 EXPERIMENT_COMPARISONS = {
-    "bev - text input (waypoints, single shot)": [("ss_wp_bev", "ss_wp_text")],
-    "pixel - metric output (bev)": [("ss_px_bev", "ss_wp_bev"), ("rh_px_bev", "rh_wp_bev")],
-    "cam + bev - bev only (waypoints)": [("ss_wp_bev_cam", "ss_wp_bev"), ("rh_wp_bev_cam", "rh_wp_bev")],
-    "rolling - single shot (bev)": [("rh_wp_bev", "ss_wp_bev"), ("rh_px_bev", "ss_px_bev")],
-    "conversation - fresh query each time": [("rh_wp_bev_cam_conv", "rh_wp_bev_cam"), ("rh_px_bev_conv", "rh_px_bev"), ("rh_velseq_bev_conv", "rh_velseq_bev")],
-    "velocity sequence - waypoints (rolling)": [("rh_velseq_bev", "rh_wp_bev")],
-    "single velocity step - waypoints (rolling)": [("rh_vel1_bev", "rh_wp_bev")],
+    "bev - text input (positions in metres, single shot)": [("ss_positions_m_bev", "ss_positions_m_text")],
+    "pixel - metre units (positions, bev)": [("ss_positions_px_bev", "ss_positions_m_bev"), ("rh_positions_px_bev", "rh_positions_m_bev")],
+    "cam + bev - bev only (positions in metres)": [("ss_positions_m_bev_cam", "ss_positions_m_bev"), ("rh_positions_m_bev_cam", "rh_positions_m_bev")],
+    "rolling - single shot (bev)": [("rh_positions_m_bev", "ss_positions_m_bev"), ("rh_positions_px_bev", "ss_positions_px_bev")],
+    "conversation - fresh query each time": [("rh_positions_m_bev_cam_conv", "rh_positions_m_bev_cam"), ("rh_positions_px_bev_conv", "rh_positions_px_bev"),
+                                             ("rh_velseq_m_bev_conv", "rh_velseq_m_bev")],
+    "velocity sequence - positions (rolling, metres)": [("rh_velseq_m_bev", "rh_positions_m_bev")],
+    "single velocity step - positions (rolling, metres)": [("rh_vel1_m_bev", "rh_positions_m_bev")],
 }
-if unknown := ({e for pairs in EXPERIMENT_COMPARISONS.values() for pair in pairs for e in pair} | set(OVERLAY)) - set(EXPERIMENTS):
-    raise ValueError(f"experiment ids not in the registry: {sorted(unknown)}")
 
 
 def comparison_pairs(experiments: dict[str, Experiment]) -> list[tuple[str, str, tuple, tuple]]:
@@ -241,67 +242,70 @@ def style(ax, xlabel: str) -> None:
     ax.spines["bottom"].set_color(GRID)
 
 
-def dot_plot(path: Path, panels: dict[str, str], rows: list[str], offsets: list, by_cond: dict, experiments: dict[str, Experiment], key, marker, title: str, legend: list) -> None:
-    """Rows are experiments (ids of experiments, id -> Experiment), with one panel per metric. Each offset label gets one dot with a bootstrap interval, drawn as marker(label) = (shape, filled). Baselines are vertical lines."""
-    fig = Figure(figsize=(max(3.4 * len(panels) + 1.6, 7.5), 0.36 * len(rows) * len(offsets) + 2.6), dpi=150)
-    axes = fig.subplots(1, len(panels), sharey=True, squeeze=False)[0]
-    for ax, (metric, label) in zip(axes, panels.items()):
-        for r, exp in enumerate(rows):
-            for off, o in zip(np.linspace(-0.2, 0.2, len(offsets)) if len(offsets) > 1 else [0.0], offsets):
-                cond = key(exp, o)
-                if cond not in by_cond:
-                    continue
-                m, lo, hi = ci(by_cond[cond][metric])
-                colour = FAMILY_COLOUR[FAMILY[experiments[exp].episode]]
-                shape, filled = marker(o)
-                ax.plot([lo, hi], [r + off] * 2, color=colour, lw=1.5, zorder=3)
-                ax.plot(m, r + off, shape, ms=7, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
-        for base, (colour, ls) in BASELINE_STYLE.items():
-            if (base, "-", "-") in by_cond:
-                ax.axvline(by_cond[(base, "-", "-")][metric].mean(), color=colour, ls=ls, lw=1.5, zorder=2)
-        ax.set_yticks(range(len(rows)), rows)
-        style(ax, label)
-    axes[0].invert_yaxis()  # shared y: once, first experiment on top
+def pooled_trip_means(by_cond: dict, experiments: list[str], framing: str, thinking: str, metric: str) -> pd.Series | None:
+    """Per-trip value of a metric for a row that pools experiments: the mean over the experiments of their per-trip means (by_cond from
+    per_trip_means). None if any of the experiments has no condition with this framing and thinking."""
+    if any((e, framing, thinking) not in by_cond for e in experiments):
+        return None
+    return pd.concat([by_cond[(e, framing, thinking)][metric] for e in experiments], axis=1).mean(axis=1)
+
+
+def condition_figure(path: Path, panels: list[tuple[str, list[tuple[str, list[str], str]]]], metrics: dict[str, str], by_cond: dict,
+                     experiments: dict[str, Experiment], title: str) -> None:
+    """Panels stacked as the rows of one figure, with a row per condition and a column per metric (metrics: metric -> axis label), the x
+    axis shared down each column. A panel is (title, rows) and a row (label, experiment ids pooled per trip, framing). Each row has a dot
+    for thinking off (hollow) and on (filled): the mean over trips of pooled_trip_means with its 95% bootstrap interval, coloured by the
+    episode family of its first experiment. The baselines (straight line, replay) are vertical lines at their mean over trips. Any set of
+    conditions of one planned-agent kind can be drawn this way (by_cond from per_trip_means, experiments id -> Experiment)."""
+    heights = [len(rows) for _, rows in panels]
+    fig = Figure(figsize=(max(3.0 * len(metrics) + 2.0, 7.5), 1.2 + 0.35 * len(panels) + 0.42 * sum(heights)), dpi=150, layout="constrained")
+    grid = fig.subplots(len(panels), len(metrics), sharex="col", sharey="row", squeeze=False, gridspec_kw={"height_ratios": heights})
+    for i, (axes, (panel_title, rows)) in enumerate(zip(grid, panels)):
+        for ax, (metric, label) in zip(axes, metrics.items()):
+            for base, (colour, ls) in BASELINE_STYLE.items():
+                if (base, "-", "-") in by_cond:
+                    ax.axvline(by_cond[(base, "-", "-")][metric].mean(), color=colour, ls=ls, lw=1.5, zorder=2)
+            for r, (_, pooled, framing) in enumerate(rows):
+                colour = FAMILY_COLOUR[FAMILY[experiments[pooled[0]].episode]]
+                for (thinking, filled), off in zip(THINKING_DOTS, (-0.17, 0.17)):
+                    values = pooled_trip_means(by_cond, pooled, framing, thinking, metric)
+                    if values is None:
+                        continue
+                    m, lo, hi = ci(values)
+                    ax.plot([lo, hi], [r + off] * 2, color=colour, lw=1.5, zorder=3)
+                    ax.plot(m, r + off, "o", ms=6, mfc=colour if filled else "white", mec=colour, mew=1.5, zorder=4)
+            ax.set_yticks(range(len(rows)), [name for name, _, _ in rows])
+            ax.tick_params(labelbottom=True)  # the scale is shared, but each panel keeps its own tick labels
+            style(ax, label if i == len(panels) - 1 else "")
+        axes[0].set_ylim(len(rows) - 0.5, -0.5)  # shared y: once per panel, first row on top
+        if panel_title:
+            axes[0].set_title(panel_title, loc="left", fontsize=10, color=INK, fontweight="bold")
+    handles = [Line2D([], [], marker="o", ls="", ms=7, color=c, label=f) for f, c in FAMILY_COLOUR.items()]
+    handles += [Line2D([], [], marker="o", ls="", ms=7, color=INK, mfc=INK if filled else "white", label=f"thinking {'on' if filled else 'off'}")
+                for _, filled in THINKING_DOTS]
+    handles += [Line2D([], [], color=c, ls=ls, lw=1.5, label=f"{b} (mean)") for b, (c, ls) in BASELINE_STYLE.items() if (b, "-", "-") in by_cond]
     fig.suptitle(title, fontsize=11, color=INK, x=0.01, ha="left")
-    fig.legend(handles=legend, loc="lower center", ncol=min(len(legend), 4), fontsize=9, frameon=False)
-    fig.tight_layout(rect=(0, 0.09, 1, 0.96))
+    fig.legend(handles=handles, loc="outside lower center", ncol=min(len(handles), 4), fontsize=9, frameon=False)
     fig.savefig(path)
 
 
-def present(by_cond: dict, experiments: dict[str, Experiment], **fixed) -> list[str]:
-    """Experiments (in the order of experiments) that have a condition with the given framing/thinking."""
-    return [e for e in experiments if e not in BASELINES and any(c[0] == e and all(c[COND.index(k)] == v for k, v in fixed.items()) for c in by_cond)]
-
-
-def legend_handles(baselines: bool, markers: list[tuple[str, str, bool]]) -> list:
-    handles = [Line2D([], [], marker="o", ls="", ms=7, color=c, label=f) for f, c in FAMILY_COLOUR.items()]
-    handles += [Line2D([], [], marker=shape, ls="", ms=7, color=INK, mfc=INK if filled else "white", label=label) for label, shape, filled in markers]
-    if baselines:
-        handles += [Line2D([], [], color=c, ls=ls, lw=1.5, label=f"{b} (mean)") for b, (c, ls) in BASELINE_STYLE.items()]
-    return handles
-
-
 def condition_figures(by_cond: dict, kind: str, fig_dir: Path, experiments: dict[str, Experiment]) -> None:
-    """Dot plots per thinking mode and of the speed-cap violations, of the episodes of one planned-agent kind (by_cond from per_trip_means, experiments id -> Experiment)."""
-    panels = {"goal_reached": "goal reached (rate)", "clearance_min": "min clearance (m, higher = more room)", "time_to_goal": "time to goal (s)", "path_efficiency": "path efficiency (1 = straight)"}
-    baselines = any((b, "-", "-") in by_cond for b in BASELINES)
-    for th in THINKING:
-        rows = present(by_cond, experiments, thinking=th)
-        if rows:
-            framings = [f for f in FRAMINGS if any(c[1] == f and c[2] == th for c in by_cond)]
-            dot_plot(fig_dir / f"conditions_{kind}_{th}.png", panels, rows, framings, by_cond, experiments, lambda e, f: (e, f, th), FRAMING_MARKER.get,
-                     f"Thinking {'off' if th == 'nothink' else 'on'}: mean over trips with 95% bootstrap interval",
-                     legend_handles(baselines, [(f"{f.replace('_', ' ')} prompt", *FRAMING_MARKER[f]) for f in framings]))
-    rows = [e for e in present(by_cond, experiments) if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[0] == e)]
+    """condition_figure of every model condition (a row per experiment and framing) and of the speed-cap violations, of the episodes of one
+    planned-agent kind (by_cond from per_trip_means, experiments id -> Experiment)."""
+    rows = [(f"{e} {f}", [e], f) for e, f in dict.fromkeys((c[0], c[1]) for c in by_cond if c[0] not in BASELINES)]
+    rows.sort(key=lambda row: (list(experiments).index(row[1][0]), list(FRAMINGS).index(row[2])))
     if rows:
-        dot_plot(fig_dir / f"speed_violation_{kind}.png", {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"}, rows, ["nothink", "think"], by_cond, experiments,
-                 lambda e, th: (e, "neutral", th), lambda th: ("o", th == "think"), "Speed-cap violations before limiting, neutral prompt", legend_handles(False, [("thinking off", "o", False), ("thinking on", "o", True)]))
+        condition_figure(fig_dir / f"conditions_{kind}.png", [("", rows)], CONDITION_PANELS, by_cond, experiments, "Mean over trips with 95% bootstrap interval")
+    with_raw = [row for row in rows if any(by_cond[c]["speed_violation_rate"].notna().any() for c in by_cond if c[:2] == (row[1][0], row[2]))]
+    if with_raw:
+        condition_figure(fig_dir / f"speed_violation_{kind}.png", [("", with_raw)], {"speed_violation_rate": f"share of plan steps above {SPEED_CAP_M_S[kind]:g} m/s"},
+                         by_cond, experiments, "Speed-cap violations before limiting")
 
 
 def overlay_figures(df: pd.DataFrame, run: Path, experiments: list[str], trips: dict, sites: dict, fig_dir: Path) -> None:
     """trip_<id>.png per trip, drawn by render_overlay: one row per model experiment and a column per model condition (thinking x
     framing), and a two-column legend below. Baselines get no panel: every panel draws the straight line and the real path."""
-    for trip_id, d in df[df.experiment.isin(experiments) & ~df.experiment.isin(BASELINES)].groupby("trip"):
+    for trip_id, d in df[df.experiment.isin(experiments) & ~df.experiment.isin(list(BASELINES))].groupby("trip"):
         trip = trips[trip_id]
         site, agent = sites[trip["site"]], trip["agent"]
         kind, a, goal = agent_kind(agent), trip["start_index"], np.asarray(trip["goal_xy"], float)
@@ -395,8 +399,7 @@ def analyze(run: Path, overlay: list[str], chosen: list[dict], trips: dict, site
     (out / "figures").mkdir(parents=True, exist_ok=True)
     folders = run_experiments(run)
     by_id = {exp.id: exp for exp in folders.values()}
-    order = list(EXPERIMENTS)
-    experiments = {e: by_id[e] for e in sorted(by_id, key=lambda e: order.index(e) if e in order else len(order))}  # registry order, then the other harness ids
+    experiments = {e: by_id[e] for e in sorted(by_id)}
     episodes = collect(run, chosen, folders)
     episodes.to_csv(out / "episodes.csv", index=False)
     df = scored(episodes)
