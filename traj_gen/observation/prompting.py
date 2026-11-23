@@ -25,10 +25,10 @@ from traj_gen.observation.bev import SIZE_PX
 from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, person_name
 
 
-# Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
-# the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
+# Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
+# participant: walk as a participant of the study would, given the robot's and the other person's sizes.
 # harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer mode.
-FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
+FRAMINGS = {"neutral": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
 HARNESS_FRAMINGS = {"harness", "robot_harness"}
 
 

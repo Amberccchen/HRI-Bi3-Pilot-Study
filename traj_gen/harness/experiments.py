@@ -9,7 +9,8 @@ rh_wp_bev_cam_conv. LEGACY_IDS maps the old folder name to it.
 Framing (one of observation.prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
 execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_constvel_future` ones are their
-base experiment plus each person's constant-velocity prediction (text and map). The id naming key is in traj_gen/harness/presets.py.
+base experiment plus each person's constant-velocity prediction (text and map). This prediction is deprecated: it is not
+confirmed to be complete. The id naming key is in traj_gen/harness/presets.py.
 
 The harness experiments (outputs.steer.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
 the other agents' recorded future trajectories (true_future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
@@ -48,7 +49,7 @@ class Experiment:
 
     @property
     def predict(self) -> bool:
-        """Also give each person's constant-velocity position (text and map)."""
+        """Also give each person's constant-velocity position (text and map): the constvel_future prediction, deprecated."""
         return self.base is not None
 
     @property

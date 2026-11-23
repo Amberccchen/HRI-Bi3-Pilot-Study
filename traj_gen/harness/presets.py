@@ -4,11 +4,13 @@ A harness is seven settings:
   episode     single_shot (one query at the trip start), rolling (re-plan every execute_s, each time in a fresh chat) or rolling_conv
               (the same in one growing conversation, harness.episodes.ConversationEpisode)
   output      the output mode: wp (timed waypoints in metres), px (map positions in pixels), vel1 (one velocity step), velseq (a velocity
-              sequence) or steer (a turn and a distance per step, with the harness prompts, outputs.steer.SteerPlanner)
+              sequence) or steer (a turn and a distance per step, with the harness prompts, outputs.steer.SteerPlanner).
+              vel1 and velseq (robot only) are deprecated: kept for the runs that used them, not for new runs
   images      text (no image), bev (the top-down map) or bev_cam (the map and the camera view)
   framing     the task prompt, one of observation.prompting.FRAMINGS. Its kind (robot or human) is the planned agent's
   prediction  none, true_future (the other agents' recorded future positions in the text each turn) or constvel_future (each person's
-              constant-velocity position at t + 1 s and t + 2 s, in the text and on the map)
+              constant-velocity position at t + 1 s and t + 2 s, in the text and on the map). constvel_future is deprecated: it is not
+              confirmed to be complete
   check       plan-check revision rounds, 0 = off (each plan is tested against the recorded futures, the first conflict is reported back).
               Only with prediction=true_future
   execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 2.0 s, 0.4 s for vel1). None for single shot
@@ -42,9 +44,9 @@ HARNESS_FILE = "harness.json"
 EPISODES = {"single_shot": SingleShotEpisode, "rolling": RollingEpisode, "rolling_conv": ConversationEpisode}
 OUTPUTS = {"wp": WaypointPlanner, "px": PixelPlanner, "vel1": StepVelocityPlanner, "velseq": VelocityPlanner, "steer": SteerPlanner}
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
-PREDICTIONS = ("none", "true_future", "constvel_future")
+PREDICTIONS = ("none", "true_future", "constvel_future")  # constvel_future is deprecated
 DEFAULT_EXECUTE_S = {"wp": 2.0, "px": 2.0, "vel1": 0.4, "velseq": 2.0, "steer": 2.0}  # 2.0 s: 5 steps, about 7 queries per trip; vel1 re-plans every step
-ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # no person output templates: only prompts/output/robot/ has them
+ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # deprecated. No person output templates: only prompts/output/robot/ has them
 
 
 @dataclass(frozen=True)

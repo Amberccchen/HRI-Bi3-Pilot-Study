@@ -1,1 +1,0 @@
-Your task: plan the robot's motion from its current position to its goal station, efficiently and in a way that is socially appropriate and comfortable for the people in the room.

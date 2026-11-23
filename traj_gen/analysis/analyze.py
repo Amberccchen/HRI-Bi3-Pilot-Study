@@ -10,7 +10,7 @@ and missing conditions are simply absent. Writes into <run>/analysis/:
                         site (all / laas / um): status counts and episode-level rates and means, grouped by
                         metric class (invalid, contact, efficiency)
   paired_baselines.csv  every condition minus replay and minus straight on the same trips, per kind
-  comparisons.csv       the condition comparisons (social - neutral prompt, think - nothink, bev - text input, ...) as differences, per kind
+  comparisons.csv       the condition comparisons (think - nothink, bev - text input, ...) as differences, per kind
   similarity.csv        planned people only: per condition, site and feature, the W1 of the generated moves to real moves
                         (human_similarity.feature_distances), against the site's pool of real moves and against the real
                         moves of the same test trips
@@ -80,7 +80,7 @@ PAIRED = ["goal_reached", "contact_time", "contact_events", "personal_space_over
 COMPARED = ["goal_reached", "contact_time", "contact_events", "personal_space_overlap", "clearance_min", "time_to_goal", "path_efficiency", "speed_violation_rate"]
 OVERLAY = ["ss_wp_bev", "rh_wp_bev", "rh_velseq_bev"]  # default experiments in the per-trip overlays: one per horizon/output family
 OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure, inches
-FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "robot_harness": ("<", True), "participant": ("o", False), "harness": ("<", False)}  # (shape, filled) per prompt framing
+FRAMING_MARKER = {"neutral": ("o", False), "robot_harness": ("<", True), "participant": ("o", False), "harness": ("<", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
 REFERENCE_DRAWS_PER_TRIAL = 20  # matched subsets per reference trial, pooled: 300-400 reference draws per site from 16-19 trials
@@ -208,10 +208,6 @@ def comparison_pairs(experiments: dict[str, Experiment]) -> list[tuple[str, str,
     by_experiment = EXPERIMENT_COMPARISONS | {"prediction - none": [(e, experiments[e].base) for e in models if experiments[e].predict]}
     pairs = []
     for e in models:
-        for th in THINKING:
-            pairs.append(("social - neutral prompt", th, (e, "social", th), (e, "neutral", th)))
-            pairs.append(("social + body size - social prompt", th, (e, "social_body", th), (e, "social", th)))
-            pairs.append(("cautious - social prompt", th, (e, "cautious", th), (e, "social", th)))
         for fr in FRAMINGS:
             pairs.append(("think - nothink", fr, (e, fr, "think"), (e, fr, "nothink")))
     for name, experiments in by_experiment.items():

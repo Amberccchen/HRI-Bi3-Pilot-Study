@@ -1,4 +1,8 @@
-"""The velocity output modes, robot only: a velocity sequence, or a single velocity for the next step."""
+"""The velocity output modes, robot only: a velocity sequence (velseq), or a single velocity for the next step (vel1).
+
+Both are deprecated: kept for the runs that used them, not for new runs. The only velocity output to be supported from now on is a relative
+one in the agent's frame, like steer (format not yet decided).
+"""
 
 import numpy as np
 
@@ -7,7 +11,7 @@ from traj_gen.outputs.planner import QueryPlanner
 
 
 class VelocityPlanner(QueryPlanner):
-    """One velocity per step in m/s, each scaled down to the speed cap and integrated."""
+    """One velocity per step in m/s, each scaled down to the speed cap and integrated. Deprecated."""
 
     name = "velocity_sequence"
     template = "velseq"
@@ -24,7 +28,7 @@ class VelocityPlanner(QueryPlanner):
 
 
 class StepVelocityPlanner(VelocityPlanner):
-    """A single velocity for the next step."""
+    """A single velocity for the next step. Deprecated."""
 
     name = "velocity"
     template = "vel1"
