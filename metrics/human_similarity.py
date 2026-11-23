@@ -9,13 +9,16 @@ consecutive 0.8 s displacements, the trajectory's minimum distance to the robot,
 the other person. Distances are between body centres.
 
 Two sets are compared per feature by the Wasserstein-1 distance (W1) in the feature's units. Each W1 comes
-with a bootstrap interval over trajectories and with a real-against-real reference: the W1 of the moves of one
-other trial (one participant pair, which ran all five controllers), matched to the generated set's station mix as
-far as that trial allows, to the same real set without that trial, over every such trial. A generated set comes from
-a few trials, so a reference of real moves drawn independently across trials would leave out how much participant
-pairs differ from one another.
+with a bootstrap interval over trajectories and with a real-against-real reference: the W1 of a random subset of
+the moves of one other trial (one participant pair, which ran all five controllers), matched to the generated set's
+size and station mix as far as that trial allows, to the same real set without that trial. Several subsets are drawn
+per trial and all are pooled, every trial with the same number, so the reference is the distribution of W1 for one
+real pair's set of the generated set's size: it holds both how pairs differ and the noise of a set that size, as the
+generated W1 does. A generated set comes from a few trials, so a reference of real moves drawn independently across
+trials would leave out how much participant pairs differ from one another.
 """
 
+import zlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,28 +86,34 @@ class FeatureDistance:
 
     w1: float  # NaN when either set has no sample of the feature
     w1_interval: tuple[float, float]  # bootstrap 2.5 and 97.5 percentiles over the draws used
-    reference_median: float  # median over reference trials of the W1 of their matched moves to the real set
-    reference_interval: tuple[float, float]  # 2.5 and 97.5 percentiles over reference trials, or min and max below MIN_PERCENTILE_DRAWS
+    reference_median: float  # median over the reference draws (matched subsets of other trials) of their W1 to the real set
+    reference_interval: tuple[float, float]  # 2.5 and 97.5 percentiles over the reference draws, or min and max below MIN_PERCENTILE_DRAWS
     n_generated: int
     n_real: int
     n_bootstrap_used: int  # bootstrap draws with samples of the feature in both resampled sets
-    n_reference_used: int  # reference trials with samples of the feature in their matched moves
-    reference_moves_median: float  # median number of moves in a reference trial's matched set
+    n_reference_used: int  # reference draws with samples of the feature in their matched moves
+    n_reference_trials: int  # trials the reference draws come from
+    reference_moves_median: float  # median number of moves in a reference draw
 
 
 MIN_PERCENTILE_DRAWS = 40  # fewer reference draws than this: the interval is their min and max, as 2.5 percentiles of so few are not estimated
 
 
-def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
+def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng, reference_draws_per_trial, reference_seed):
     """Compare a generated set of trajectories with a real set, feature by feature.
 
     W1 is computed between the samples of all trajectories of each set, pooled. The bootstrap resamples
-    trajectories with replacement within each stratum, in both sets. The reference has one draw per trial of
-    `reference_pool` that none of the generated trajectories comes from: from each stratum of the generated set,
-    as many of that trial's trajectories as the generated set has there, or all it has if fewer, without
-    replacement, and their W1 to `real` without that trial's own trajectories. A draw (bootstrap or
-    reference) whose pooled samples of a feature are empty in either set is skipped for that feature only, and
-    the draws used are counted.
+    trajectories with replacement within each stratum, in both sets. The reference has
+    `reference_draws_per_trial` draws per trial of `reference_pool` that none of the generated trajectories comes
+    from: each draw takes, from each stratum of the generated set, as many of that trial's trajectories as the
+    generated set has there, or all it has if fewer, without replacement, and computes their W1 to `real` without
+    that trial's own trajectories. All draws are pooled. A draw (bootstrap or reference) whose pooled samples of a
+    feature are empty in either set is skipped for that feature only, and the draws used are counted.
+
+    The reference subsets come from their own generator per (trial, stratum, draw), seeded from `reference_seed`,
+    so they do not depend on `rng` or on the generated set beyond its count per stratum: two generated sets with
+    the same counts get the same reference, and a count one higher in a stratum adds one trajectory to that
+    stratum's subsets and changes nothing else.
 
     When the generated set is close to the real set, each bootstrap draw adds sampling noise to W1, so the
     bootstrap interval sits above W1 and can exclude it. In that range the reference interval is the
@@ -115,13 +124,15 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
         real: list of records from `trajectory_features`, the real set compared with.
         reference_pool: list of real records whose trials the reference draws come from.
         n_bootstrap: number of bootstrap draws for the W1 interval.
-        rng: numpy Generator for all draws.
+        rng: numpy Generator for the bootstrap draws.
+        reference_draws_per_trial: matched subsets drawn per reference trial.
+        reference_seed: seed of the reference subsets.
 
     Returns:
         dict from each name in FEATURE_NAMES to its FeatureDistance.
     """
-    if n_bootstrap < 1:
-        raise ValueError(f"need at least one bootstrap draw, got {n_bootstrap}")
+    if n_bootstrap < 1 or reference_draws_per_trial < 1:
+        raise ValueError(f"need at least one bootstrap and one reference draw per trial, got {n_bootstrap} and {reference_draws_per_trial}")
 
     def indices_by(records, key):
         groups = {}
@@ -139,15 +150,22 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
 
     generated_trials = {record["trial"] for record in generated}
     real_trial = [record["trial"] for record in real]
-    reference_draws = []  # (indices into reference_pool, indices into real) per trial
+    def label_seed(label):
+        return zlib.crc32(repr(label).encode())
+
+    reference_draws = []  # (indices into reference_pool, indices into real) per draw
+    reference_trials = set()
     for trial, idx in indices_by(reference_pool, "trial").items():
         if trial in generated_trials:
             continue
         own_strata = indices_by([reference_pool[i] for i in idx], "stratum")
-        chosen = [idx[rng.choice(own_strata[stratum], size=min(len(want), len(own_strata[stratum])), replace=False)]
-                  for stratum, want in generated_strata.items() if stratum in own_strata]
-        if chosen:
-            reference_draws.append((np.concatenate(chosen), np.array([i for i, r in enumerate(real_trial) if r != trial], dtype=int)))
+        rest = np.array([i for i, r in enumerate(real_trial) if r != trial], dtype=int)
+        for k in range(reference_draws_per_trial):
+            chosen = [idx[np.random.default_rng([reference_seed, label_seed(trial), label_seed(stratum), k]).permutation(own_strata[stratum])[: len(want)]]
+                      for stratum, want in generated_strata.items() if stratum in own_strata]  # a prefix of one permutation: a larger count only adds
+            if chosen:
+                reference_draws.append((np.concatenate(chosen), rest))
+                reference_trials.add(trial)
 
     def flatten(records, name):
         lengths = np.array([len(record[name]) for record in records])
@@ -182,6 +200,7 @@ def feature_distances(generated, real, reference_pool, *, n_bootstrap, rng):
             n_real=len(real),
             n_bootstrap_used=len(bootstrap),
             n_reference_used=len(reference),
+            n_reference_trials=len(reference_trials),
             reference_moves_median=float(np.median([len(subset) for subset, _ in reference_draws])) if reference_draws else float("nan"),
         )
     return distances

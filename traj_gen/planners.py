@@ -23,13 +23,13 @@ import numpy as np
 from traj_gen.agents import SPEED_CAP_M_S, STRAIGHT_LINE_SPEED_M_S, agent_kind
 from traj_gen.bev import bev_transform, render_bev
 from traj_gen.camera import camera_frame
-from traj_gen.client import Chat, QwenClient
+from traj_gen.client import Chat, make_client
 from traj_gen.episodes import real_path
 from traj_gen.prompting import PromptBuilder
 from traj_gen.scene import DT, Metres, Pixels, Scene, person_name
 
 
-THINKING = ("nothink", "think")  # run option of the model conditions: Qwen thinking off, on
+THINKING = ("nothink", "think")  # run option of the model conditions: the model's thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s, about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap. A longer plan could not be scored in a replay anyway
 METRES, PIXELS = Metres(), Pixels(bev_transform())
 
@@ -101,7 +101,7 @@ class QueryPlanner(Planner):
     def chat(self, scene: Scene) -> Chat:
         """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
         builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
-        return QwenClient(builder, self.thinking == "think").chat(builder.system(scene))
+        return make_client(builder, self.thinking == "think").chat(builder.system(scene))
 
     @cached_property
     def cam(self) -> bytes:

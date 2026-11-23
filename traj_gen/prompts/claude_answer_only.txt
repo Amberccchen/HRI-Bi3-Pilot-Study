@@ -1,0 +1,1 @@
+Respond only with your final answer: the single JSON object. Do not include exploratory reasoning, intermediate drafts, corrections of an earlier attempt, or commentary of any kind.

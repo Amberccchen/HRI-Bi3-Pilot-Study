@@ -29,6 +29,7 @@ from preprocessing.extract_trips import DEFAULT_TRIALS
 from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind
 from traj_gen.analyze import OVERLAY, analyze
 from traj_gen.animate import animate, animate_samples, load_episode, timeline
+from traj_gen.client import BACKENDS, CLAUDE_MODEL, CLAUDE_THINKING_EFFORT, backend_label, select_backend
 from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
 from traj_gen.experiments import EXPERIMENTS
 from traj_gen.planners import THINKING
@@ -145,6 +146,15 @@ def select(args: argparse.Namespace) -> None:
         print(f"{c['id']:36s} {c['stratum']:20s} {t['duration_s']:6.1f} s  min_distance {t['real_metrics']['min_distance']:.2f} m")
 
 
+def check_run_model(run: Path, config: dict, label: dict) -> None:
+    """Fail unless the selected backend and model are the only one in the run folder: its run.json and every model episode already saved in it."""
+    other = {k: config[k] for k, v in label.items() if k in config and config[k] != v}
+    saved = {(m["name"], m.get("output_config", {}).get("effort", label.get("effort")) if m["thinking"] else label.get("effort"))
+             for f in run.glob("*/*/*/*/s*/manifest.json") for m in [json.loads(f.read_text())["model"]]} - {(label["model"], label.get("effort"))}  # model, and Claude's effort with thinking on
+    if other or saved:
+        raise ValueError(f"{run} holds {other or sorted(saved)} but this run selects {label}: a run folder takes one model, start a new run folder")
+
+
 def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
@@ -153,6 +163,9 @@ def run(args: argparse.Namespace) -> None:
     framings = args.framings or [f for f, kind in FRAMINGS.items() if kind in kinds]
     if wrong := [f for f in framings if FRAMINGS[f] not in kinds]:
         raise ValueError(f"framings {wrong} are written for a planned {', '.join(FRAMINGS[f] for f in wrong)}, but the trips plan {sorted(kinds)}")
+    select_backend(args.backend, args.model, args.effort)
+    label = backend_label()
+    check_run_model(args.run, config, label)
     code = provenance()
     if code["git_dirty"]:
         raise ValueError("the code has uncommitted changes, so its commit does not identify it: commit before running episodes")
@@ -161,6 +174,8 @@ def run(args: argparse.Namespace) -> None:
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for e in args.experiments for exp in [EXPERIMENTS[e]] for c in chosen
                 for framing, thinking, k in exp.episode.conditions(framings, args.thinking, args.samples)]
+    if any(k not in config for k in label):
+        (args.run / RUN_CONFIG).write_text(json.dumps({**config, **label}, indent=2) + "\n")
     todo = [ep for ep in episodes if not ep.done()]
     print(f"{len(todo)} episodes to run, {len(episodes) - len(todo)} already done; concurrency {args.concurrency}", flush=True)
     pool = ThreadPoolExecutor(args.concurrency)
@@ -212,6 +227,9 @@ def main() -> None:
     p.add_argument("--experiments", nargs="+", choices=list(EXPERIMENTS), default=list(EXPERIMENTS), help="experiment ids (default: all)")
     p.add_argument("--framings", nargs="+", choices=list(FRAMINGS), help="prompt framings (default: every framing for the trips' planned agent)")
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
+    p.add_argument("--backend", choices=list(BACKENDS), default="qwen", help="model backend: qwen (local vLLM server) or claude (Anthropic API, key in ANTHROPIC_API_KEY)")
+    p.add_argument("--model", help=f"Claude model id (claude backend only, default {CLAUDE_MODEL})")
+    p.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"], help=f"Claude effort with thinking on (claude backend only, default {CLAUDE_THINKING_EFFORT})")
     p.add_argument("--samples", type=int, default=3, help="samples per trip and condition")
     p.add_argument("--trips", type=Path, help=f"trip list (default: <run>/{TEST_TRIPS})")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help="episodes in parallel")
