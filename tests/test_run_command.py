@@ -7,8 +7,8 @@ import pytest
 import traj_gen.run as run_module
 from tests.test_harness import robot_trip
 from tests.test_human_prompt import SITE, person_trip
-from traj_gen.episodes import Episode
-from traj_gen.harnesses import HARNESS_FILE
+from traj_gen.harness.episodes import Episode
+from traj_gen.harness.presets import HARNESS_FILE
 
 COMMIT = "0" * 40
 

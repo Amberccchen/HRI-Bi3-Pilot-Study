@@ -4,9 +4,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from traj_gen import client
-from traj_gen.client import Chat, ClaudeClient
-from traj_gen.prompting import Turn
+from traj_gen.harness import clients
+from traj_gen.harness.clients import Chat, ClaudeClient
+from traj_gen.observation.prompting import Turn
 
 
 class FakeMode:
@@ -86,24 +86,24 @@ def test_finish_reasons(monkeypatch):
 
 def test_qwen_request_unchanged(monkeypatch):
     sent = []
-    monkeypatch.setattr(client, "post", lambda path, payload: sent.append(payload) or {"choices": [{"message": {"content": "{}", "reasoning": "r"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
-    chat = Chat(client.QwenClient(FakeBuilder(), True), "system text")
+    monkeypatch.setattr(clients, "post", lambda path, payload: sent.append(payload) or {"choices": [{"message": {"content": "{}", "reasoning": "r"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
+    chat = Chat(clients.QwenClient(FakeBuilder(), True), "system text")
     s = chat.ask(Turn("go", []), {})[0]
     assert sent[0]["messages"][0] == {"role": "system", "content": [{"type": "text", "text": "system text"}]}
     assert sent[0]["chat_template_kwargs"] == {"enable_thinking": True, "preserve_thinking": False, "reasoning_effort": "medium"}
-    assert sent[0]["temperature"] == 1.0 and sent[0]["max_tokens"] == client.THINK_MAX_TOKENS and s.reasoning == "r"
+    assert sent[0]["temperature"] == 1.0 and sent[0]["max_tokens"] == clients.THINK_MAX_TOKENS and s.reasoning == "r"
 
 
 def test_select_backend(monkeypatch):
-    monkeypatch.setattr(client, "_backend", {"name": "qwen"})
+    monkeypatch.setattr(clients, "_backend", {"name": "qwen"})
     with pytest.raises(ValueError):
-        client.select_backend("qwen", "claude-opus-5-5")
-    client.select_backend("claude", "claude-opus-5-5", "medium")
-    assert client.backend_label() == {"backend": "claude", "model": "claude-opus-5-5", "effort": "medium"}
-    assert client.describe_model(True, 16384)["output_config"] == {"effort": "medium"}
-    assert client.describe_model(True, 16384)["backend"] == "claude"
-    monkeypatch.setattr(ClaudeClient, "model", client.CLAUDE_MODEL)
-    monkeypatch.setattr(ClaudeClient, "effort", client.CLAUDE_THINKING_EFFORT)
+        clients.select_backend("qwen", "claude-opus-5-5")
+    clients.select_backend("claude", "claude-opus-5-5", "medium")
+    assert clients.backend_label() == {"backend": "claude", "model": "claude-opus-5-5", "effort": "medium"}
+    assert clients.describe_model(True, 16384)["output_config"] == {"effort": "medium"}
+    assert clients.describe_model(True, 16384)["backend"] == "claude"
+    monkeypatch.setattr(ClaudeClient, "model", clients.CLAUDE_MODEL)
+    monkeypatch.setattr(ClaudeClient, "effort", clients.CLAUDE_THINKING_EFFORT)
 
 
 def test_run_folder_takes_one_model(tmp_path):

@@ -36,7 +36,7 @@ Set `BI3_DERIVED` if the derived files live elsewhere, and `BI3_RAW` if the raw 
 
 ## Trajectory generation
 
-[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM, or Claude through the Anthropic API with `--backend claude`) can plan the path of the planned agent in a Bi³ trip, the robot or one of the people. Given the room, the other agents and the planned agent's goal station, as text and/or a top-down map, the model returns timed waypoints, map pixels or velocities. The executed path is scored against the real path and a straight line on the same trips, with the other agents replayed from the logs. A run is set up with harness presets, defined in [`traj_gen/harnesses.py`](traj_gen/harnesses.py): a harness is everything that sets the model's prompts and loop (episode type, output mode, images, framing, prediction, plan check and replanning interval), and the experiment id of its run folder is derived from those settings. The experiments of the runs before presets are in [`traj_gen/experiments.py`](traj_gen/experiments.py). The agents' parameters in [`traj_gen/agents.py`](traj_gen/agents.py), the prompt templates in `traj_gen/prompts/` and the metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py) and [`metrics/human_similarity.py`](metrics/human_similarity.py). What each generator is told, the radii, speed caps, arrival rule, metric classes, similarity measures and map drawing are defined in [DESIGN.md](DESIGN.md), Sections 2 and 3.
+[`traj_gen/`](traj_gen) tests whether a vision-language model (local Qwen through vLLM, or Claude through the Anthropic API with `--backend claude`) can plan the path of the planned agent in a Bi³ trip, the robot or one of the people. Given the room, the other agents and the planned agent's goal station, as text and/or a top-down map, the model returns timed waypoints, map pixels or velocities. The executed path is scored against the real path and a straight line on the same trips, with the other agents replayed from the logs. A run is set up with harness presets, defined in [`traj_gen/harness/presets.py`](traj_gen/harness/presets.py): a harness is everything that sets the model's prompts and loop (episode type, output mode, images, framing, prediction, plan check and replanning interval), and the experiment id of its run folder is derived from those settings. The experiments of the runs before presets are in [`traj_gen/harness/experiments.py`](traj_gen/harness/experiments.py). The agents' parameters in [`traj_gen/agents.py`](traj_gen/agents.py), the prompt templates in `traj_gen/prompts/` and the metrics in [`metrics/traj_gen_metrics.py`](metrics/traj_gen_metrics.py) and [`metrics/human_similarity.py`](metrics/human_similarity.py). What each generator is told, the radii, speed caps, arrival rule, metric classes, similarity measures and map drawing are defined in [DESIGN.md](DESIGN.md), Sections 2 and 3.
 
 ```
 python -m traj_gen.run --run <run> select --trips-dir <trips folder>  # choose 16 test trips, write <run>/test_trips.json and <run>/run.json
@@ -48,7 +48,7 @@ python -m traj_gen.run --run <run> run --backend claude [--model claude-opus-5-5
 python -m traj_gen.run --run <run> analyze                            # tables and figures of whatever has finished
 python -m traj_gen.run --run <run> animate <episode folder> ...       # animation.gif and timeline.png (colour = time) in each folder
 python -m traj_gen.run --run <run> animate <condition folder> ...     # one animation.gif of all samples of <experiment>/<framing>/<thinking>/<trip>
-python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
+python -m traj_gen.analysis.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
 ```
 
 `run` takes:
@@ -74,7 +74,7 @@ Each model episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip
 - `episodes.csv`: one row per episode.
 - `summary.csv`: per kind, condition and site, the status counts and the episode-level rates and means, grouped by metric class.
 - `paired_baselines.csv`: per kind, condition and site, each condition minus replay and minus straight, paired on the same trips, with bootstrap intervals over trips.
-- `comparisons.csv`: condition comparisons (social - neutral prompt, think - nothink, bev - text input, ...) with bootstrap intervals over trips.
+- `comparisons.csv`: condition comparisons (think - nothink, bev - text input, ...) with bootstrap intervals over trips.
 - `similarity.csv` (person runs): per condition, site and feature, the Wasserstein-1 distance of the generated moves to real moves ([`metrics/human_similarity.py`](metrics/human_similarity.py)), against the site's moves from other trials and against the same test trips' real moves. The reference is the same distance for 20 matched random subsets of each other trial's moves (another participant pair), pooled, with the numbers of draws and trials it rests on.
 - `similarity_pool.csv` (person runs): per site, the person trips in the real pool and those left out.
 - `figures/`: condition dot plots, speed-cap violations and one overlay per test trip (model conditions only, each panel drawing the straight line and the real path), in the figure scheme of [DESIGN.md](DESIGN.md), Section 3.
@@ -88,7 +88,7 @@ Run the tests from the repository root with `python -m pytest tests`. `tests/tes
 ## Reproduce locally
 
 1. Download Bi³ separately and place the extracted dataset so that `Bi3/Bi3/videos/laas/`, `Bi3/Bi3/jsons/laas/`, and `Bi3/Bi3/user_impressions/laas/` exist under this repository root. The data are not redistributed here.
-2. Install Python 3.10 or newer and `pip install -r requirements.txt`. The preprocessing and trajectory-generation code (`preprocessing/sync_video.py`, `traj_gen/camera.py`) calls the `ffmpeg` binary, which must be on PATH. The pilot preparation scripts in `pilot_run/` use the FFmpeg binary supplied by `imageio-ffmpeg`. Image preparation scripts currently use the Windows Arial font path used for the original run.
+2. Install Python 3.10 or newer and `pip install -r requirements.txt`. The preprocessing and trajectory-generation code (`preprocessing/sync_video.py`, `traj_gen/observation/camera.py`) calls the `ffmpeg` binary, which must be on PATH. The pilot preparation scripts in `pilot_run/` use the FFmpeg binary supplied by `imageio-ffmpeg`. Image preparation scripts currently use the Windows Arial font path used for the original run.
 3. Preparation can generate a random A/B/C condition key and contact sheets. For a **new blinded evaluation**, do not read the mapping, mocap truth, or survey CSV until the new observer ratings are saved.
 4. Run a run's `analyze.py` after preparation and rating to recompute its `results.json`. LAAS3 uses `pilot_run/analyse.py`.
 

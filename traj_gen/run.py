@@ -3,11 +3,11 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
 
   select        choose the 16 robot test trips from --trips-dir and write <run>/test_trips.json and <run>/run.json
   select-human  the same for person trips: --close and --random trips per site
-  run           run harnesses and baselines on a trip list (resumable, one folder per episode, see episodes.py and harnesses.py)
-  analyze       tables and figures of a (partial) run into <run>/analysis (see analyze.py)
-  animate       animation.gif and timeline.png (colour = time) in given episode folders, or one animation.gif of all samples in a condition folder (see animate.py)
+  run           run harnesses and baselines on a trip list (resumable, one folder per episode, see harness/episodes.py and harness/presets.py)
+  analyze       tables and figures of a (partial) run into <run>/analysis (see analysis/analyze.py)
+  animate       animation.gif and timeline.png (colour = time) in given episode folders, or one animation.gif of all samples in a condition folder (see analysis/animate.py)
 
-The write-up figures come from python -m traj_gen.report_figures --run <run folder>, after analyze.
+The write-up figures come from python -m traj_gen.analysis.report_figures --run <run folder>, after analyze.
 
 Run folders live outside the repository (they hold mocap-derived outputs): /persistent/experiments/HRI/bi3_traj_gen/trips_v3/<run> for runs
 on the trips_v3 folders. Run folders directly under /persistent/experiments/HRI/bi3_traj_gen/ used the trips_v2 folders, which this code
@@ -30,14 +30,14 @@ from metrics.traj_gen_metrics import GOAL_SLACK
 from preprocessing.bi3_derived import SITES, load_site_frames, load_trips, provenance
 from preprocessing.extract_trips import DEFAULT_TRIALS
 from traj_gen.agents import ARRIVAL_RADIUS_M, agent_kind
-from traj_gen.analyze import OVERLAY, analyze
-from traj_gen.animate import animate, animate_samples, load_episode, timeline
-from traj_gen.client import BACKENDS, CLAUDE_MODEL, CLAUDE_THINKING_EFFORT, backend_label, select_backend
-from traj_gen.episodes import RUN_CONFIG, TEST_TRIPS
-from traj_gen.experiments import BASELINES, EXPERIMENTS
-from traj_gen.harnesses import DEFAULT_PRESET, PRESETS, Harness, parse_overrides, write_harness_file
-from traj_gen.planners import THINKING
-from traj_gen.scene import DT, PROMPT_HISTORY_STEPS
+from traj_gen.analysis.analyze import OVERLAY, analyze
+from traj_gen.analysis.animate import animate, animate_samples, load_episode, timeline
+from traj_gen.harness.clients import BACKENDS, CLAUDE_MODEL, CLAUDE_THINKING_EFFORT, backend_label, select_backend
+from traj_gen.harness.episodes import RUN_CONFIG, TEST_TRIPS
+from traj_gen.harness.experiments import BASELINES, EXPERIMENTS
+from traj_gen.harness.presets import DEFAULT_PRESET, PRESETS, Harness, parse_overrides, write_harness_file
+from traj_gen.observation.scene import DT, PROMPT_HISTORY_STEPS
+from traj_gen.outputs.planner import THINKING
 
 
 STEP_TOLERANCE_S = 2e-3  # trip times are stored to 1 ms
@@ -263,7 +263,7 @@ def main() -> None:
     p.add_argument("--close", type=int, required=True, help="per site: trips with the smallest real distance to the robot")
     p.add_argument("--random", type=int, required=True, help="per site: trips drawn at random from the other candidates")
     p.set_defaults(func=select)
-    p = sub.add_parser("run", help="run harnesses and baselines", description="Run harness presets (traj_gen/harnesses.py) and the baselines on a trip list. "
+    p = sub.add_parser("run", help="run harnesses and baselines", description="Run harness presets (traj_gen/harness/presets.py) and the baselines on a trip list. "
                        f"The planned agent is a person unless --robot is given. A new run folder gets {RUN_CONFIG} (trips folder and commit) and a copy of the trip list.")
     p.add_argument("--robot", action="store_true", help="the robot is the planned agent: each preset's robot framing, the robot trip list, robot framings only")
     p.add_argument("--harness", nargs="+", choices=list(PRESETS), metavar="NAME", help=f"harness presets, from {', '.join(PRESETS)} "

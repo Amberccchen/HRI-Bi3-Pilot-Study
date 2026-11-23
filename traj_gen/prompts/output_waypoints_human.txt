@@ -1,1 +1,0 @@
-Plan your path as waypoints in {unit}: one position of yours every {dt} s, the first for t + {dt} s (the next step), the second for t + {dt2} s, and so on. Give as many as needed to reach your goal, at most {max_steps}.

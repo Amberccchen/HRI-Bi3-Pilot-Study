@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from metrics.human_similarity import FEATURE_NAMES, STEP_S, feature_distances, trajectory_features
-from traj_gen.analyze import move_features
+from traj_gen.analysis.analyze import move_features
 
 FAR = np.array([100.0, 100.0])  # another agent too far away to matter
 
