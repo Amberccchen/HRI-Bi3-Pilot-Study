@@ -44,7 +44,7 @@ def test_new_run_folder_gets_run_json_trip_list_and_harness_files(tmp_path, no_e
     call(tmp_path, "--harness", "harness_v1", "--overrides", "prediction=true_future", "--trips", trips, "--samples", "2")
     run = tmp_path / "run"
     config = json.loads((run / "run.json").read_text())
-    assert config["trips_dir"] == "/persistent/data/Bi3_derived/trips_v2_human" and config["git_commit"] == COMMIT and config["backend"] == "qwen"
+    assert config["trips_dir"] == "/persistent/data/Bi3_derived/trips_v3_human" and config["git_commit"] == COMMIT and config["backend"] == "qwen"
     assert config["commands"][0]["harnesses"] == ["harness_v1"]
     assert config["commands"][0]["overrides"] == {"prediction": "true_future"} and "--overrides prediction=true_future" in config["commands"][0]["command"]
     assert json.loads((run / "test_trips.json").read_text()) == json.loads(Path(trips).read_text())
@@ -66,7 +66,7 @@ def test_robot_takes_the_default_presets_robot_framing_and_no_baselines(tmp_path
     call(tmp_path, "--robot", "--baselines", "none", "--trips", trip_list(tmp_path, robot_trip()))
     assert (tmp_path / "run" / "rh_px_bev_conv" / "neutral" / HARNESS_FILE).exists()
     assert "0 episodes to run, 3 already done" in capsys.readouterr().out
-    assert json.loads((tmp_path / "run" / "run.json").read_text())["trips_dir"] == "/persistent/data/Bi3_derived/trips_v2"
+    assert json.loads((tmp_path / "run" / "run.json").read_text())["trips_dir"] == "/persistent/data/Bi3_derived/trips_v3"
 
 
 def test_a_changed_harness_in_the_same_folder_is_refused(tmp_path, no_episodes):

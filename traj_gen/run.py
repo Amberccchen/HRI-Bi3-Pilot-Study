@@ -9,8 +9,9 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
 
 The write-up figures come from python -m traj_gen.report_figures --run <run folder>, after analyze.
 
-Run folders live outside the repository (they hold mocap-derived outputs):
-/persistent/experiments/HRI/bi3_traj_gen/<run>.
+Run folders live outside the repository (they hold mocap-derived outputs): /persistent/experiments/HRI/bi3_traj_gen/trips_v3/<run> for runs
+on the trips_v3 folders. Run folders directly under /persistent/experiments/HRI/bi3_traj_gen/ used the trips_v2 folders, which this code
+does not read (README.md names the code that does).
 """
 
 import argparse
@@ -51,7 +52,7 @@ HUMAN_DURATION_S = (2.0, 6.0)  # person test trips: the duration of most moves b
 TRIP_LISTS = Path(__file__).parent / "trip_lists"
 DEFAULT_TRIPS = {"human": TRIP_LISTS / "person_pilot.json",  # the 100 person trips of the person pilot, run 20261115_pilot_52d7b27
                  "robot": TRIP_LISTS / "robot_test.json"}    # the 16 robot test trips (DESIGN.md, Generation test set), run 20261116_robot_px_f379f0c
-TRIPS_DIRS = {"human": Path("/persistent/data/Bi3_derived/trips_v2_human"), "robot": Path("/persistent/data/Bi3_derived/trips_v2")}  # run.json's trips folder for a new run folder
+TRIPS_DIRS = {"human": Path("/persistent/data/Bi3_derived/trips_v3_human"), "robot": Path("/persistent/data/Bi3_derived/trips_v3")}  # run.json's trips folder for a new run folder
 
 
 def select_trips(trips: list[dict], rng: np.random.Generator) -> list[dict]:
