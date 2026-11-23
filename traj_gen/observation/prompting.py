@@ -3,12 +3,12 @@
 A PromptBuilder is made once per condition (framing x output mode x images) and then asked for
 the system prompt and the first user turn of a Scene, or for the short follow-up turn of a
 conversation. The output mode is an outputs.planner.QueryPlanner: it supplies the template, reply key,
-example, units and how the example is written in those units. Everything else is shared.
+example, the units (from the units setting) and how the example is written in them. Everything else is shared.
 The planned agent's kind picks the templates (observation.load_prompt): a planned person reads the person version of the system
-prompt, steer output format, map captions and state, and its own framings. The follow-up and the waypoint and pixel output formats are one
+prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
-text after the state; the steer mode (outputs.steer.SteerPlanner) uses these, and the harness framings go only with it.
+text after the state; the steer and steer_vel modes (outputs.steer) use these, and the scored-distance framings go only with them.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
 """
@@ -21,15 +21,15 @@ import numpy as np
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
                              comfort_distance, contact_distance, prompt_radius)
 from traj_gen.observation import PLANNED_AGENT_WORDS, load_prompt
-from traj_gen.observation.bev import SIZE_PX
+from traj_gen.observation.bev import GRID_M, GRID_PX, SIZE_PX
 from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, person_name
 
 
 # Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
 # participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer mode.
-FRAMINGS = {"neutral": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
-HARNESS_FRAMINGS = {"harness", "robot_harness"}
+# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer and steer_vel modes.
+FRAMINGS = {"neutral": "robot", "robot_scored_distances": "robot", "participant": "human", "scored_distances": "human"}
+SCORED_DISTANCE_FRAMINGS = {"scored_distances", "robot_scored_distances"}
 
 
 @dataclass
@@ -46,12 +46,15 @@ class PromptBuilder:
         self.framing, self.mode, self.images, self.max_steps, self.predict, self.kind = framing, mode, images, max_steps, predict, mode.kind
         if FRAMINGS[framing] != self.kind:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
-        if (framing in HARNESS_FRAMINGS) != mode.harness:
-            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the steer mode")
+        if (framing in SCORED_DISTANCE_FRAMINGS) != mode.scored_distance_framings:
+            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer and steer_vel modes")
 
     def output_text(self) -> str:
-        output = load_prompt("output", self.mode.template, self.kind).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
-                                                                        **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
+        u = self.mode.units
+        axis_words = {"c0": u.axes[0], "c1": u.axes[1], "c0_direction": u.directions[0], "c1_direction": u.directions[1],
+                      "coordinates": u.coordinates, "positive_turn": u.positive_turn, "negative_turn": u.negative_turn}
+        output = load_prompt("output", self.mode.template, self.kind).format(unit=u.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
+                                                                        **axis_words, **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.mode.example_text())
 
     def system(self, scene: Scene) -> str:
@@ -69,7 +72,7 @@ class PromptBuilder:
         """The "Attached images" block for the given kinds (empty without images)."""
         if not kinds:
             return ""
-        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt("grid", self.mode.units.name), "hist_s": PROMPT_HISTORY_S,
+        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt("grid", self.mode.units.name).format(grid_px=GRID_PX, grid_m=f"{GRID_M:g}"), "hist_s": PROMPT_HISTORY_S,
                   "goal_tol": self.mode.units.len_text(ARRIVAL_RADIUS_M[self.kind]), "unit": self.mode.units.name}
         items = []
         for n, k in enumerate(kinds, 1):

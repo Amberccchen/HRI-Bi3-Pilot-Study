@@ -1,31 +1,17 @@
 import numpy as np
 
-from traj_gen.harness.experiments import EXPERIMENTS
+from tests.fake_trips import SITE, person_trip
+from traj_gen.harness.presets import Harness
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene
-from traj_gen.outputs.positions import WaypointPlanner
-
-SITE = {"room_m": 3.5, "footprint_m": [0.33, 0.34],
-        "stations": {"2": {"members": ["2"], "xy": [0.1, -1.5], "human_xy": [0.15, -1.66]},
-                     "3": {"members": ["3"], "xy": [0.2, 1.4], "human_xy": [0.1, 1.65]},
-                     "5": {"members": ["5"], "xy": [1.6, -0.4], "human_xy": [1.7, -0.3]}}}
-
-
-def person_trip() -> dict:
-    n = 12
-    line = lambda a, b: np.c_[np.linspace(a[0], b[0], n), np.linspace(a[1], b[1], n), np.zeros(n)].tolist()
-    labels = lambda goal, after: {"state": ["transit"] * n, "goal": [goal] * n, "next_goal": [after] * n}
-    return {"id": "um_um99_cv_human0_01", "site": "um", "agent": "human0", "start_index": 8, "start_goal": "2", "goal": "3", "next_goal": "2",
-            "goal_xy": SITE["stations"]["3"]["human_xy"], "time": (np.arange(n) * 0.4 - 3.2).tolist(),
-            "tracks": {"robot": line([-1.0, 0.0], [-0.5, 0.2]), "human0": line([0.1, -1.4], [0.1, -0.2]), "human1": line([1.2, 0.5], [1.6, -0.2])},
-            "labels": {"robot": labels("2", "5"), "human0": labels("3", "2"), "human1": labels("5", "3")}}
+from traj_gen.outputs.positions import PositionPlanner
 
 
 def test_person_prompt_has_no_robot_template_and_gives_the_others_goals_and_sizes():
     """A robot template leaking into a person's prompt, the others' goals missing or swapped, or the planned person's own
     radius given as the robot's, would render without an error."""
     trip = person_trip()
-    planner = WaypointPlanner(EXPERIMENTS["ss_wp_text"], trip, "participant", "nothink")
+    planner = PositionPlanner(Harness("single_shot", "positions", "m", "text", "participant").experiment(), trip, "participant", "nothink")
     builder = PromptBuilder("participant", planner, (), 20, False)
     scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[:, :2])
     system, turn = builder.system(scene), builder.first(scene).text

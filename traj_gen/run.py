@@ -7,8 +7,6 @@ Run from the repository root: python -m traj_gen.run --run <run folder> <command
   analyze       tables and figures of a (partial) run into <run>/analysis (see analysis/analyze.py)
   animate       animation.gif and timeline.png (colour = time) in given episode folders, or one animation.gif of all samples in a condition folder (see analysis/animate.py)
 
-The write-up figures come from python -m traj_gen.analysis.report_figures --run <run folder>, after analyze.
-
 Run folders live outside the repository (they hold mocap-derived outputs): /persistent/experiments/HRI/bi3_traj_gen/trips_v3/<run> for runs
 on the trips_v3 folders. Run folders directly under /persistent/experiments/HRI/bi3_traj_gen/ used the trips_v2 folders, which this code
 does not read (README.md names the code that does).
@@ -22,6 +20,7 @@ import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +33,7 @@ from traj_gen.analysis.analyze import OVERLAY, analyze
 from traj_gen.analysis.animate import animate, animate_samples, load_episode, timeline
 from traj_gen.harness.clients import BACKENDS, CLAUDE_MODEL, CLAUDE_THINKING_EFFORT, backend_label, select_backend
 from traj_gen.harness.episodes import RUN_CONFIG, TEST_TRIPS
-from traj_gen.harness.experiments import BASELINES, EXPERIMENTS
+from traj_gen.harness.experiments import BASELINES
 from traj_gen.harness.presets import DEFAULT_PRESET, PRESETS, Harness, parse_overrides, write_harness_file
 from traj_gen.observation.scene import DT, PROMPT_HISTORY_STEPS
 from traj_gen.outputs.planner import THINKING
@@ -212,7 +211,7 @@ def run(args: argparse.Namespace) -> None:
     command = {"harnesses": names, "overrides": overrides, "baselines": baselines, "trips": str(trip_list), "command": shlex.join([sys.executable, "-m", "traj_gen.run", *sys.argv[1:]])}
     config = {**config, **label, "commands": config.get("commands", []) + ([command] if command not in config.get("commands", []) else [])}
     (args.run / RUN_CONFIG).write_text(json.dumps(config, indent=2) + "\n")
-    experiments = [(harness.experiment(), [harness.framing]) for _, harness in chosen_harnesses.values()] + [(EXPERIMENTS[b], []) for b in baselines]
+    experiments = [(harness.experiment(), [harness.framing]) for _, harness in chosen_harnesses.values()] + [(BASELINES[b], []) for b in baselines]
     episodes = [exp.episode(args.run, exp, trips[c["id"]], sites[trips[c["id"]]["site"]], framing, thinking, k)
                 for exp, framings in experiments for c in chosen
                 for framing, thinking, k in exp.episode.conditions(framings, args.thinking, args.samples)]
@@ -269,7 +268,7 @@ def main() -> None:
     p.add_argument("--harness", nargs="+", choices=list(PRESETS), metavar="NAME", help=f"harness presets, from {', '.join(PRESETS)} "
                    f"(default: {DEFAULT_PRESET}), with the framing of the planned agent")
     p.add_argument("--overrides", nargs="+", default=[], metavar="KEY=VALUE", help="settings applied to every harness of the command, e.g. prediction=true_future check=2 "
-                   "(keys: episode, output, images, framing, prediction, check, execute_s)")
+                   f"(keys: {', '.join(f.name for f in fields(Harness))})")
     p.add_argument("--baselines", nargs="+", choices=[*BASELINES, "none"], default=list(BASELINES), help="baselines to run, or none (default: all)")
     p.add_argument("--thinking", nargs="+", choices=THINKING, default=["nothink"], help="thinking off first; run think afterwards")
     p.add_argument("--backend", choices=list(BACKENDS), default="qwen", help="model backend: qwen (local vLLM server) or claude (Anthropic API, key in ANTHROPIC_API_KEY)")

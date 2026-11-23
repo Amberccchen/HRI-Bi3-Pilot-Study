@@ -1,15 +1,18 @@
 """The shared base of the output modes: turn a model reply into the planned agent's positions, one per time step from where it is now.
 
 A planner is made per episode from a harness.experiments.Experiment. Model planners (QueryPlanner
-subclasses) also open the chats and render the images for the queries. Each subclass is one
-output mode: its class attributes (name, prompt template, reply key, example, units) and
-methods (to_units, max_steps, positions) say how it is prompted and how a reply becomes positions:
+subclasses) also build the prompts and render the images for the queries. Each subclass is one
+output mode: its class attributes (name, prompt template, reply key, example) and
+methods (to_units, max_steps, positions) say how it is prompted and how a reply becomes positions. The units (UNITS, the
+experiment's units setting) are not part of the mode: every number of the prompts and the reply is written in them, and a reply is
+converted back to metres through them.
 
-- waypoints (metres): the speed limit keeps the path's shape and stretches its timing (outputs.positions).
-- pixels: the same after mapping the BEV pixels to metres (outputs.positions).
+- positions: points in the world frame; the speed limit keeps the path's shape and stretches its timing (outputs.positions).
 - velocities: each clipped to the speed cap, then integrated (outputs.velocity).
-- steer: steps [turn, distance] on the BEV from the current heading, each turn and distance cut to the agent's limits, with
-  the harness prompts (outputs.steer.SteerPlanner).
+- steer: steps [turn, distance] from the current heading, each turn and distance cut to the agent's limits, with
+  the steer prompts (outputs.steer.SteerPlanner).
+- steer_vel: steps [turn rate, speed], each held for the step along a circular arc, cut to the agent's limits, with the steer prompts
+  (outputs.steer.SteerVelocityPlanner).
 - StraightPlanner, ReplayPlanner: no model, so the baselines go through the same episode,
   metric and saving code as the model conditions (outputs.baselines).
 
@@ -23,7 +26,6 @@ from functools import cached_property
 import numpy as np
 
 from traj_gen.agents import SPEED_CAP_M_S, agent_kind
-from traj_gen.harness.clients import THINK_MAX_TOKENS, Chat, make_client
 from traj_gen.observation.bev import bev_transform, render_bev
 from traj_gen.observation.camera import camera_frame
 from traj_gen.observation.prompting import PromptBuilder
@@ -33,7 +35,7 @@ from traj_gen.observation.units import Metres, Pixels
 
 THINKING = ("nothink", "think")  # run option of the model conditions: the model's thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s, about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap. A longer plan could not be scored in a replay anyway
-METRES, PIXELS = Metres(), Pixels(bev_transform())
+UNITS = {"m": Metres(), "px": Pixels(bev_transform())}  # the units setting -> the coordinate system the model reads and writes
 
 
 def retime(start: np.ndarray, points: np.ndarray, step_m: float) -> tuple[np.ndarray, np.ndarray]:
@@ -55,10 +57,10 @@ class Planner:
     speed_cap is the planned agent's (m/s), step_m the most it moves in one step."""
 
     name = None
-    units = None
 
     def __init__(self, exp, trip: dict, framing: str | None, thinking: str | None):
         self.exp, self.trip, self.framing, self.thinking = exp, trip, framing, thinking
+        self.units = UNITS[exp.units] if exp.units else None
         self.kind = agent_kind(trip["agent"])
         self.speed_cap = SPEED_CAP_M_S[self.kind]
         self.step_m = self.speed_cap * DT
@@ -70,22 +72,22 @@ class Planner:
 
 class QueryPlanner(Planner):
     """Planners that ask the model. A subclass sets name, template (prompt template), key (JSON key of the reply),
-    example (metres, converted by to_units, per planned-agent kind) and overrides units, pixel_ticks, to_units and max_steps where its mode differs."""
+    example (metres, converted by to_units, per planned-agent kind) and overrides to_units, example_text and max_steps where its mode differs."""
 
-    units = METRES
-    pixel_ticks = False  # BEV grid labelled in metres
-    harness = False  # whether the mode goes with the harness framings (observation.prompting.HARNESS_FRAMINGS)
+    scored_distance_framings = False  # whether the mode goes with the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS), and only with them
     system_template = "default"
     followup_template = "default"
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
-    think_max_tokens = THINK_MAX_TOKENS  # Qwen thinking budget with thinking on
+    # Qwen thinking budget with thinking on: thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k
+    # (8 of 12 are forced at 8192). Beyond this the answer is forced
+    think_max_tokens = 16384
 
     def to_units(self, value) -> np.ndarray:
-        """An example position in metres, written in the units of the output mode."""
+        """An example position in metres, written in the units."""
         return self.units.pos(value)
 
     def example_text(self) -> str:
-        """The example pairs of the reply format, written in the output units."""
+        """The example pairs of the reply format, written in the units."""
         return ", ".join("[" + ", ".join(self.units.num(c) for c in self.to_units(p)) + "]" for p in self.example[self.kind])
 
     def output_fields(self) -> dict:
@@ -113,14 +115,13 @@ class QueryPlanner(Planner):
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""
         return min(MAX_PLAN_STEPS, remaining)
 
-    def chat(self, scene: Scene) -> Chat:
-        """A new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
-        builder = PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
-        return make_client(builder, self.thinking == "think").chat(builder.system(scene))
+    def prompt_builder(self, scene: Scene) -> PromptBuilder:
+        """The prompts of a new conversation for this scene's remaining horizon (the builder fixes the longest plan allowed)."""
+        return PromptBuilder(self.framing, self, self.exp.images, self.max_steps(len(self.trip["time"]) - len(scene.track)), self.exp.predict)
 
     @cached_property
     def cam(self) -> bytes:
         return camera_frame(self.trip)  # the frame is the same for every query of the episode
 
     def images(self, scene: Scene, kinds: list[str]) -> dict[str, bytes]:
-        return {k: render_bev(scene, self.pixel_ticks, self.exp.predict)[0] if k == "bev" else self.cam for k in kinds}
+        return {k: render_bev(scene, isinstance(self.units, Pixels), self.exp.predict)[0] if k == "bev" else self.cam for k in kinds}

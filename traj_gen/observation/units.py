@@ -1,4 +1,9 @@
-"""The coordinate systems the prompts are written in: metres in the room frame, or pixels of the BEV image."""
+"""The coordinate systems the prompts are written in: metres in the room frame, or pixels of the BEV image.
+
+Every number the model reads or writes goes through one of these: positions through the frame (pos, pos_to_metres), vectors such as
+velocities through its axes (vec, vec_to_metres), and lengths and speeds through its scale (length, length_to_metres). Internal values
+are always metres in the room frame.
+"""
 
 import numpy as np
 
@@ -8,6 +13,12 @@ class Metres:
 
     name = "m"
     decimals = 2  # centimetres
+    # Words for the prompts: the axes and where they point on the map, the coordinates as the position output names them, and the sense
+    # of a positive turn, which goes from the first axis toward the second.
+    axes = ("x", "y")
+    directions = ("right", "up")
+    coordinates = "in metres (x, y)"
+    positive_turn, negative_turn = "anticlockwise", "clockwise"
 
     def pos(self, xy) -> np.ndarray:
         return np.asarray(xy, float)
@@ -17,6 +28,15 @@ class Metres:
 
     def length(self, m: float) -> float:
         return float(m)
+
+    def pos_to_metres(self, p) -> np.ndarray:
+        return np.asarray(p, float)
+
+    def vec_to_metres(self, v) -> np.ndarray:
+        return np.asarray(v, float)
+
+    def length_to_metres(self, d):
+        return d
 
     def num(self, v: float) -> str:
         return f"{v:.{self.decimals}f}"
@@ -45,6 +65,10 @@ class Pixels(Metres):
 
     name = "px"
     decimals = 0
+    axes = ("u", "v")
+    directions = ("right", "down")
+    coordinates = "on the attached map, in pixels (u, v)"
+    positive_turn, negative_turn = "clockwise", "anticlockwise"
 
     def __init__(self, transform):
         self.transform = transform
@@ -57,3 +81,12 @@ class Pixels(Metres):
 
     def length(self, m: float) -> float:
         return float(m) * self.transform.scale
+
+    def pos_to_metres(self, p) -> np.ndarray:
+        return self.transform.to_metre(p)
+
+    def vec_to_metres(self, v) -> np.ndarray:
+        return self.transform.to_metre(v) - self.transform.to_metre([0.0, 0.0])
+
+    def length_to_metres(self, d):
+        return d / self.transform.scale

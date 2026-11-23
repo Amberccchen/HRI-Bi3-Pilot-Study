@@ -4,6 +4,8 @@ The short list of runs whose results matter. Folders are on the author's machine
 
 These runs used the `trips_v2` folders (the old extraction: tracks smoothed with a 0.5 s moving average) and are read with the code at `traj_gen` ee7150f. Runs on the `trips_v3` folders go under `/persistent/experiments/HRI/bi3_traj_gen/trips_v3/` and get their own table. Commits 6698001, 3177648, f2b3123 and b2aaeb7 are on `origin/archive/robot_wording_test`, not on `traj_gen`.
 
+`traj_gen` ee7150f is the last commit where the presets `pilot` and `harness_v1` reproduce these runs, and their successors `pilot_v2` and `harness_v2` keep the same setup on the new inputs, units setting and 448 px map.
+
 Harness names: "simple harness" is the preset `pilot` (map positions, one conversation, re-plan every 2 s). "Harness" is `harness_v1` (turn-and-distance steps with the scored distances in the prompt). "+ future trajs" gives the model the other agents' actual future trajectories, and "iter check" adds the plan check against them. Real-data reference band: how far one recorded participant pair is from the others.
 
 ## Person

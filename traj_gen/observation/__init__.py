@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 PROMPTS = Path(__file__).parent.parent / "prompts"
-# The words for the planned agent in the templates that differ by kind only in who is speaking (followup/, output/px.txt, output/wp.txt,
+# The words for the planned agent in the templates that differ by kind only in who is speaking (followup/, output/positions.txt,
 # state/other_person.txt): one template each, filled with the planned agent's kind's words.
 PLANNED_AGENT_WORDS = {
     "robot": {"planned": "the robot", "planned_start": "The robot", "planned_pronoun": "it", "planned_possessive": "the robot's",

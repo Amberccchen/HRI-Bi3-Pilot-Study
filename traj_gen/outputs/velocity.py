@@ -10,7 +10,7 @@ from traj_gen.outputs.planner import QueryPlanner
 
 
 class VelocityPlanner(QueryPlanner):
-    """One velocity per step in m/s, each scaled down to the speed cap and integrated. Deprecated."""
+    """One velocity per step in the units per second, each scaled down to the speed cap and integrated. Deprecated."""
 
     name = "velocity_sequence"
     template = "velseq"
@@ -21,6 +21,7 @@ class VelocityPlanner(QueryPlanner):
         return self.units.vec(value)
 
     def positions(self, value, scene):
+        value = self.units.vec_to_metres(value)
         speed = np.linalg.norm(value, axis=1)
         clipped = value * (self.speed_cap / np.maximum(speed, self.speed_cap))[:, None]  # factor 1 at or below the cap
         return scene.track[-1] + np.cumsum(clipped * DT, axis=0), speed
