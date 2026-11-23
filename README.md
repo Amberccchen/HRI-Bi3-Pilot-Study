@@ -62,7 +62,7 @@ Each model episode is saved under `<run>/<experiment>/<framing>/<thinking>/<trip
 - `summary.csv`: per kind, condition and site, the status counts and the episode-level rates and means, grouped by metric class.
 - `paired_baselines.csv`: per kind, condition and site, each condition minus replay and minus straight, paired on the same trips, with bootstrap intervals over trips.
 - `comparisons.csv`: condition comparisons (social - neutral prompt, think - nothink, bev - text input, ...) with bootstrap intervals over trips.
-- `similarity.csv` (person runs): per condition, site and feature, the Wasserstein-1 distance of the generated moves to real moves ([`metrics/human_similarity.py`](metrics/human_similarity.py)), against the site's moves from other trials and against the same test trips' real moves. The reference is the same distance for the matched moves of each other trial (another participant pair), with the number of trials it rests on.
+- `similarity.csv` (person runs): per condition, site and feature, the Wasserstein-1 distance of the generated moves to real moves ([`metrics/human_similarity.py`](metrics/human_similarity.py)), against the site's moves from other trials and against the same test trips' real moves. The reference is the same distance for 20 matched random subsets of each other trial's moves (another participant pair), pooled, with the numbers of draws and trials it rests on.
 - `similarity_pool.csv` (person runs): per site, the person trips in the real pool and those left out.
 - `figures/`: condition dot plots, speed-cap violations and one overlay per test trip (model conditions only, each panel drawing the straight line and the real path), in the figure scheme of [DESIGN.md](DESIGN.md), Section 3.
 
