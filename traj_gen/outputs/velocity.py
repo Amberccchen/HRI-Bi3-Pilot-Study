@@ -1,7 +1,6 @@
 """The velocity output modes, robot only: a velocity sequence (velseq), or a single velocity for the next step (vel1).
 
-Both are deprecated: kept for the runs that used them, not for new runs. The only velocity output to be supported from now on is a relative
-one in the agent's frame, like steer (format not yet decided).
+Both are deprecated: kept for the runs that used them, not for new runs.
 """
 
 import numpy as np

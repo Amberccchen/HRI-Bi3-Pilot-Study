@@ -41,7 +41,7 @@ class Metres:
 
 
 class Pixels(Metres):
-    """Pixels of the BEV image (u right, v down, origin top-left). transform is a observation.bev.BevTransform."""
+    """Pixels of the BEV image (u right, v down, origin top-left). transform is an observation.bev.BevTransform."""
 
     name = "px"
     decimals = 0

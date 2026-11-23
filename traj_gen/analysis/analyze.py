@@ -54,7 +54,7 @@ from metrics.human_similarity import MIN_PERCENTILE_DRAWS, feature_distances, tr
 from metrics.traj_gen_metrics import METRIC_CLASS, move_end_index
 from preprocessing.bi3_derived import SITES
 from traj_gen.agents import ARRIVAL_RADIUS_M, SPEED_CAP_M_S, agent_kind
-from traj_gen.harness.episodes import ANALYSIS_DIR, TEST_TRIPS, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
+from traj_gen.harness.episodes import ANALYSIS_DIR, ConversationEpisode, RollingEpisode, SingleShotEpisode, load_trajectory, real_path
 from traj_gen.harness.experiments import BASELINES, EXPERIMENTS, Experiment
 from traj_gen.harness.presets import run_experiments
 from traj_gen.observation.bev import render_overlay, trajectory_legend
