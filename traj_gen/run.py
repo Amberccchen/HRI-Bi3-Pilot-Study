@@ -168,12 +168,12 @@ def resolve_harnesses(names: list[str], overrides: dict, kind: str) -> dict[tupl
     out = {}
     for name in names:
         try:
-            harness = PRESETS[name].with_overrides(overrides)
+            harness = PRESETS[name].harness(kind, overrides)
         except ValueError as e:
             raise ValueError(f"harness {name} with overrides {overrides}: {e}") from None
         if harness.kind != kind:
             raise ValueError(f"harness {name} has the {harness.kind} framing {harness.framing!r}, but this run plans a {kind}: "
-                             f"{'pass --robot for a robot framing' if harness.kind == 'robot' else 'drop --robot for a person framing'}")
+                             f"{'pass --robot for a robot framing' if harness.kind == 'robot' else 'drop --robot for a person framing'}")  # a framing override
         out.setdefault((harness.id, harness.framing), (name, harness))
     return out
 
@@ -182,7 +182,7 @@ def run(args: argparse.Namespace) -> None:
     if args.samples < 1 or args.concurrency < 1:
         raise ValueError(f"--samples and --concurrency must be at least 1, got {args.samples} and {args.concurrency}")
     kind = "robot" if args.robot else "human"
-    names = args.harness or [DEFAULT_PRESET[kind]]
+    names = args.harness or [DEFAULT_PRESET]
     overrides = parse_overrides(args.overrides)
     chosen_harnesses = resolve_harnesses(names, overrides, kind)
     baselines = [] if args.baselines == ["none"] else list(dict.fromkeys(args.baselines))
@@ -264,9 +264,9 @@ def main() -> None:
     p.set_defaults(func=select)
     p = sub.add_parser("run", help="run harnesses and baselines", description="Run harness presets (traj_gen/harnesses.py) and the baselines on a trip list. "
                        f"The planned agent is a person unless --robot is given. A new run folder gets {RUN_CONFIG} (trips folder and commit) and a copy of the trip list.")
-    p.add_argument("--robot", action="store_true", help=f"the robot is the planned agent: default harness {DEFAULT_PRESET['robot']}, the robot trip list, robot framings only")
+    p.add_argument("--robot", action="store_true", help="the robot is the planned agent: each preset's robot framing, the robot trip list, robot framings only")
     p.add_argument("--harness", nargs="+", choices=list(PRESETS), metavar="NAME", help=f"harness presets, from {', '.join(PRESETS)} "
-                   f"(default: {DEFAULT_PRESET['human']}, or {DEFAULT_PRESET['robot']} with --robot)")
+                   f"(default: {DEFAULT_PRESET}), with the framing of the planned agent")
     p.add_argument("--overrides", nargs="+", default=[], metavar="KEY=VALUE", help="settings applied to every harness of the command, e.g. prediction=true_future check=2 "
                    "(keys: episode, output, images, framing, prediction, check, execute_s)")
     p.add_argument("--baselines", nargs="+", choices=[*BASELINES, "none"], default=list(BASELINES), help="baselines to run, or none (default: all)")

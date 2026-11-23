@@ -22,11 +22,12 @@ The experiment id (the run folder level above the framing) is derived from the s
 Framing is not in the id: it is the next folder level, <run>/<id>/<framing>/. Each harness writes its settings to
 <run>/<id>/<framing>/harness.json (HARNESS_FILE) when it first runs there.
 
-PRESETS are named harnesses. The run command takes preset names and applies --overrides to each of them.
+PRESETS are named harnesses for either planned agent: each gives the framing per planned-agent kind. The run command takes preset names,
+picks the framing of the planned agent (a person, or the robot with --robot) and applies --overrides to each of them.
 """
 
 import json
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from traj_gen.episodes import ConversationEpisode, RollingEpisode, SingleShotEpisode
@@ -107,20 +108,31 @@ class Harness:
     def settings(self) -> dict:
         return asdict(self)
 
-    def with_overrides(self, overrides: dict) -> "Harness":
-        return replace(self, **overrides)
+
+@dataclass(frozen=True)
+class Preset:
+    """A named harness for either planned agent: the settings other than the framing, and the framing per planned-agent kind."""
+    episode: str
+    output: str
+    images: str
+    framings: tuple[tuple[str, str], ...]  # (kind, framing) pairs
+
+    def harness(self, kind: str, overrides: dict | None = None) -> Harness:
+        """The harness for a planned agent of this kind, with the overrides applied (a framing override replaces the kind's framing)."""
+        framing = dict(self.framings)[kind]
+        return Harness(**{"episode": self.episode, "output": self.output, "images": self.images, "framing": framing, **(overrides or {})})
 
 
+# The true_future and plan-check levels are overrides of these: --overrides prediction=true_future, and prediction=true_future check=2.
 PRESETS = {
-    "person_pilot": Harness("rolling_conv", "px", "bev", "participant"),  # the person pilot setup: run 20261115_pilot_52d7b27, rh_px_bev_conv/participant
-    "robot_simple": Harness("rolling_conv", "px", "bev", "neutral"),  # the robot report's simple harness: run 20261116_robot_px_f379f0c, rh_px_bev_conv/neutral
-    "person_harness_v1": Harness("rolling_conv", "steer", "bev", "harness"),  # the person harness: run 20261123_human_harness_rate_claude_sonnet_b2aaeb7 (rh_heading_rate_bev_conv/participant_space before the port)
-    "person_harness_v1_true_future": Harness("rolling_conv", "steer", "bev", "harness", prediction="true_future"),  # the person harness plus the recorded futures; no run at the port's commit yet
-    "robot_harness_v1": Harness("rolling_conv", "steer", "bev", "robot_harness"),  # the robot harness, rh_steer_bev_conv/robot_harness; its robot test runs (2026-11-16, 2026-11-17) predate the port
-    "robot_harness_v1_true_future": Harness("rolling_conv", "steer", "bev", "robot_harness", prediction="true_future"),  # the robot harness plus the recorded futures, rh_steer_bev_conv_true_future/robot_harness
-    "robot_harness_v1_true_future_check": Harness("rolling_conv", "steer", "bev", "robot_harness", prediction="true_future", check=2),  # that plus two plan-check rounds, rh_steer_bev_conv_true_future_check/robot_harness
+    # The simple setup: map positions in one conversation. Person: the person pilot, run 20261115_pilot_52d7b27 (rh_px_bev_conv/participant).
+    # Robot: the robot report's simple harness, run 20261116_robot_px_f379f0c (rh_px_bev_conv/neutral).
+    "pilot": Preset("rolling_conv", "px", "bev", (("human", "participant"), ("robot", "neutral"))),
+    # The harness: steer steps with the scored distances. Person: run 20261123_human_harness_rate_claude_sonnet_b2aaeb7 (rh_heading_rate_bev_conv/participant_space before the port).
+    # Robot: rh_steer_bev_conv/robot_harness, whose robot test runs (2026-11-16, 2026-11-17) predate the port.
+    "harness_v1": Preset("rolling_conv", "steer", "bev", (("human", "harness"), ("robot", "robot_harness"))),
 }
-DEFAULT_PRESET = {"human": "person_pilot", "robot": "robot_simple"}
+DEFAULT_PRESET = "pilot"
 
 
 def parse_overrides(items: list[str]) -> dict:
