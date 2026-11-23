@@ -75,8 +75,8 @@ class QueryPlanner(Planner):
     units = METRES
     pixel_ticks = False  # BEV grid labelled in metres
     harness = False  # whether the mode goes with the harness framings (observation.prompting.HARNESS_FRAMINGS)
-    system_template = "system"  # + "_human" for a planned person
-    followup_template = "followup"
+    system_template = "default"
+    followup_template = "default"
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
     think_max_tokens = THINK_MAX_TOKENS  # Qwen thinking budget with thinking on
 

@@ -4,8 +4,9 @@ A PromptBuilder is made once per condition (framing x output mode x images) and 
 the system prompt and the first user turn of a Scene, or for the short follow-up turn of a
 conversation. The output mode is an outputs.planner.QueryPlanner: it supplies the template, reply key,
 example, units and how the example is written in those units. Everything else is shared.
-The planned agent's kind picks the templates: a planned person reads the "_human" version of the
-system prompt, output format, map captions, follow-up and plan-check feedback (TEMPLATE_SUFFIX), and its own framings.
+The planned agent's kind picks the templates (observation.load_prompt): a planned person reads the person version of the system
+prompt, steer output format, map captions and state, and its own framings. The follow-up and the waypoint and pixel output formats are one
+template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
 The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
 text after the state; the steer mode (outputs.steer.SteerPlanner) uses these, and the harness framings go only with it.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
@@ -19,17 +20,16 @@ import numpy as np
 
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
                              comfort_distance, contact_distance, prompt_radius)
-from traj_gen.observation import load_prompt
+from traj_gen.observation import PLANNED_AGENT_WORDS, load_prompt
 from traj_gen.observation.bev import SIZE_PX
 from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, person_name
 
 
-# Prompt framing (task_<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
+# Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. social_body is social plus the centre distance
 # the bodies need. cautious is a stronger social prompt (waiting and detours are fine). participant: walk as a participant of the study would, given the robot's and the other person's sizes.
 # harness (person, the primary harness) and robot_harness (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer mode.
 FRAMINGS = {"neutral": "robot", "social": "robot", "social_body": "robot", "cautious": "robot", "robot_harness": "robot", "participant": "human", "harness": "human"}
 HARNESS_FRAMINGS = {"harness", "robot_harness"}
-TEMPLATE_SUFFIX = {"robot": "", "human": "_human"}  # of the templates that differ by the planned agent's kind
 
 
 @dataclass
@@ -48,19 +48,19 @@ class PromptBuilder:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
         if (framing in HARNESS_FRAMINGS) != mode.harness:
             raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the harness framings go only with the steer mode")
-        self.suffix = TEMPLATE_SUFFIX[self.kind]
 
     def output_text(self) -> str:
-        output = load_prompt(self.mode.template + self.suffix).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps, **self.mode.output_fields())
+        output = load_prompt("output", self.mode.template, self.kind).format(unit=self.mode.units.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
+                                                                        **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
         return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.mode.example_text())
 
     def system(self, scene: Scene) -> str:
         u, site = self.mode.units, scene.site
-        frame = load_prompt(f"frame_{u.name}").format(image_px=SIZE_PX, **u.bounds(site["room_m"]))
+        frame = load_prompt("frame", u.name).format(image_px=SIZE_PX, **u.bounds(site["room_m"]))
         fields = {"room_side": u.len_text(site["room_m"]), "unit": u.name, "frame": frame, "stations": scene.stations_text(u),
                   "speed_cap": u.len_text(SPEED_CAP_M_S[self.kind]), "dt": DT, "goal_tol": u.len_text(ARRIVAL_RADIUS_M[self.kind])}
         radius = (body_radius if self.mode.scored_sizes else prompt_radius)(scene.agent, site)
-        template = load_prompt(self.mode.system_template + self.suffix)
+        template = load_prompt("system", self.mode.system_template, self.kind)
         if self.kind == "robot":
             return template.format(robot_radius=u.len_text(radius), step=u.len_text(SPEED_CAP_M_S[self.kind] * DT), **fields)
         return template.format(name=person_name(scene.agent), person_radius=u.len_text(radius), margin=u.len_text(ROOM_MARGIN_M[self.kind]), **fields)
@@ -69,21 +69,21 @@ class PromptBuilder:
         """The "Attached images" block for the given kinds (empty without images)."""
         if not kinds:
             return ""
-        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt(f"grid_{self.mode.units.name}"), "hist_s": PROMPT_HISTORY_S,
+        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt("grid", self.mode.units.name), "hist_s": PROMPT_HISTORY_S,
                   "goal_tol": self.mode.units.len_text(ARRIVAL_RADIUS_M[self.kind]), "unit": self.mode.units.name}
         items = []
         for n, k in enumerate(kinds, 1):
-            caption = load_prompt(f"caption_{k}" + (self.suffix if k == "bev" else "")).format(n=n, **fields)
+            caption = load_prompt("images", k, self.kind).format(n=n, **fields)
             if k == "bev" and self.predict:
-                caption += " " + load_prompt("caption_bev_prediction" + self.suffix).format(h1=f"{PREDICT_S[0]:g}", h2=f"{PREDICT_S[1]:g}")
+                caption += " " + load_prompt("images", "bev_constvel_future", self.kind).format(h1=f"{PREDICT_S[0]:g}", h2=f"{PREDICT_S[1]:g}")
             items.append(caption)
-        return load_prompt("images").format(items="\n".join(items))
+        return load_prompt("images", "list").format(items="\n".join(items))
 
     def first(self, scene: Scene) -> Turn:
         """First user turn: task, images, state, output format. With the camera, scene is the trip start (t = 0)."""
         u, r = self.mode.units, prompt_radius("robot", scene.site)
         site = scene.site
-        task = load_prompt(f"task_{self.framing}").format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name,
+        task = load_prompt("framing", self.framing, self.kind).format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name,
                                                        contact=u.len_text(contact_distance(site)), comfort=u.len_text(comfort_distance(site)),
                                                        contact_person=u.len_text(2 * PERSON_BODY_RADIUS_M), comfort_person=u.len_text(PERSON_BODY_RADIUS_M + PERSONAL_SPACE_RADIUS_M["human"]))
         parts = [task, self.captions(scene, self.images), self.state(scene, "\n\n"), self.output_text()]
@@ -106,7 +106,7 @@ class PromptBuilder:
     def followup(self, scene: Scene, executed_s: float) -> Turn:
         """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
-        text = load_prompt(self.mode.followup_template + self.suffix).format(executed_s=f"{executed_s:g}", images=self.captions(scene, kinds), scene=self.state(scene, "\n"))
+        text = load_prompt("followup", self.mode.followup_template, self.kind).format(executed_s=f"{executed_s:g}", **PLANNED_AGENT_WORDS[self.kind], images=self.captions(scene, kinds), scene=self.state(scene, "\n"))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
 
     def state(self, scene: Scene, separator: str) -> str:

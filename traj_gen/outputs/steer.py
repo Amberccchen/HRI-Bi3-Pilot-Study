@@ -14,11 +14,11 @@ class SteerPlanner(PixelPlanner):
     person's gives only the top speed (with the stated maximum, people asked for exactly it in 75-82% of steps, run 20261117_human_m4a_f2b3123)."""
 
     name = "steer"
-    template = "output_steer"
+    template = "steer"
     key = "steps"
     harness = True
-    system_template = "system_harness"
-    followup_template = "followup_harness"
+    system_template = "harness"
+    followup_template = "harness"
     scored_sizes = True
     think_max_tokens = 32768  # most harness calls ran past 16384 tokens (robot test runs, 2026-11-16)
     # Largest turn per 0.4 s step. Robot: the real robots' largest body yaw change, 35.8 deg at LAAS and 34.4 at UM (trips_v2, 144 robot trips).

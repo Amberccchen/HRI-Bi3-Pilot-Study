@@ -32,7 +32,7 @@ from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SP
 from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_model
 from traj_gen.observation import load_prompt
 from traj_gen.observation.bev import render_result
-from traj_gen.observation.prompting import TEMPLATE_SUFFIX, Turn
+from traj_gen.observation.prompting import Turn
 from traj_gen.observation.scene import DT, Scene, person_name
 
 # Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze and report.
@@ -141,7 +141,7 @@ class Episode:
             name = "the robot"
         else:
             name = person_name(other) if agent_kind(self.agent) == "robot" else f"the other participant ({person_name(other)})"
-        text = load_prompt("plan_check" + TEMPLATE_SUFFIX[agent_kind(self.agent)]).format(
+        text = load_prompt("plan_check", kind=agent_kind(self.agent)).format(
             t=f"{DT * (k + 1):.1f}", at=u.pos_text(positions[k]), dist=u.len_text(dist[k, j]), other=name, other_at=u.pos_text(future[other][k]),
             kind="in contact" if touching[k, j] else "inside personal space", contact=u.len_text(contact_distance(self.site)),
             comfort=u.len_text(comfort_distance(self.site)), contact_person=u.len_text(2 * PERSON_BODY_RADIUS_M),
@@ -175,7 +175,7 @@ class Episode:
         messages = [{"role": m["role"], "content": [p[1] if p[0] == "text" else {"image": self.refs[p[2]]} for p in m["parts"]]} for m in chat.messages]
         self.records.append({
             "query": self.n_queries - 1, "attempt": attempt, "time_s": scene.time_s, "messages": messages, "reply": s.content,
-            "reasoning": s.reasoning, "finish": s.finish, "valid": s.value is not None, "forced": load_prompt("think_cutoff") in s.reasoning,
+            "reasoning": s.reasoning, "finish": s.finish, "valid": s.value is not None, "forced": load_prompt("backend", "think_cutoff") in s.reasoning,
             "prompt_tokens": s.prompt_tokens, "completion_tokens": s.completion_tokens, "latency_s": s.latency_s})
 
     def plan(self, value: np.ndarray | None, scene: Scene, steps: int | None) -> np.ndarray:

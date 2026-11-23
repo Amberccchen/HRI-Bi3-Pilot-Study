@@ -10,7 +10,7 @@ class VelocityPlanner(QueryPlanner):
     """One velocity per step in m/s, each scaled down to the speed cap and integrated."""
 
     name = "velocity_sequence"
-    template = "output_velocity_seq"
+    template = "velseq"
     key = "velocities"
     example = {"robot": [(0.20, 0.10), (0.20, 0.15), (0.15, 0.20)]}  # m/s, below the cap
 
@@ -27,7 +27,7 @@ class StepVelocityPlanner(VelocityPlanner):
     """A single velocity for the next step."""
 
     name = "velocity"
-    template = "output_velocity"
+    template = "vel1"
     example = {"robot": [(0.20, 0.10)]}
 
     def max_steps(self, remaining: int) -> int:

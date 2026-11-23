@@ -1,4 +1,4 @@
-The robot followed your previous plan for {executed_s} s. The state is now:
+{planned_start} followed your previous plan for {executed_s} s. The state is now:
 
 {images}
 

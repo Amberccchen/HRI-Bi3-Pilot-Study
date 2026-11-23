@@ -120,7 +120,7 @@ class QwenClient:
             room = SERVER_MAX_LEN - usage["prompt_tokens"] - ANSWER_MAX_TOKENS - 512  # 512: the cutoff note, the prefill and template tokens
             if usage["completion_tokens"] > room:  # late in a long conversation the full thinking leaves no room for the answer: keep its start
                 reasoning = reasoning[: int(len(reasoning) * max(room, 0) / usage["completion_tokens"])]
-            reasoning += "\n\n" + load_prompt("think_cutoff")
+            reasoning += "\n\n" + load_prompt("backend", "think_cutoff")
             choice, dt = self._call(messages, [{"role": "assistant", "reasoning": reasoning, "content": b.prefill}], max_tokens=ANSWER_MAX_TOKENS,
                                     continue_final_message=True, add_generation_prompt=False)
             message, usage = choice["message"], choice["usage"]
@@ -149,7 +149,7 @@ class ClaudeClient:
         self.builder, self.thinking = builder, thinking
 
     def chat(self, system: str) -> "Chat":
-        return Chat(self, system + "\n\n" + load_prompt("claude_answer_only"))  # Sonnet without thinking otherwise reasons aloud in the reply, in several JSON objects
+        return Chat(self, system + "\n\n" + load_prompt("backend", "claude_answer_only"))  # Sonnet without thinking otherwise reasons aloud in the reply, in several JSON objects
 
     @classmethod
     def request_options(cls, thinking: bool) -> dict:
@@ -164,7 +164,7 @@ class ClaudeClient:
 
     @classmethod
     def describe(cls, thinking: bool, think_max_tokens: int) -> dict:  # think_max_tokens is Qwen's budget: Claude keeps CLAUDE_THINK_MAX_TOKENS
-        return {"backend": "claude", "name": cls.model, "thinking": thinking, **cls.request_options(thinking), "sampling": None, "system_suffix": load_prompt("claude_answer_only"),
+        return {"backend": "claude", "name": cls.model, "thinking": thinking, **cls.request_options(thinking), "sampling": None, "system_suffix": load_prompt("backend", "claude_answer_only"),
                 "max_tokens": CLAUDE_THINK_MAX_TOKENS if thinking else CLAUDE_ANSWER_MAX_TOKENS}
 
     @staticmethod
@@ -256,4 +256,4 @@ class Chat:
         images = [(m["parts"], i) for m in self.messages for i, part in enumerate(m["parts"]) if part[0] == "image"]
         maps = [(parts, i) for parts, i in images if parts[i][1] == "bev"]
         for parts, i in maps[: max(0, len(images) - self.client.max_images)]:
-            parts[i] = ("text", load_prompt("map_omitted"))
+            parts[i] = ("text", load_prompt("backend", "map_omitted"))

@@ -1,0 +1,1 @@
+Plan {planned_possessive} path as waypoints in {unit}: one {planned_position} every {dt} s, the first for t + {dt} s (the next step), the second for t + {dt2} s, and so on. Give as many as needed to reach {planned_goal}, at most {max_steps}.

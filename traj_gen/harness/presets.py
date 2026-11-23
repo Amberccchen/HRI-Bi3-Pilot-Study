@@ -44,7 +44,7 @@ OUTPUTS = {"wp": WaypointPlanner, "px": PixelPlanner, "vel1": StepVelocityPlanne
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
 PREDICTIONS = ("none", "true_future", "constvel_future")
 DEFAULT_EXECUTE_S = {"wp": 2.0, "px": 2.0, "vel1": 0.4, "velseq": 2.0, "steer": 2.0}  # 2.0 s: 5 steps, about 7 queries per trip; vel1 re-plans every step
-ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # no _human output templates
+ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # no person output templates: only prompts/output/robot/ has them
 
 
 @dataclass(frozen=True)
