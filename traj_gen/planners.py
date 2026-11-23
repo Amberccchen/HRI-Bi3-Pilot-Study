@@ -94,7 +94,7 @@ class QueryPlanner(Planner):
 
     def extra_text(self, scene: Scene) -> str:
         """Text after the state: the other agents' recorded future positions when the experiment gives them, else nothing."""
-        if not self.exp.future:
+        if not self.exp.true_future:
             return ""
         i = len(scene.track) - 1
         if self.kind == "robot":

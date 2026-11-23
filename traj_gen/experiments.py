@@ -2,7 +2,7 @@
 
 Framing (one of prompting.FRAMINGS) and thinking (nothink/think) are run options, not part of the id. The
 single-shot experiments plan the whole path at the trip start. The rolling ones re-plan every
-execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_pred` ones are their
+execute_s of executed motion (rh_vel1_bev every step), the `_conv` ones in one growing conversation. The `_constvel_future` ones are their
 base experiment plus each person's constant-velocity prediction (text and map).
 
 Experiment id parts, in order:
@@ -11,13 +11,13 @@ Experiment id parts, in order:
                  steer = a turn from the current heading and a distance per step, with the harness prompts (planners.SteerPlanner, only with the harness framings)
   images         text = no image; bev = the top-down (bird's-eye view) map; cam = plus the camera view
   conv           all queries of an episode in one growing conversation (episodes.ConversationEpisode); without it each query is a fresh chat
-  future         the other agents' recorded future positions in the text each turn (Experiment.future)
+  true_future    the other agents' recorded future positions in the text each turn (Experiment.true_future)
   check          the plan check: each plan is tested against those futures and the first conflict is reported back for revision (Experiment.check_rounds)
-  pred           each person's constant-velocity prediction in the text and map (Experiment.base)
+  constvel_future  each person's position at t + 1 s and t + 2 s if it kept its current velocity, in the text and map (Experiment.base)
 straight and replay are the baselines (no model).
 
 The harness experiments (planners.SteerPlanner, with the harness framings only: harness for a person, robot_harness for the robot) come in three levels: the harness; the harness plus
-the other agents' recorded future trajectories (future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
+the other agents' recorded future trajectories (true_future, a proxy for a forecaster); and that plus the plan check (check_rounds), which tests each plan against the recorded futures and reports the first conflict back for revision.
 """
 
 from dataclasses import dataclass, replace
@@ -35,8 +35,8 @@ class Experiment:
     images: tuple[str, ...]
     episode: type
     execute_s: float | None  # executed motion between queries (rolling only)
-    base: str | None = None  # id of the experiment without the prediction (_pred rows only)
-    future: bool = False  # give the other agents' recorded future positions in the text each turn
+    base: str | None = None  # id of the experiment without the prediction (_constvel_future rows only)
+    true_future: bool = False  # give the other agents' recorded future positions in the text each turn
     check_rounds: int = 0  # check each plan against the recorded futures and report the first conflict back, up to this many revisions
 
     def __post_init__(self):
@@ -76,11 +76,11 @@ _experiments = [
     Experiment("rh_px_bev_conv", PixelPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_velseq_bev_conv", VelocityPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
     Experiment("rh_steer_bev_conv", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S),
-    Experiment("rh_steer_bev_conv_future", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True),
-    Experiment("rh_steer_bev_conv_future_check", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, future=True, check_rounds=2),
+    Experiment("rh_steer_bev_conv_true_future", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, true_future=True),
+    Experiment("rh_steer_bev_conv_true_future_check", SteerPlanner, ("bev",), ConversationEpisode, _ROLLING_S, true_future=True, check_rounds=2),
     Experiment("straight", StraightPlanner, (), BaselineEpisode, None),
     Experiment("replay", ReplayPlanner, (), BaselineEpisode, None),
 ]
-_experiments += [replace(e, id=f"{e.id}_pred", base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
+_experiments += [replace(e, id=f"{e.id}_constvel_future", base=e.id) for e in _experiments if e.id in ("ss_wp_bev", "rh_wp_bev", "rh_vel1_bev")]  # single shot, rolling 2 s and the shortest rolling horizon
 EXPERIMENTS = {e.id: e for e in _experiments}
 BASELINES = tuple(e.id for e in _experiments if not e.uses_model)  # registry order

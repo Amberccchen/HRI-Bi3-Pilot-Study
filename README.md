@@ -49,7 +49,7 @@ python -m traj_gen.run --run <run> animate <condition folder> ...     # one anim
 python -m traj_gen.report_figures --run <run>                         # write-up figures and personal-space sensitivity table into <run>/report, after analyze
 ```
 
-The `*_pred` experiments (`ss_wp_bev_pred`, `rh_wp_bev_pred`, `rh_vel1_bev_pred`) are their base experiment plus each person's constant-velocity position at t + 1 s and t + 2 s, in the text and drawn on the map.
+The `*_constvel_future` experiments (`ss_wp_bev_constvel_future`, `rh_wp_bev_constvel_future`, `rh_vel1_bev_constvel_future`) are their base experiment plus each person's constant-velocity position at t + 1 s and t + 2 s, in the text and drawn on the map.
 
 **Note:** the official scoring of generated trajectories has not been built yet. The metrics are exploratory definitions written for this pilot, not a validated scoring against the Bi³ ratings.
 

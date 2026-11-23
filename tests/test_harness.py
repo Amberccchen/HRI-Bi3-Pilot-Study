@@ -52,7 +52,7 @@ def test_person_harness_gives_only_the_top_speed_and_a_person_scale_example():
 def test_future_trajectories_only_in_the_future_experiments():
     trip = person_trip()
     assert "will actually be" not in prompts("rh_steer_bev_conv", trip, "harness")
-    future = prompts("rh_steer_bev_conv_future", trip, "harness")
+    future = prompts("rh_steer_bev_conv_true_future", trip, "harness")
     assert "Where the other participant and the robot will actually be" in future and "Robot: t+0.4 s" in future and "P2: t+0.4 s" in future
 
 
@@ -74,7 +74,7 @@ def test_harness_steps_are_cut_to_the_turn_and_speed_limits():
 
 def test_plan_check_counts_contact_against_the_recorded_future(tmp_path):
     """The plan check must score the plan against where the people really are, with the scored contact and personal-space distances."""
-    exp = EXPERIMENTS["rh_steer_bev_conv_future_check"]
+    exp = EXPERIMENTS["rh_steer_bev_conv_true_future_check"]
     trip = robot_trip()
     episode = Episode(tmp_path, exp, trip, SITE, "robot_harness", "think", 0)
     scene = episode.scene()
@@ -97,7 +97,7 @@ def person_check(tmp_path, robot: list[float], other: list[float]) -> tuple[tupl
     for agent, offsets in (("robot", robot), ("human1", other)):
         tracks[agent][i: i + 3] = here + np.c_[offsets, np.zeros(3), np.zeros(3)]
     trip["tracks"] = {**trip["tracks"], **{a: t.tolist() for a, t in tracks.items()}}
-    episode = Episode(tmp_path, EXPERIMENTS["rh_steer_bev_conv_future_check"], trip, SITE, "harness", "think", 0)
+    episode = Episode(tmp_path, EXPERIMENTS["rh_steer_bev_conv_true_future_check"], trip, SITE, "harness", "think", 0)
     return episode.conflicts(np.zeros((3, 2)), episode.scene())
 
 

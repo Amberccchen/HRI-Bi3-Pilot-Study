@@ -43,7 +43,7 @@ PANEL_IN = 0.35     # figure height per panel for its title and gap, inches
 FIXED_IN = 1.05     # figure height for the axis labels, direction hints and legend, inches
 
 LADDER = [("text only", ["ss_wp_text"], "social"), ("+ map", ["ss_wp_bev"], "social"), ("+ camera photo", ["ss_wp_bev_cam"], "social"),
-          ("+ predicted pos", ["ss_wp_bev_pred"], "social")]
+          ("+ predicted pos", ["ss_wp_bev_constvel_future"], "social")]
 # output type: rolling replanning every 2 s is the one horizon with waypoints, pixels and velocities
 OUTPUT_TYPES = [("waypoints", ["rh_wp_bev"], "social"), ("pixels", ["rh_px_bev"], "social"), ("* velocities", ["rh_velseq_bev"], "social")]
 # Row marker, put before the label and explained in the caption: * velocity outputs have no single-shot experiment (only rolling every 2 s, every step
