@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.test_human_prompt import SITE, person_trip
+from tests.test_human_prompt import SITE, person_trip, with_input_series
 from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
 from traj_gen.harness.clients import QwenClient
 from traj_gen.harness.episodes import Episode
@@ -17,7 +17,7 @@ def robot_trip() -> dict:
     trip = {**trip, "id": "um_um99_cv_robot_01", "agent": "robot", "goal": "3", "goal_xy": SITE["stations"]["3"]["xy"]}
     trip["tracks"] = {**trip["tracks"], "robot": np.c_[np.zeros(n), np.linspace(-1.0, 0.0, n), np.zeros(n)].tolist(),
                       "human0": np.c_[np.zeros(n), np.zeros(n), np.zeros(n)].tolist()}
-    return trip
+    return with_input_series(trip)
 
 
 def prompts(exp_id: str, trip: dict, framing: str) -> str:

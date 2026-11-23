@@ -3,8 +3,10 @@
 A Scene is built for array index i of a trip (trip["time"][i] seconds after the trip start)
 from the planned agent's track so far (trip["agent"]) and the other agents' tracks. The planned
 agent's track is an argument, not read from the trip: in rolling episodes it is the real pre-start
-history followed by what the generated plan actually executed. Leakage rule: only samples at indices <= i are ever
-read, so nothing after the query time can reach the text or the map.
+history (from the 10 Hz series) followed by what the generated plan actually executed. The other agents' positions are
+read from the trip's 10 Hz series (trip["input_tracks_10hz"]), whose every SCORED_STEP-th sample is a trip sample, so
+series sample SCORED_STEP * i is at the scene's time. Leakage rule: positions are read only up to the scene's time; the
+velocity is a central difference over the series samples one before and one after it (0.1 s each side).
 
 Coordinates are written in a Metres or Pixels object: metres in the room frame (x right, y up), or pixels of
 the BEV image (u right, v down), so the pixel output mode differs from the metre mode only
@@ -13,7 +15,7 @@ by the coordinate system. Text comes from the templates in prompts/ (str.format 
 
 import numpy as np
 
-from preprocessing.bi3_derived import TRIP_HISTORY_S, TRIP_HZ, label_members
+from preprocessing.bi3_derived import INPUT_HZ, SCORED_STEP, TRIP_HISTORY_S, TRIP_HZ, label_members
 from traj_gen.agents import STATION_POSITION, agent_kind, body_radius, prompt_radius
 from traj_gen.observation import PLANNED_AGENT_WORDS, load_prompt
 from traj_gen.observation.units import Metres
@@ -26,7 +28,6 @@ PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the
 # (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
 # middle and the end of the stretch the robot is committed to.
 PREDICT_S = (1.0, 2.0)
-VELOCITY_STEPS = 2   # velocity is the displacement over 0.8 s. The tracks are already smoothed over 0.5 s, but one step is noisy
 
 
 def person_name(agent_id: str) -> str:
@@ -58,12 +59,14 @@ class Scene:
         self.goal, self.next_goal = trip["goal"], trip["next_goal"]
         self.goal_xy = np.asarray(trip["goal_xy"], float)
         self.others = []
-        for other, other_track in trip["tracks"].items():
+        j = SCORED_STEP * i  # the series sample at the scene's time
+        for other, series in trip["input_tracks_10hz"]["tracks"].items():
             if other == self.agent:
                 continue
-            xy = np.asarray(other_track, float)[: i + 1, :2]
-            k = min(VELOCITY_STEPS, i)
-            v = (xy[-1] - xy[-1 - k]) / (k * DT)
+            dense = np.asarray(series, float)[:, :2]
+            xy = dense[: j + 1: SCORED_STEP]
+            before, after = max(j - 1, 0), min(j + 1, len(dense) - 1)  # one sample either side, one-sided at the ends of the series
+            v = (dense[after] - dense[before]) * INPUT_HZ / (after - before)
             half = site["room_m"] / 2  # agents stay in the room, so the prediction does too
             labels = trip["labels"][other]
             self.others.append({

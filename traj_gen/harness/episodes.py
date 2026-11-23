@@ -1,6 +1,6 @@
 """Episodes: one planner on one trip, executed against the replayed people, and everything saved.
 
-The planned agent (trip["agent"]) has a track aligned with the trip arrays: its real history up to
+The planned agent (trip["agent"]) has a track aligned with the trip arrays: its real history (from the 10 Hz series) up to
 start_index, then one executed position per time step (so the other agents' replay at the same index
 is the others at that time). An episode ends at the first executed step within the agent's arrival
 radius of the goal, or at the end of the replay (the last index of the trip arrays).
@@ -26,7 +26,7 @@ import numpy as np
 
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
-from preprocessing.bi3_derived import provenance
+from preprocessing.bi3_derived import SCORED_STEP, provenance
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii,
                              body_radius, comfort_distance, contact_distance, pair_distances)
 from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_model, make_client
@@ -67,7 +67,7 @@ class Episode:
         self.agent, self.start = trip["agent"], trip["start_index"]
         self.goal = np.asarray(trip["goal_xy"], float)
         self.arrival_radius = ARRIVAL_RADIUS_M[agent_kind(self.agent)]
-        self.track = np.asarray(trip["tracks"][self.agent], float)[: self.start + 1, :2]
+        self.track = np.asarray(trip["input_tracks_10hz"]["tracks"][self.agent], float)[::SCORED_STEP][: self.start + 1, :2]  # the real history, from the series
         self.others = [a for a in trip["tracks"] if a != self.agent]
         self.status, self.error = "ok", None
         self.plans, self.records, self.raw, self.n_queries = [], [], [], 0
