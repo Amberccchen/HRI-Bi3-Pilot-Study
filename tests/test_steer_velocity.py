@@ -80,7 +80,7 @@ def test_prompt_states_the_turn_rate_cap_and_the_speed_unit():
     planner, scene = setup("px", person_trip(), "harness")
     text = PromptBuilder("harness", planner, ("bev",), 20, False).first(scene).text
     assert f"A turn rate is at most {SteerPlanner.MAX_TURN_DEG['human'] / DT:g} degrees per second" in text and "in px/s" in text
-    assert '{"steps": [[0, 200], [-40, 200], [0, 0]]}' in text  # 1 m/s at 200 px per metre
+    assert '{"steps": [[0, 112], [-40, 112], [0, 0]]}' in text  # 1 m/s at 112 px per metre
     robot, robot_scene = setup("m", robot_trip(), "robot_harness")
     text = PromptBuilder("robot_harness", robot, ("bev",), 20, False).first(robot_scene).text
     assert f"A turn rate is at most {SteerPlanner.MAX_TURN_DEG['robot'] / DT:g} degrees per second" in text and "in m/s, from 0 to the maximum speed" in text

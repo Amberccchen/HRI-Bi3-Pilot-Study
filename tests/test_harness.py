@@ -41,12 +41,12 @@ def test_harness_framings_go_only_with_the_harness_mode():
 
 
 def test_person_harness_gives_only_the_top_speed_and_a_person_scale_example():
-    """The person harness must not state the largest step (people asked for exactly it), while the robot harness keeps its stated 24 px."""
+    """The person harness must not state the largest step (people asked for exactly it), while the robot harness keeps its stated 13 px (0.12 m at 112 px/m)."""
     person = prompts("rh_steer_bev_conv", person_trip(), "harness")
-    assert "You can walk at most 300 px/s." in person and "px in one step" not in person and "maximum" not in person
-    assert '{"steps": [[0, 80], [-15, 80], [0, 0]]}' in person and "at most 131 degrees" in person
+    assert "You can walk at most 168 px/s." in person and "px in one step" not in person and "maximum" not in person
+    assert '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in person and "at most 131 degrees" in person
     robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_harness")
-    assert "So it moves at most 24 px in one step." in robot and '{"steps": [[0, 20], [-15, 22], [0, 0]]}' in robot and "at most 39 degrees" in robot
+    assert "So it moves at most 13 px in one step." in robot and '{"steps": [[0, 11], [-15, 12], [0, 0]]}' in robot and "at most 39 degrees" in robot
 
 
 def test_future_trajectories_only_in_the_future_experiments():
@@ -67,7 +67,7 @@ def test_harness_steps_are_cut_to_the_turn_and_speed_limits():
     uv = planner.units.pos(planner.positions(np.array([[170.0, 500.0], [0.0, -30.0]]), scene)[0])
     step_px = planner.units.length(planner.step_m)
     first = uv[0] - start
-    assert np.linalg.norm(first) == pytest.approx(step_px)  # 500 px cut to one step (120 px at 1.5 m/s)
+    assert np.linalg.norm(first) == pytest.approx(step_px)  # 500 px cut to one step (67 px at 1.5 m/s)
     assert np.degrees(np.arctan2(first[1], first[0])) == pytest.approx(heading + 131.0)  # 170 deg cut to 131
     assert np.allclose(uv[1], uv[0])  # a negative distance waits
 
@@ -122,18 +122,18 @@ def test_person_plan_check_reports_the_worst_agent_at_the_first_conflict(tmp_pat
     """At one step the robot is in contact at 0.31 m and the other participant only inside personal space at 0.305 m: contact comes first,
     though the participant is nearer. With both in contact, the nearer one is reported."""
     counts, text = person_check(tmp_path, [0.31, 3.0, 3.0], [0.305, 0.25, 3.0])
-    assert counts == (2, 0) and "at t + 0.4 s" in text and "62 px from the robot" in text
+    assert counts == (2, 0) and "at t + 0.4 s" in text and "35 px from the robot" in text
     counts, text = person_check(tmp_path, [0.2, 3.0, 3.0], [0.1, 3.0, 3.0])
-    assert "20 px from the other participant (P2)" in text
+    assert "11 px from the other participant (P2)" in text
 
 
 def test_person_plan_check_text_gives_the_person_thresholds(tmp_path):
     """The person's feedback must speak to the person and give the distances of the person task prompt, not the robot's personal space."""
     _, text = person_check(tmp_path, [0.0, 3.0, 3.0], [3.0] * 3)
     assert text.startswith("Check of your plan against where the other participant and the robot will actually be: at t + 0.4 s you would be at")
-    assert ("contact with the robot below 63 px, contact with the other participant below 60 px, the other participant's personal space below 80 px,"
-            " the robot has none") in text  # 0.315, 0.30 and 0.40 m at 200 px/m
-    assert "the robot would be" not in text and "83 px" not in text
+    assert ("contact with the robot below 35 px, contact with the other participant below 34 px, the other participant's personal space below 45 px,"
+            " the robot has none") in text  # 0.315, 0.30 and 0.40 m at 112 px/m
+    assert "the robot would be" not in text and "46 px" not in text
 
 
 def test_harness_thinking_budget_is_recorded():
@@ -147,4 +147,4 @@ def test_plan_check_and_harness_text_use_the_scored_distances():
     assert contact_distance(SITE) == pytest.approx(0.33 / 2 + 0.15)
     assert comfort_distance(SITE) == pytest.approx(0.33 / 2 + 0.25)
     robot = prompts("rh_steer_bev_conv", robot_trip(), "robot_harness")
-    assert "less than 63 px apart" in robot and "at least 83 px apart" in robot  # 0.315 m and 0.415 m at 200 px/m
+    assert "less than 35 px apart" in robot and "at least 46 px apart" in robot  # 0.315 m and 0.415 m at 112 px/m

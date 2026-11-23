@@ -93,4 +93,4 @@ def test_pixel_prompts_keep_the_pixel_wording():
     planner, scene = setup("steer", "px", "harness", person_trip())
     text = PromptBuilder("harness", planner, ("bev",), 20, False).first(scene).text
     assert "positive turns clockwise on the map, from +u toward +v; negative turns anticlockwise" in text
-    assert "degrees (0 = +u, right; 90 = +v, down)" in text and '{"steps": [[0, 80], [-15, 80], [0, 0]]}' in text
+    assert "degrees (0 = +u, right; 90 = +v, down)" in text and '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in text  # 0.4 m at 112 px/m

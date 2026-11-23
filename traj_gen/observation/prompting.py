@@ -21,7 +21,7 @@ import numpy as np
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
                              comfort_distance, contact_distance, prompt_radius)
 from traj_gen.observation import PLANNED_AGENT_WORDS, load_prompt
-from traj_gen.observation.bev import SIZE_PX
+from traj_gen.observation.bev import GRID_M, GRID_PX, SIZE_PX
 from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, person_name
 
 
@@ -70,7 +70,7 @@ class PromptBuilder:
         """The "Attached images" block for the given kinds (empty without images)."""
         if not kinds:
             return ""
-        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt("grid", self.mode.units.name), "hist_s": PROMPT_HISTORY_S,
+        fields = {"time_s": f"{scene.time_s:.1f}", "grid": load_prompt("grid", self.mode.units.name).format(grid_px=GRID_PX, grid_m=f"{GRID_M:g}"), "hist_s": PROMPT_HISTORY_S,
                   "goal_tol": self.mode.units.len_text(ARRIVAL_RADIUS_M[self.kind]), "unit": self.mode.units.name}
         items = []
         for n, k in enumerate(kinds, 1):

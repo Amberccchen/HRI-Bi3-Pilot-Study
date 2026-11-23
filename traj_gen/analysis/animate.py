@@ -28,10 +28,10 @@ from PIL import Image
 from metrics.traj_gen_metrics import clearance_gap
 from traj_gen.agents import PERSONAL_SPACE_RADIUS_M, agent_kind, body_radii, body_radius
 from traj_gen.harness.episodes import load_trajectory
-from traj_gen.outputs.baselines import real_path
-from traj_gen.observation.bev import (EXTENT_M, KIND_COLOUR, KIND_MARKER, LABEL_PX, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_others, draw_reference, draw_room,
+from traj_gen.observation.bev import (EXTENT_M, FIGURE_DPI, KIND_COLOUR, KIND_MARKER, LABEL_PT, PERSON_LABEL, REAL_PATH, VLM_COLOUR, bev_axes, draw_others, draw_reference, draw_room,
                           figure_png, trajectory_legend)
 from traj_gen.observation.scene import DT, person_name
+from traj_gen.outputs.baselines import real_path
 
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
@@ -59,7 +59,7 @@ def _title(ep: dict) -> str:
 
 
 def _frame(ep: dict, k: int) -> bytes:
-    fig, ax, _ = bev_axes(False)
+    fig, ax, _ = bev_axes(False, FIGURE_DPI)
     site, agent = ep["site"], ep["agent"]
     radius, colour = body_radius(agent, site), VLM_COLOUR  # the disks the metrics use
     draw_room(ax, site, agent, ep["goal"])
@@ -84,9 +84,9 @@ def _frame(ep: dict, k: int) -> bytes:
             ax.add_patch(Circle(track[k], PERSONAL_SPACE_RADIUS_M[kind], fill=False, ec=agent_colour, ls=":", lw=1.5, zorder=4))
     for other, track in ep["others"].items():
         if agent_kind(other) == "human":
-            ax.text(*track[k], person_name(other), ha="center", va="center", fontsize=LABEL_PX * 0.6, zorder=6)
+            ax.text(*track[k], person_name(other), ha="center", va="center", fontsize=LABEL_PT * 0.6, zorder=6)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\nt = {t:.1f} s   clearance {ep['gap'][k]:+.2f} m\ndashed ring: real {agent_kind(agent)} now, dotted line: current plan, dotted ring: personal space",
-            ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
+            ha="left", va="top", fontsize=LABEL_PT * 0.6, zorder=7)
     return figure_png(fig)
 
 
@@ -113,7 +113,7 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
     others = longest["others"]
     frames = []
     for k in range(len(longest["t"])):
-        fig, ax, _ = bev_axes(False)
+        fig, ax, _ = bev_axes(False, FIGURE_DPI)
         draw_room(ax, site, agent, longest["goal"])
         draw_reference(ax, longest["goal"], longest["real"][0], longest["real"])
         real = longest["real"]  # the real agent now, as a dashed ring at body size (held at its last logged position)
@@ -127,15 +127,15 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
             ax.plot(*path[-1], marker=KIND_MARKER[kind], color=VLM_COLOUR, mec="k", ms=7, zorder=6)
         m = longest["manifest"]
         ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{m['experiment']} {m['framing']} {m['thinking']}\n{m['trip']}\nt = {k * DT:.1f} s",
-                ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
-        ax.legend(handles=trajectory_legend(agent, list(others)), ncol=2, loc="lower left", fontsize=LABEL_PX * 0.6, framealpha=0.85)
+                ha="left", va="top", fontsize=LABEL_PT * 0.6, zorder=7)
+        ax.legend(handles=trajectory_legend(agent, list(others)), ncol=2, loc="lower left", fontsize=LABEL_PT * 0.6, framealpha=0.85)
         frames.append(figure_png(fig))
     return _write_gif(frames, folder / "animation.gif", speed)
 
 
 def timeline(folder: Path, ep: dict) -> Path:
     """Write <folder>/timeline.png from load_episode(folder): the paths of the planned agent and the others coloured by time on one scale."""
-    fig, ax, _ = bev_axes(False)
+    fig, ax, _ = bev_axes(False, FIGURE_DPI)
     draw_room(ax, ep["site"], ep["agent"], ep["goal"])
     ax.plot(*ep["real"].T, ls="--", color=REAL_PATH, lw=1.5, alpha=0.6, zorder=3)
     cmap, t = colormaps[CMAP], ep["t"]
@@ -145,14 +145,14 @@ def timeline(folder: Path, ep: dict) -> Path:
         ax.scatter(*track.T, c=cmap(norm), marker=marker, s=30 if marker == "o" else 22, ec="k", lw=0.3, zorder=5)
     for other, track in ep["others"].items():
         if agent_kind(other) == "human":
-            ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PX * 0.7, color=PERSON_LABEL, zorder=7)
+            ax.text(*track[0] + [0, 0.12], person_name(other), ha="center", fontsize=LABEL_PT * 0.7, color=PERSON_LABEL, zorder=7)
     ax.plot(*ep["track"][0], marker="s", color="k", ms=8, zorder=6)
-    cax = fig.add_axes([0.665, 0.924, 0.245, 0.012])  # x 0.6..1.7 m, y 1.86..1.92 m: the strip above the room's top wall, right of the title
+    cax = fig.add_axes([0.65, 0.95, 0.275, 0.012])  # x 0.6..1.7 m, y 1.80..1.85 m: the strip above the room's top wall, right of the title
     cbar = fig.colorbar(ScalarMappable(cmap=cmap), cax=cax, orientation="horizontal")
     cbar.ax.xaxis.set_ticks_position("top")
     cbar.set_ticks([0, 1], labels=[f"{t[0]:.1f} s", f"{t[-1]:.1f} s"])
-    cbar.ax.tick_params(labelsize=LABEL_PX * 0.55)
-    ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\ncolour = time; circles: planned agent, triangles: other agents; dashed: real path", ha="left", va="top", fontsize=LABEL_PX * 0.6, zorder=7)
+    cbar.ax.tick_params(labelsize=LABEL_PT * 0.55)
+    ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\ncolour = time; circles: planned agent, triangles: other agents; dashed: real path", ha="left", va="top", fontsize=LABEL_PT * 0.6, zorder=7)
     out = folder / "timeline.png"
     out.write_bytes(figure_png(fig))
     return out

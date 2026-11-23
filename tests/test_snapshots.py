@@ -17,12 +17,20 @@ from traj_gen.harness.episodes import ConversationEpisode
 from traj_gen.harness.presets import PRESETS
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene
+from traj_gen.outputs.planner import UNITS
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
 FOLLOWUP_STEPS = 2  # the follow-up turn is rendered this many steps after the trip start (the test trips have 3 steps of replay left)
-# A fixed reply per output mode and units: positions, [turn in degrees, distance] steps, or velocities.
-REPLY = {("positions", "m"): [[0.1, -0.2], [0.2, 0.1], [0.3, 0.4]], ("positions", "px"): [[460.0, 420.0], [480.0, 440.0], [500.0, 470.0]],
-         ("steer", "px"): [[0.0, 20.0], [-15.0, 22.0], [30.0, 10.0]], ("steer", "m"): [[0.0, 0.1], [-15.0, 0.11], [30.0, 0.05]]}
+# A fixed reply per output mode, in metres: positions, or [turn in degrees, distance] steps. Written in pixels, it is rounded to whole pixels.
+REPLY_M = {"positions": [[-0.08, 0.1], [0.02, 0.0], [0.12, -0.15]], "steer": [[0.0, 0.1], [-15.0, 0.11], [30.0, 0.05]]}
+
+
+def reply(output: str, units: str) -> np.ndarray:
+    """The fixed reply of an output mode, in the units."""
+    value, u = np.array(REPLY_M[output]), UNITS[units]
+    if units == "m":
+        return value
+    return np.round(u.pos(value) if output == "positions" else np.c_[value[:, 0], u.length(1.0) * value[:, 1]])
 
 
 KINDS = ("human", "robot")
@@ -40,11 +48,11 @@ def render(case: str) -> dict:
     builder = PromptBuilder(harness.framing, planner, exp.images, planner.max_steps(len(trip["time"]) - start - 1), exp.predict)
     scene = Scene(trip, SITE, start, track[: start + 1])
     later = Scene(trip, SITE, start + FOLLOWUP_STEPS, track[: start + FOLLOWUP_STEPS + 1])
-    reply = np.array(REPLY[harness.output, harness.units])
+    value = reply(harness.output, harness.units)
     snapshot = {"preset": name, "kind": kind, "id": harness.id, "settings": harness.settings(), "think_max_tokens": planner.think_max_tokens,
                 "system": builder.system(scene), "first": builder.first(scene).text,
                 "followup": builder.followup(later, exp.execute_s).text if exp.episode is ConversationEpisode else None,
-                "reply": reply.tolist(), "positions_m": np.round(planner.positions(reply, scene)[0], 6).tolist()}
+                "reply": value.tolist(), "positions_m": np.round(planner.positions(value, scene)[0], 6).tolist()}
     return json.loads(json.dumps(snapshot))
 
 
