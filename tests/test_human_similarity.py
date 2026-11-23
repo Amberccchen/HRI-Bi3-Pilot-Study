@@ -56,9 +56,10 @@ def test_minimum_distances_come_from_the_right_agent():
     np.testing.assert_allclose(f["min_distance_human"], [0.6])
 
 
-def compare(generated, real, reference_pool, seed=0, n_draws=200):
+def compare(generated, real, reference_pool, seed=0, n_draws=200, per_trial=1, reference_seed=0):
     rng = np.random.default_rng(seed)
-    return feature_distances(generated, real, reference_pool, n_bootstrap=n_draws, rng=rng)
+    return feature_distances(generated, real, reference_pool, n_bootstrap=n_draws, rng=rng,
+                             reference_draws_per_trial=per_trial, reference_seed=reference_seed)
 
 
 def test_identical_sets_have_zero_distance():
@@ -141,3 +142,27 @@ def test_moves_of_one_participant_pair_share_a_trial_label_across_controllers():
 
     positions = {"human0": np.zeros((5, 2)), "robot": np.ones((5, 2)), "human1": np.ones((5, 2))}
     assert move_features(trip("cv"), positions, 4)["trial"] == move_features(trip("hst"), positions, 4)["trial"] == ("um", "um1")
+
+
+def test_reference_pools_several_subsets_per_trial():
+    # Trial A has moves at 0, 1 and 2 and the generated set one move, so each of A's draws is one of them: W1 to the
+    # real set (all at 0) is 0, 1 or 2. Twenty draws from each of two such trials give 40 pooled draws covering all three.
+    generated = [record(speed=[0.0], trial="G")]
+    real = [record(speed=[0.0], trial="R")]
+    pool = [record(speed=[v], trial=t) for t in ("A", "B") for v in (0.0, 1.0, 2.0)]
+    out = compare(generated, real, pool, per_trial=20)["speed"]
+    assert out.n_reference_used == 40 and out.n_reference_trials == 2
+    assert out.reference_interval == pytest.approx((0.0, 2.0))  # 2.5 and 97.5 percentiles of 40 draws over {0, 1, 2}
+
+
+def test_reference_does_not_depend_on_the_generated_values_or_the_bootstrap_seed():
+    # Two generated sets with the same count per stratum but other values, compared with different bootstrap seeds,
+    # get the same reference: the subsets come from their own seeded generators.
+    rng = np.random.default_rng(3)
+    real = [record(speed=rng.uniform(0, 2, 4), trial="R") for _ in range(5)]
+    pool = [record("ab"[i % 2], speed=rng.uniform(0, 2, 4), trial=f"T{i % 4}") for i in range(40)]
+    first = [record("a", speed=[0.1], trial="G"), record("b", speed=[0.2], trial="G")]
+    second = [record("a", speed=[1.5, 1.7], trial="G"), record("b", speed=[0.9], trial="G")]
+    one = compare(first, real, pool, seed=1, per_trial=10)["speed"]
+    two = compare(second, real, pool, seed=2, per_trial=10)["speed"]
+    assert (one.reference_median, one.reference_interval) == (two.reference_median, two.reference_interval)

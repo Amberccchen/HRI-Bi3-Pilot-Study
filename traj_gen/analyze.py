@@ -35,7 +35,7 @@ without a move (not ok, or the goal not reached) are left out and counted. The r
 the run's trips folder that reaches its goal and does not start within the arrival radius (as select requires), stratified by
 (start station, goal station). A trial is one participant pair, which ran all five controllers. Against the site pool, the real
 set is the site's moves from trials other than the generated moves' trials. Against the same trips, it is the test trips' real
-moves. In both, the reference draws are the site's other trials (feature_distances), and their number is reported with each
+moves. In both, the reference draws are REFERENCE_DRAWS_PER_TRIAL matched subsets of each of the site's other trials (feature_distances), and their numbers are reported with each
 row. similarity_pool.csv lists per site the trips in the pool and the person trips left out of it.
 """
 
@@ -81,6 +81,7 @@ OVERLAY_PANEL_IN = 4.2         # side of one panel of a per-trip overlay figure,
 FRAMING_MARKER = {"neutral": ("o", False), "social": ("o", True), "social_body": ("s", True), "cautious": ("D", True), "participant": ("o", False)}  # (shape, filled) per prompt framing
 TURN_MIN_DISPLACEMENT_M = 0.15  # turning angles need both 0.8 s displacements at least this long (human_similarity.trajectory_features)
 SIMILARITY_DRAWS = 1000         # bootstrap draws of each feature distance
+REFERENCE_DRAWS_PER_TRIAL = 20  # matched subsets per reference trial, pooled: 300-400 reference draws per site from 16-19 trials
 FAMILY = {SingleShotEpisode: "single shot", RollingEpisode: "rolling", ConversationEpisode: "conversation"}
 # validated categorical slots 1-3 (dataviz reference palette, light surface). The baselines use neutral grey and violet.
 FAMILY_COLOUR = {"single shot": "#2a78d6", "rolling": "#eb6834", "conversation": "#1baf7a"}
@@ -373,13 +374,14 @@ def similarity(df: pd.DataFrame, run: Path, trips: dict, pool: dict) -> pd.DataF
         comparisons = {"site pool": [m for m in moves if m["trial"] not in generated_trials],
                        "same trips": [pool[site][t] for t in sorted(set(d.trip) & set(pool[site]))]}
         for comparison, real in comparisons.items():
-            distances = feature_distances(generated, real, moves, n_bootstrap=SIMILARITY_DRAWS, rng=rng)
+            distances = feature_distances(generated, real, moves, n_bootstrap=SIMILARITY_DRAWS, rng=rng,
+                                          reference_draws_per_trial=REFERENCE_DRAWS_PER_TRIAL, reference_seed=SEED)
             for feature, fd in distances.items():
                 rows.append({**dict(zip(COND, cond)), "site": site, "comparison": comparison, "feature": feature, "w1": fd.w1,
                              "w1_lo": fd.w1_interval[0], "w1_hi": fd.w1_interval[1], "reference_median": fd.reference_median,
                              "reference_lo": fd.reference_interval[0], "reference_hi": fd.reference_interval[1],
                              "reference_interval": "percentiles 2.5-97.5" if fd.n_reference_used >= MIN_PERCENTILE_DRAWS else "min-max",
-                             "n_reference_trials": fd.n_reference_used, "reference_moves_median": fd.reference_moves_median,
+                             "n_reference_draws": fd.n_reference_used, "n_reference_trials": fd.n_reference_trials, "reference_moves_median": fd.reference_moves_median,
                              "n_bootstrap_used": fd.n_bootstrap_used, "n_generated": fd.n_generated, "n_real": fd.n_real,
                              "n_episodes": len(d), "n_without_move": len(d) - len(ok)})
     return pd.DataFrame(rows)
