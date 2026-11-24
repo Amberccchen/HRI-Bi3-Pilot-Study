@@ -1,0 +1,9 @@
+Your skill ran for {executed_s} s. The state is now:
+
+{images}
+
+{scene}
+
+Choose again, in the same format as before.
+
+{options}

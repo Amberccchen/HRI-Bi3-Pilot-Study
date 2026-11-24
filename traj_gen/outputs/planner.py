@@ -113,6 +113,10 @@ class QueryPlanner(Planner):
         """Fields of the output template beyond the shared ones."""
         return {}
 
+    def reply_fields(self) -> dict:
+        """Fields of the reply template: the JSON key and the example pairs."""
+        return {"key": self.key, "example": self.example_text()}
+
     def extra_text(self, scene: Scene) -> str:
         """Text after the state: the other agents' recorded future positions for the next TRUE_FUTURE_S of the planned agent's kind when the
         experiment gives them, else nothing."""

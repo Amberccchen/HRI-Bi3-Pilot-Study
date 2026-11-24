@@ -25,7 +25,7 @@ from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, p
 
 # Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
 # participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer and steer_vel modes.
+# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer, steer_vel and skills modes.
 FRAMINGS = {"neutral": "robot", "robot_scored_distances": "robot", "participant": "human", "scored_distances": "human"}
 SCORED_DISTANCE_FRAMINGS = {"scored_distances", "robot_scored_distances"}
 
@@ -45,7 +45,7 @@ class PromptBuilder:
         if FRAMINGS[framing] != self.kind:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
         if (framing in SCORED_DISTANCE_FRAMINGS) != mode.scored_distance_framings:
-            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer and steer_vel modes")
+            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer, steer_vel and skills modes")
 
     def output_text(self) -> str:
         u = self.mode.units
@@ -53,7 +53,7 @@ class PromptBuilder:
                       "coordinates": u.coordinates, "positive_turn": u.positive_turn, "negative_turn": u.negative_turn}
         output = load_prompt("output", self.mode.template, self.kind).format(unit=u.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
                                                                         **axis_words, **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
-        return output + "\n" + load_prompt("reply", self.mode.reply_template).format(key=self.mode.key, example=self.mode.example_text(), unit=u.name)
+        return output + "\n" + load_prompt("reply", self.mode.reply_template).format(unit=u.name, **self.mode.reply_fields())
 
     def system(self, scene: Scene) -> str:
         u, site = self.mode.units, scene.site
