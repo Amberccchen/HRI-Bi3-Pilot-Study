@@ -36,7 +36,7 @@ GRID_M = 0.5         # grid spacing in metre mode
 GRID_PX = 50         # grid spacing in pixel mode: round numbers for the model to read (50 px = 0.45 m)
 STATION_BOX_M = 0.2   # side of a station's box as drawn on the map, wide enough for an S<k> label at 0.8 * LABEL_PT
 LABEL_PT = 20        # label font size in points: 14 px on the model's map
-LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s (one rolling execution window)
+LABEL_EVERY_S = 2.0  # result figure: time mark on the executed path every 2 s
 ROBOT, PERSON, GOAL, GRID, WALL, BOX, TICK = "#1f77b4", "#e66101", "#2ca02c", "#d9d9d9", "#222222", "#b8b8b8", "#444444"
 STRAIGHT_LINE, REAL_PATH, PERSON_LABEL, PLANNED_PERSON = "#777777", "#006d2c", "#7a3300", "#7b3294"  # the real path is a darker green than the goal marks
 KIND_COLOUR = {"robot": ROBOT, "human": PERSON}  # colour of a logged agent of a kind

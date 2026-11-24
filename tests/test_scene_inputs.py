@@ -6,11 +6,13 @@ import pytest
 from tests.fake_trips import SERIES_WIGGLE_M, SITE, person_trip
 from traj_gen.harness.episodes import Episode
 from traj_gen.harness.presets import PRESETS
-from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene
+from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene, track_motion
+from traj_gen.observation.units import Metres
 
 
 def scene_at(trip: dict, i: int) -> Scene:
-    return Scene(trip, SITE, i, np.asarray(trip["tracks"][trip["agent"]], float)[: i + 1, :2])
+    track = np.asarray(trip["tracks"][trip["agent"]], float)[: i + 1, :2]
+    return Scene(trip, SITE, i, track, track_motion(track))
 
 
 def test_other_agents_positions_and_history_come_from_the_series_not_the_scored_tracks():
@@ -51,3 +53,16 @@ def test_planned_persons_history_before_set_off_comes_from_the_series(tmp_path):
     trip["tracks"]["human0"] = (np.asarray(trip["tracks"]["human0"]) + 5.0).tolist()
     episode = Episode(tmp_path, PRESETS["pilot_v2"].harness("human").experiment(), trip, SITE, "participant", "think", 0)
     np.testing.assert_allclose(episode.track, trip["input_tracks_10hz"]["tracks"]["human0"][::4][: trip["start_index"] + 1, :2])
+
+
+def test_the_last_0_4_s_of_each_other_agent_are_the_series_samples_0_3_0_2_and_0_1_s_before_now():
+    """An index off by one would give a sample at the scene's time or one before the last history point, which renders without an error."""
+    trip = person_trip()
+    i = trip["start_index"]
+    series = trip["input_tracks_10hz"]
+    now = series["time"][i * 4]
+    for p in scene_at(trip, i).others:
+        expected = [series["tracks"][p["id"]][int(np.argmin(np.abs(np.asarray(series["time"]) - (now - dt))))][:2] for dt in (0.3, 0.2, 0.1)]
+        np.testing.assert_allclose(p["recent"], expected)
+    text = scene_at(trip, i).text(Metres(), False, False, False)
+    assert text.count("Between the last of these and now, every 0.1 s: ") == 2

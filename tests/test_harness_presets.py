@@ -31,8 +31,8 @@ def test_id_suffixes_for_check_count_and_replanning_interval():
     def h(**overrides):
         return PRESETS["harness_v2"].harness("human", {"prediction": "true_future", **overrides})
     assert h(check=3).id == "rh_steer_px_bev_conv_true_future_check3"
-    assert h(execute_s=0.8).id == "rh_steer_px_bev_conv_true_future_replan0.8s"
-    assert h(execute_s=2.0).id == "rh_steer_px_bev_conv_true_future"  # the default adds nothing
+    assert h(execute_s=1.2).id == "rh_steer_px_bev_conv_true_future_replan1.2s"
+    assert h(execute_s=0.8).id == "rh_steer_px_bev_conv_true_future"  # the default adds nothing
     assert h(units="m").id == "rh_steer_m_bev_conv_true_future"
     assert Harness("rolling", "vel1", "m", "bev", "neutral").execute_s == 0.4 and Harness("single_shot", "positions", "px", "bev", "neutral").execute_s is None
 
@@ -75,7 +75,7 @@ def test_harness_file_is_written_once_and_a_changed_harness_is_refused(tmp_path)
     assert json.loads(path.read_text())["settings"] == h.settings()
     write_harness_file(tmp_path, "harness_v2", h, {})  # the same settings again: accepted
     stored = json.loads(path.read_text())
-    stored["settings"]["execute_s"] = 0.8  # as if the default interval had changed in the code since the first run
+    stored["settings"]["execute_s"] = 1.2  # as if the default interval had changed in the code since the first run
     path.write_text(json.dumps(stored))
     with pytest.raises(ValueError, match="holds other settings"):
         write_harness_file(tmp_path, "harness_v2", h, {})
@@ -83,8 +83,8 @@ def test_harness_file_is_written_once_and_a_changed_harness_is_refused(tmp_path)
 
 def test_analysis_reads_harness_files_and_the_baseline_folders(tmp_path):
     """A folder with harness.json is read from it, a baseline folder as its baseline. Other folders, without harness.json, are ignored."""
-    new = PRESETS["harness_v2"].harness("human", {"execute_s": 0.8})
-    write_harness_file(tmp_path, "harness_v2", new, {"execute_s": 0.8})
+    new = PRESETS["harness_v2"].harness("human", {"execute_s": 1.2})
+    write_harness_file(tmp_path, "harness_v2", new, {"execute_s": 1.2})
     for folder in ("rh_px_bev_conv", "replay", "smoke"):
         (tmp_path / folder).mkdir()
     found = run_experiments(tmp_path)

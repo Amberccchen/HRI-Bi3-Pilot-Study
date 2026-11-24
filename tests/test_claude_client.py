@@ -84,13 +84,13 @@ def test_finish_reasons(monkeypatch):
         assert s.finish == finish and s.value is None
 
 
-def test_qwen_request_unchanged(monkeypatch):
+def test_qwen_request(monkeypatch):
     sent = []
     monkeypatch.setattr(clients, "post", lambda path, payload: sent.append(payload) or {"choices": [{"message": {"content": "{}", "reasoning": "r"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
     chat = Chat(clients.QwenClient(FakeBuilder(), True), "system text")
     s = chat.ask(Turn("go", []), {})[0]
     assert sent[0]["messages"][0] == {"role": "system", "content": [{"type": "text", "text": "system text"}]}
-    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": True, "preserve_thinking": False, "reasoning_effort": "medium"}
+    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": True, "preserve_thinking": True, "reasoning_effort": "medium"}
     assert sent[0]["temperature"] == 1.0 and sent[0]["max_tokens"] == FakeMode.think_max_tokens and s.reasoning == "r"
 
 
@@ -123,3 +123,38 @@ def test_run_folder_takes_one_model(tmp_path):
         check_run_model(tmp_path, {}, label)
     (episode / "manifest.json").write_text('{"model": {"name": "claude-sonnet-5-5", "thinking": true, "output_config": {"effort": "high"}}}')
     check_run_model(tmp_path, {}, label)
+
+
+def two_turns(client):
+    """Ask, accept the reply, ask again: the conversation the second request carries."""
+    chat = Chat(client, "system text")
+    chat.accept(chat.ask(Turn("first", []), {})[0])
+    chat.ask(Turn("second", []), {})
+    return chat
+
+
+def test_claude_history_after_two_turns_holds_the_first_replys_blocks_unchanged(monkeypatch):
+    """The second request must carry the first reply's whole content, its thinking block (with the signature the API checks) before its text,
+    as the same objects: a history of the reply text alone would drop the earlier thinking silently."""
+    store, first = [], reply('{"waypoints": [[0, 0]]}', thinking="plan one")
+    first.content[0].signature = "sig"
+    monkeypatch.setattr(ClaudeClient, "api", fake_api(store, first))
+    two_turns(ClaudeClient(FakeBuilder(), True))
+    history = store[1]["messages"]
+    assert [m["role"] for m in history] == ["user", "assistant", "user"]
+    assert history[1]["content"] == first.content and history[1]["content"][0].thinking == "plan one" and history[1]["content"][0].signature == "sig"
+    assert history[2]["content"] == [{"type": "text", "text": "second"}]
+
+
+def test_qwen_history_after_two_turns_holds_the_first_replys_reasoning(monkeypatch):
+    """The second request must give the first reply's reasoning in its assistant message, and ask the template to keep it."""
+    sent = []
+    answers = iter([("{}", "plan one"), ("{}", "plan two")])
+    def post(path, payload):
+        sent.append(payload)
+        content, reasoning = next(answers)
+        return {"choices": [{"message": {"content": content, "reasoning": reasoning}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+    monkeypatch.setattr(clients, "post", post)
+    two_turns(clients.QwenClient(FakeBuilder(), True))
+    assert sent[1]["messages"][2] == {"role": "assistant", "content": [{"type": "text", "text": "{}"}], "reasoning": "plan one"}
+    assert sent[1]["chat_template_kwargs"]["preserve_thinking"] is True

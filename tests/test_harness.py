@@ -1,14 +1,18 @@
+import json
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
 from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
-from traj_gen.harness.clients import QwenClient
-from traj_gen.harness.episodes import Episode
-from traj_gen.harness.presets import Harness
+from traj_gen.harness import clients
+from traj_gen.harness.clients import ClaudeClient, QwenClient
+from traj_gen.harness.episodes import ConversationEpisode, Episode
+from traj_gen.harness.presets import PRESETS, Harness
 from traj_gen.harness.experiments import Experiment
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import Scene
+from traj_gen.observation.scene import Scene, track_motion
 
 
 # The experiments of the tests: positions in pixels and steer in one conversation on the map, steer with the recorded futures, and with the plan check.
@@ -24,7 +28,8 @@ def prompts(name: str, trip: dict, framing: str) -> str:
     exp = experiment(name, framing)
     planner = exp.planner(exp, trip, framing, "think")
     builder = PromptBuilder(framing, planner, exp.images, 20, exp.predict)
-    scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"][trip["agent"]])[: trip["start_index"] + 1, :2])
+    track = np.asarray(trip["tracks"][trip["agent"]], float)[: trip["start_index"] + 1, :2]
+    scene = Scene(trip, SITE, trip["start_index"], track, track_motion(track))
     return builder.system(scene) + "\n" + builder.first(scene).text
 
 
@@ -59,8 +64,9 @@ def test_steer_steps_are_cut_to_the_turn_and_speed_limits():
     trip = person_trip()
     exp = experiment("steer", "scored_distances")
     planner = exp.planner(exp, trip, "scored_distances", "think")
-    scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[: trip["start_index"] + 1, :2])
-    heading = planner.heading(scene)
+    track = np.asarray(trip["tracks"]["human0"], float)[: trip["start_index"] + 1, :2]
+    scene = Scene(trip, SITE, trip["start_index"], track, track_motion(track))
+    heading = planner.units.heading_deg(scene.heading)
     start = planner.units.pos(scene.track[-1])
     uv = planner.units.pos(planner.positions(np.array([[170.0, 500.0], [0.0, -30.0]]), scene)[0])
     step_px = planner.units.length(planner.step_m)
@@ -146,3 +152,57 @@ def test_plan_check_and_scored_distance_framings_use_the_scored_distances():
     assert comfort_distance(SITE) == pytest.approx(0.33 / 2 + 0.25)
     robot = prompts("steer", robot_trip(), "robot_scored_distances")
     assert "less than 35 px apart" in robot and "at least 46 px apart" in robot  # 0.315 m and 0.415 m at 112 px/m
+
+
+def test_a_person_reads_4_s_of_recorded_future_but_the_plan_check_tests_the_whole_of_it(tmp_path):
+    """The text lists the others' recorded positions up to t + 4.0 s only, while a contact at t + 4.4 s must still be found by the plan check:
+    a check run on the cut futures would pass this plan silently."""
+    trip = person_trip()
+    exp = Harness("rolling_conv", "positions", "px", "bev", "participant", prediction="true_future", check=2).experiment()
+    episode = Episode(tmp_path, exp, trip, SITE, "participant", "think", 0)
+    other = np.asarray(trip["tracks"]["human1"], float)[:, :2]
+    offset = np.array([0.0, -0.5])  # beyond the 0.40 m personal space of the other participant
+    episode.track = (other[0] + offset)[None]  # the planned person at index 0, beside human1
+    scene = episode.scene()
+    text = episode.planner.extra_text(scene)
+    assert "P2: t+0.4 s" in text and "t+4.0 s" in text and "t+4.4 s" not in text
+    plan = np.vstack([other[1:11] + offset, other[11:12]])  # keep beside human1 for 4 s, then step onto it at t + 4.4 s
+    counts, feedback = episode.conflicts(episode.planner.units.pos(plan), scene)
+    assert counts == (1, 0) and "at t + 4.4 s" in feedback
+
+
+def test_a_conversation_episode_keeps_claudes_thinking_and_logs_it(tmp_path, monkeypatch):
+    """A whole conversation with fake Claude replies: each later request carries the earlier replies' content blocks unchanged, and
+    the query records log the reasoning in the history (a content block they could not write would stop the run when queries.jsonl is saved)."""
+    requests = []
+
+    class Stream:  # the Messages API's stream, answering each request with a thinking block and a plan 30 px further up the map
+        def __init__(self, **kwargs):
+            requests.append(kwargs)
+            k = len(requests)
+            content = [SimpleNamespace(type="thinking", thinking=f"thought {k}", signature=f"sig {k}"),
+                       SimpleNamespace(type="text", text='{"points": [[235, %d]]}' % (283 - 30 * k))]
+            self.message = SimpleNamespace(content=content, stop_reason="end_turn",
+                                           usage=SimpleNamespace(input_tokens=10, cache_read_input_tokens=0, cache_creation_input_tokens=0, output_tokens=5))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return self.message
+
+    monkeypatch.setattr(clients, "_backend", {"name": "claude"})
+    monkeypatch.setattr(ClaudeClient, "api", SimpleNamespace(messages=SimpleNamespace(stream=Stream)))
+    exp = PRESETS["pilot_v2"].harness("human", {"execute_s": 0.4}).experiment()
+    episode = ConversationEpisode(tmp_path, exp, person_trip(), SITE, "participant", "think", 0)
+    episode.run()
+    assert episode.status == "ok" and len(requests) == 3
+    last = requests[-1]["messages"]
+    assert [m["role"] for m in last] == ["user", "assistant", "user", "assistant", "user"]
+    assert [m["content"][0].thinking for m in last if m["role"] == "assistant"] == ["thought 1", "thought 2"]
+    assert "heading -90 degrees." in last[2]["content"][-1]["text"]  # the executed step went straight up the map
+    logged = json.loads(json.dumps(episode.records))  # as queries.jsonl writes them. Message 0 is the system prompt
+    assert logged[2]["messages"][2]["content"] == [{"reasoning": "thought 1"}, '{"points": [[235, 253]]}']

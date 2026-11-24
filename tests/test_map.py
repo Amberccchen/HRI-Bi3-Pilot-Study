@@ -7,13 +7,14 @@ from PIL import Image
 
 from tests.fake_trips import SITE, person_trip
 from traj_gen.observation.bev import EXTENT_M, SIZE_PX, bev_transform, render_bev
-from traj_gen.observation.scene import Scene
+from traj_gen.observation.scene import Scene, track_motion
 
 
 def rendered(pixel_ticks: bool) -> tuple[np.ndarray, Scene]:
     trip = person_trip()
     i = trip["start_index"]
-    scene = Scene(trip, SITE, i, np.asarray(trip["tracks"]["human0"], float)[: i + 1, :2])
+    track = np.asarray(trip["tracks"]["human0"], float)[: i + 1, :2]
+    scene = Scene(trip, SITE, i, track, track_motion(track))
     png, _ = render_bev(scene, pixel_ticks, False)
     return np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), int), scene
 

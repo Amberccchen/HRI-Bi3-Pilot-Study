@@ -6,8 +6,9 @@ messages into its API's request and a reply into a Sample, so nothing above this
 
 A Chat holds one conversation (system prompt, then user turns and the model's replies). A single
 query is a Chat with one ask(). A rolling conversation keeps asking and accept()s the reply it
-wants to continue from. Per sample the client returns the parsed plan (None when the reply is not
-a valid plan), the raw reply, the reasoning text, the finish reason, token counts and latency.
+wants to continue from, with its reasoning, so the model reads its earlier thinking in later turns. Per sample the client returns the
+parsed plan (None when the reply is not a valid plan), the raw reply, the reasoning text, the parts the reply adds to the conversation,
+the finish reason, token counts and latency.
 
 What the reply must look like (JSON key, example, validity checks, the start of a reply) comes from the PromptBuilder of the
 output mode, so the client has no per-mode branches.
@@ -59,6 +60,7 @@ class Sample:
     value: np.ndarray | None  # the plan as an (k, 2) array in the output units, None for an invalid reply
     content: str              # the reply text the plan was read from
     reasoning: str            # the model's thinking ("" without thinking)
+    reply_parts: list         # the reply as accept() adds it to the conversation: ("reasoning", str) and ("text", str) for Qwen, ("claude_blocks", content) for Claude
     finish: str               # vLLM finish reason of the (last) call: "stop" or "length"
     prompt_tokens: int
     completion_tokens: int
@@ -91,17 +93,24 @@ class QwenClient:
 
     @staticmethod
     def _api_messages(messages: list[dict]) -> list[dict]:
+        """The chat's messages in the OpenAI format, with an earlier reply's reasoning in the assistant message's reasoning field (vLLM hands
+        it to the chat template as reasoning_content)."""
         def part(p):
             if p[0] == "text":
                 return {"type": "text", "text": p[1]}
             return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(p[2]).decode()}}
-        return [{"role": m["role"], "content": [part(p) for p in m["parts"]]} for m in messages]
+        out = []
+        for m in messages:
+            message = {"role": m["role"], "content": [part(p) for p in m["parts"] if p[0] != "reasoning"]}
+            reasoning = [p[1] for p in m["parts"] if p[0] == "reasoning"]
+            out.append(message | {"reasoning": reasoning[0]} if reasoning else message)
+        return out
 
     def _call(self, messages: list[dict], extra: list[dict] | None = None, **kwargs) -> tuple[dict, float]:
         """One chat completion for the conversation so far (+ extra trailing messages): the choice with its usage, and the latency."""
         t0 = time.perf_counter()
         payload = {"model": MODEL, "messages": self._api_messages(messages) + (extra or []),
-                   "chat_template_kwargs": {"enable_thinking": self.thinking, "preserve_thinking": False,  # earlier replies enter the history without a (empty) think block
+                   "chat_template_kwargs": {"enable_thinking": self.thinking, "preserve_thinking": True,  # the template keeps the think block of every earlier reply
                                     **({"reasoning_effort": THINKING_EFFORT} if self.thinking else {})},
                    **self.sampling, **kwargs}
         r = post("/v1/chat/completions", payload)
@@ -128,7 +137,8 @@ class QwenClient:
             latency += dt
             prompt_tokens += usage["prompt_tokens"]
             completion_tokens += usage["completion_tokens"]
-        return Sample(b.parse(content), content, reasoning, choice["finish_reason"], prompt_tokens, completion_tokens, latency)
+        return Sample(b.parse(content), content, reasoning, [("reasoning", reasoning), ("text", content)], choice["finish_reason"], prompt_tokens,
+                      completion_tokens, latency)
 
 
 class ClaudeClient:
@@ -137,6 +147,9 @@ class ClaudeClient:
     Thinking on is adaptive thinking at the selected effort (default CLAUDE_THINKING_EFFORT), with the thinking summary kept as the reasoning text. Thinking off is the model's
     own way of switching it off. A reply cut off by the token limit is an invalid reply: there is no forced
     answer, since Claude takes no assistant prefill. The model is the one given to select_backend().
+    An accepted reply enters the conversation as its whole content, thinking blocks included and unchanged, so that later turns read the
+    earlier thinking. The API reads a thinking block only while every message before it is unchanged, which holds as the conversation is
+    only ever appended to (no map is replaced below CLAUDE_MAX_IMAGES).
     """
 
     max_images = CLAUDE_MAX_IMAGES
@@ -168,11 +181,13 @@ class ClaudeClient:
 
     @staticmethod
     def _api_messages(messages: list[dict]) -> list[dict]:
-        def part(p):
+        def parts(p):
+            if p[0] == "claude_blocks":
+                return list(p[1])
             if p[0] == "text":
-                return {"type": "text", "text": p[1]}
-            return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.standard_b64encode(p[2]).decode()}}
-        return [{"role": m["role"], "content": [part(p) for p in m["parts"]]} for m in messages if m["role"] != "system"]
+                return [{"type": "text", "text": p[1]}]
+            return [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64.standard_b64encode(p[2]).decode()}}]
+        return [{"role": m["role"], "content": [block for p in m["parts"] for block in parts(p)]} for m in messages if m["role"] != "system"]
 
     def sample(self, messages: list[dict]) -> Sample:
         cls = type(self)
@@ -190,7 +205,7 @@ class ClaudeClient:
         usage = r.usage
         prompt_tokens = usage.input_tokens + (usage.cache_read_input_tokens or 0) + (usage.cache_creation_input_tokens or 0)
         finish = {"end_turn": "stop", "max_tokens": "length"}.get(r.stop_reason, r.stop_reason)  # vLLM's names; a refusal stays "refusal"
-        return Sample(self.builder.parse(content), content, reasoning, finish, prompt_tokens, usage.output_tokens, latency)
+        return Sample(self.builder.parse(content), content, reasoning, [("claude_blocks", r.content)], finish, prompt_tokens, usage.output_tokens, latency)
 
 
 BACKENDS = {"qwen": QwenClient, "claude": ClaudeClient}
@@ -227,7 +242,8 @@ def backend_label() -> dict:
 
 
 class Chat:
-    """One conversation. messages hold parts ("text", str) or ("image", kind, png_bytes) so old maps can be dropped."""
+    """One conversation. messages hold parts ("text", str) or ("image", kind, png_bytes), so old maps can be dropped, and the replies' parts
+    (Sample.reply_parts)."""
 
     def __init__(self, client, system: str):
         self.client = client
@@ -242,8 +258,8 @@ class Chat:
         return self.resample(n)
 
     def accept(self, sample: Sample) -> None:
-        """Continue the conversation from this reply (its final text only, not its thinking)."""
-        self.messages.append({"role": "assistant", "parts": [("text", sample.content)]})
+        """Continue the conversation from this reply, its reasoning included."""
+        self.messages.append({"role": "assistant", "parts": sample.reply_parts})
 
     def resample(self, n: int = 1) -> list[Sample]:
         """n new samples for the last user turn: the retry for an invalid sample."""

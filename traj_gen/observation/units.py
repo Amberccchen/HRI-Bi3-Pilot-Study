@@ -53,6 +53,16 @@ class Metres:
     def len_text(self, m: float) -> str:
         return self.num(self.length(m))
 
+    def heading_deg(self, heading_rad: float) -> float:
+        """A heading in radians in the room frame, as degrees in these units' frame (0 along the first axis, 90 along the second), in (-180, 180]."""
+        v = self.vec([np.cos(heading_rad), np.sin(heading_rad)])
+        return float(np.degrees(np.arctan2(v[1], v[0])))
+
+    def heading_to_metres(self, heading_deg: float) -> float:
+        """A heading in degrees in these units' frame, as radians in the room frame."""
+        v = self.vec_to_metres([np.cos(np.radians(heading_deg)), np.sin(np.radians(heading_deg))])
+        return float(np.arctan2(v[1], v[0]))
+
     def bounds(self, room_m: float) -> dict:
         """The room's extent along the two coordinates, for the frame description."""
         corners = self.pos([[-room_m / 2, -room_m / 2], [room_m / 2, room_m / 2]])
