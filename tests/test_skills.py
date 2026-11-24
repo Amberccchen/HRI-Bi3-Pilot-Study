@@ -91,7 +91,7 @@ D = np.array([0.0, 1.0])
 
 
 def run_pass(other: np.ndarray, side: str, speed: float = 1.0, delta: float = 0.3, steps: int = 50):
-    return pass_substeps(WALKER, speed * D, GOAL, speed, other, 0, side, 0, delta, HALF_SIDE, steps)
+    return pass_substeps(WALKER, speed * D, GOAL, speed, other, 0, side, 0, delta, HALF_SIDE, steps)[:4]
 
 
 @pytest.mark.parametrize("case, other, speed", [("head-on", series((0.0, 1.5), (0.0, -1.0)), 1.0),
@@ -204,26 +204,30 @@ def test_a_pass_starts_from_the_velocity_the_last_skill_left():
     track = np.vstack([track[: start + 1], walked])
     later = Scene(trip, SITE, start + 1, track, planner.motion(None, scene, track))
     side = planner.offered["agents"]["robot"][0]
-    passed, _ = decide(planner, later, {"skill": "pass", "agent": "robot", "side": side, "speed": 1.0, "clearance": 0.6})
+    passed, _ = decide(planner, later, {"skill": "pass", "agent": "robot", "side": side, "speed": 1.0})
     assert np.linalg.norm(passed[0] - walked[0]) == pytest.approx(0.40, abs=0.01)  # from rest it would be about 0.16 m
 
 
-def test_clearance_below_the_contact_distance_is_raised():
+def test_delta_is_the_passed_agents_extra_body_radius():
+    """The fake trip is at UM: robot body radius 0.165 m (half the shorter footprint side), person 0.15 m."""
     planner, trip, track, start = skill_setup()
     scene = scene_at(trip, track, start)
-    decide(planner, scene, {"skill": "pass", "agent": "person", "side": "behind", "speed": 1.0, "clearance": 0.1})
-    assert planner.record["clearance_m"] == pytest.approx(0.30) and planner.record["clearance_raised"]
-    decide(planner, scene, {"skill": "pass", "agent": "person", "side": "behind", "speed": 1.0, "clearance": 0.7})
-    assert planner.record["clearance_m"] == pytest.approx(0.7) and not planner.record["clearance_raised"]
-    assert planner.manifest_fields()["decisions"] == 2 and len(planner.passes) == 2
+    decide(planner, scene, {"skill": "pass", "agent": "person", "side": "behind", "speed": 1.0})
+    assert planner.record["delta_m"] == pytest.approx(0.0)
+    decide(planner, scene, {"skill": "pass", "agent": "robot", "side": "behind", "speed": 1.0})
+    assert planner.record["delta_m"] == pytest.approx(0.015)
+    assert planner.manifest_fields()["decisions"] == 2 and len(planner.passes) == 2 and planner.passes[-1]["closest_m"] > 0
 
 
 @pytest.mark.parametrize("reply", ["no json", '["walk"]', '{"skill": "run", "speed": 1}', '{"skill": "walk"}', '{"skill": "walk", "speed": 0}',
                                    '{"skill": "walk", "speed": "fast"}', '{"skill": "walk", "speed": true}',
-                                   '{"skill": "pass", "agent": "robot", "side": "left", "speed": 1, "clearance": 0.5}',
-                                   '{"skill": "pass", "agent": "dog", "side": "behind", "speed": 1, "clearance": 0.5}',
-                                   '{"skill": "pass", "agent": "robot", "side": "behind", "speed": 1}',
-                                   '{"skill": "pass", "agent": "robot", "side": "behind", "speed": 1, "clearance": NaN}'])
+                                   '{"skill": "pass", "agent": "robot", "side": "left", "speed": 1}',
+                                   '{"skill": "pass", "agent": "dog", "side": "behind", "speed": 1}',
+                                   '{"skill": "pass", "agent": "robot", "speed": 1}',
+                                   '{"skill": "pass", "agent": "robot", "side": "behind", "speed": NaN}',
+                                   '{"skill": "pass", "agent": ["robot"], "side": "behind", "speed": 1}',
+                                   '{"skill": "pass", "agent": "robot", "side": ["behind"], "speed": 1}',
+                                   '{"skill": "pass", "agent": {"a": 1}, "side": {"b": 2}, "speed": 1}'])
 def test_invalid_replies(reply):
     planner, trip, track, start = skill_setup()
     planner.closing_text(scene_at(trip, track, start))  # the fake trip offers in front / behind for both others
@@ -234,10 +238,10 @@ def test_valid_replies_in_pixels():
     planner, trip, track, start = skill_setup("px")
     scene = scene_at(trip, track, start)
     planner.closing_text(scene)
-    value = planner.parse('Sure: {"skill": "pass", "agent": "robot", "side": "behind", "speed": 112, "clearance": 67, "note": 1}', 1)
-    assert value == {"skill": "pass", "agent": "robot", "side": "behind", "speed": 112, "clearance": 67}
+    value = planner.parse('Sure: {"skill": "pass", "agent": "robot", "side": "behind", "speed": 112, "clearance": 67}', 1)
+    assert value == {"skill": "pass", "agent": "robot", "side": "behind", "speed": 112}
     planner.positions(value, scene)
-    assert planner.record["speed_m_s"] == pytest.approx(1.0) and planner.record["clearance_m"] == pytest.approx(67 / 112)
+    assert planner.record["speed_m_s"] == pytest.approx(1.0)
     assert planner.parse('{"skill": "wait", "speed": 1}', 1) == {"skill": "wait"}
 
 
@@ -248,8 +252,8 @@ def test_options_leave_out_blocked_sides_and_offer_continue_after_a_choice():
     text = planner.closing_text(scene)
     assert planner.offered == {"continue": False, "agents": {"robot": ["in front", "behind"], "person": ["right"]}}
     assert '"continue"' not in text and '"right" to keep P2 on your right' in text and "on your left" not in text
-    decide(planner, scene, {"skill": "pass", "agent": "person", "side": "right", "speed": 1.0, "clearance": 0.5})
-    assert planner.closing_text(scene).splitlines()[1] == '- "continue": keep passing P2 with "side": "right", at 1.00 m/s, clearance 0.50 m'
+    decide(planner, scene, {"skill": "pass", "agent": "person", "side": "right", "speed": 1.0})
+    assert planner.closing_text(scene).splitlines()[1] == '- "continue": keep passing P2 with "side": "right", at 1.00 m/s'
 
 
 def test_the_option_list_closes_both_turns_after_the_true_future():
@@ -280,3 +284,15 @@ def test_gif_labels_each_frame_with_the_skill_that_moved_the_walker_there(tmp_pa
     assert load_episode(tmp_path, {trip["id"]: trip}, {trip["site"]: SITE})["skills"] == [None, "walk", "pass P2 behind"]
     (tmp_path / "plans.jsonl").write_text("".join(json.dumps({"time_s": p["time_s"], "positions_m": [], "reply": [[0, 0.1]]}) + "\n" for p in plans))
     assert load_episode(tmp_path, {trip["id"]: trip}, {trip["site"]: SITE})["skills"] is None
+
+
+def test_a_pass_started_inside_the_enlarged_robot_stays_finite():
+    """The LAAS robot (delta 0.184 m) standing 0.25 m ahead of a walker that walked into it, and the degenerate |D| = 0 case: the walker
+    moving straight away from it at 1 / lambda = 0.5 m/s, inside the enlarged robot."""
+    robot = series((0.0, 0.25), (0.0, 0.0), 10)
+    positions, v, _, distances, nonfinite = pass_substeps(np.zeros(2), np.array([0.0, 1.0]), np.array([0.0, 1.6]), 1.0, robot, 0, "left", 0, 0.184,
+                                                          HALF_SIDE, 6)
+    assert np.isfinite(positions).all() and np.isfinite(v).all() and nonfinite == 0 and distances[-1] > 0.25
+    positions, v, _, _, nonfinite = pass_substeps(np.zeros(2), np.array([0.0, -0.5]), np.array([0.0, -1.6]), 0.5, series((0.0, 0.1), (0.0, 0.0), 10),
+                                                  0, "left", 0, 0.184, HALF_SIDE, 1)
+    assert np.isfinite(positions).all() and np.isfinite(v).all() and nonfinite == 1

@@ -1,5 +1,5 @@
 Reply with only a JSON object, with nothing before or after it, in one of these forms:
 {{"skill": "walk", "speed": <speed>}}
-{{"skill": "pass", "agent": <"robot" or "person">, "side": <a side listed for that agent>, "speed": <speed>, "clearance": <clearance>}}
+{{"skill": "pass", "agent": <"robot" or "person">, "side": <a side listed for that agent>, "speed": <speed>}}
 {{"skill": "wait"}}
 {{"skill": "continue"}}

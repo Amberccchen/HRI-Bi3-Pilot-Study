@@ -23,7 +23,7 @@ SNAPSHOTS = Path(__file__).parent / "snapshots"
 FOLLOWUP_STEPS = 2  # the follow-up turn is rendered this many steps after the trip start (the test trips have 3 steps of replay left)
 # A fixed reply per output mode, in metres: positions, or [turn in degrees, distance] steps. Written in pixels, it is rounded to whole pixels.
 REPLY_M = {"positions": [[-0.08, 0.1], [0.02, 0.0], [0.12, -0.15]], "steer": [[0.0, 0.1], [-15.0, 0.11], [30.0, 0.05]]}
-SKILL_REPLY_M = {"speed": 1.0, "clearance": 0.6}  # the skills mode's fixed reply crosses behind the robot at these, written in the units
+SKILL_SPEED_M_S = 1.0  # the skills mode's fixed reply crosses behind the robot at this speed, written in the units
 # Snapshots of harnesses without a preset: name -> (preset, overrides), for a planned person.
 OVERRIDE_CASES = {"harness_v2_skills": ("harness_v2", {"output": "skills"}),
                   "harness_v2_skills_true_future": ("harness_v2", {"output": "skills", "prediction": "true_future"})}
@@ -33,8 +33,7 @@ def reply(output: str, units: str) -> np.ndarray | str:
     """The fixed reply of an output mode, in the units: an array, or the reply text for skills."""
     u = UNITS[units]
     if output == "skills":
-        speed, clearance = (u.len_text(SKILL_REPLY_M[k]) for k in ("speed", "clearance"))
-        return f'{{"skill": "pass", "agent": "robot", "side": "behind", "speed": {speed}, "clearance": {clearance}}}'
+        return f'{{"skill": "pass", "agent": "robot", "side": "behind", "speed": {u.len_text(SKILL_SPEED_M_S)}}}'
     value = np.array(REPLY_M[output])
     if units == "m":
         return value

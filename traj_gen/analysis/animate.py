@@ -39,7 +39,7 @@ from traj_gen.outputs.baselines import real_path
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
-SKILL_COLOUR = {"walk": "#ffd700", "pass": "#e7298a", "wait": "#000000"}  # apart from the agents' blue, orange and purple and the goal's greens
+SKILL_COLOUR = {"walk": "#2ca02c", "pass": "#e7298a", "wait": "#000000"}  # apart from the agents' blue, orange and purple
 
 
 def load_episode(folder: Path, trips: dict, sites: dict) -> dict:

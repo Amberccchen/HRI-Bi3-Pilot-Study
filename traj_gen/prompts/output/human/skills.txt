@@ -1,7 +1,7 @@
 You walk by choosing a skill every {dt} s. The skill moves you until your next choice:
 - walk: walk in a straight line toward your goal station at the speed you give. It does not avoid anyone.
-- pass: walk toward your goal station at the speed you give while steering around one agent, the robot or the other participant, on the side you choose, keeping about the clearance you give between your centres. It avoids only that agent, from where it is and how it moves as you go, and keeps doing so, also once it is behind you, until you choose another skill. As you get around, it may slow you down or speed you up a little. It also keeps you off the walls.
+- pass: walk toward your goal station at the speed you give while steering around one agent, the robot or the other participant, on the side you choose. It avoids only that agent, from where it is and how it moves as you go, and keeps doing so, also once it is behind you, until you choose another skill. As you get around, it may slow you down or speed you up a little. It also keeps you off the walls.
 - wait: stop at once and stand still.
-- continue: keep the skill you are doing, with the same agent, side, speed and clearance. To change the speed, choose the skill again.
-Speeds are in {unit}/s and must be above 0. If a speed is above your top speed, you walk at your top speed. A clearance is in {unit}; one below the distance at which your bodies touch is raised to it.
+- continue: keep the skill you are doing, with the same agent, side and speed. To change the speed, choose the skill again.
+Speeds are in {unit}/s and must be above 0. If a speed is above your top speed, you walk at your top speed.
 Each turn ends with your options at that moment. A side is left out when a wall leaves no room to pass there.

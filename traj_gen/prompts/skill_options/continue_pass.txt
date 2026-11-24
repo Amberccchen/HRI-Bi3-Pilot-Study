@@ -1,1 +1,1 @@
-- "continue": keep passing {name} with "side": "{side}", at {speed} {unit}/s, clearance {clearance} {unit}
+- "continue": keep passing {name} with "side": "{side}", at {speed} {unit}/s
