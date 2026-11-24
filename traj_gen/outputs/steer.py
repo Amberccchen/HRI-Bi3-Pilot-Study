@@ -12,7 +12,7 @@ class SteerPlanner(QueryPlanner):
     state gives: where the last executed step ended, or the direction of the last movement before setting off). Each step first turns by its
     turn (positive: from the units' first axis toward the second, clockwise on the map in pixels, anticlockwise in metres), cut to the agent's
     largest turn, then moves its distance, cut to [0, step].
-    The robot's prompt states the largest distance per step; a person's gives only the top speed (with the stated maximum, people asked for exactly it in 75-82% of steps, run 20261117_human_m4a_f2b3123)."""
+    The robot's prompt states the largest distance per step. A person's gives only the top speed (with the stated maximum, people asked for exactly it in 75-82% of steps)."""
 
     name = "steer"
     template = "steer"

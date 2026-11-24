@@ -34,12 +34,12 @@ def prompts(name: str, trip: dict, framing: str) -> str:
 
 
 def test_scored_distance_framings_go_only_with_the_steer_modes():
-    """A scored-distance task (which says waiting is a step of distance 0) with a position reply, or the steer reply with a plain task, would render
+    """A scored-distance task (which states the scored distances) with a position reply, or the steer reply with a plain task, would render
     without an error and mix two setups."""
     trip = person_trip()
     for name, framing, other in (("positions", "scored_distances", "participant"), ("steer", "participant", "scored_distances")):
         exp = experiment(name, other)
-        with pytest.raises(ValueError, match="scored-distance framings go only with the steer and steer_vel modes"):
+        with pytest.raises(ValueError, match="scored-distance framings go only with the steer, steer_vel and skills modes"):
             PromptBuilder(framing, exp.planner(exp, trip, framing, "think"), exp.images, 20, exp.predict)
 
 

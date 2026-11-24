@@ -7,16 +7,14 @@ example, the units (from the units setting) and how the example is written in th
 The planned agent's kind picks the templates (observation.load_prompt): a planned person reads the person version of the system
 prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
-The output mode also names its system template, whether the text gives the scored body sizes, and any extra
-text after the state; the steer and steer_vel modes (outputs.steer) use these, and the scored-distance framings go only with them.
+The output mode also names its system, reply and follow-up templates, whether the text gives the scored body sizes, any extra
+text after the state, and any text that closes every turn (the skills mode's options). The steer, steer_vel and skills modes use these,
+and the scored-distance framings go only with them. The output mode, not the builder, reads a reply (QueryPlanner.parse and prefill).
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
 """
 
-import json
 from dataclasses import dataclass
-
-import numpy as np
 
 from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSON_PROMPT_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, body_radius,
                              comfort_distance, contact_distance, prompt_radius)
@@ -27,7 +25,7 @@ from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, p
 
 # Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
 # participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer and steer_vel modes.
+# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed. Only with the steer, steer_vel and skills modes.
 FRAMINGS = {"neutral": "robot", "robot_scored_distances": "robot", "participant": "human", "scored_distances": "human"}
 SCORED_DISTANCE_FRAMINGS = {"scored_distances", "robot_scored_distances"}
 
@@ -47,7 +45,7 @@ class PromptBuilder:
         if FRAMINGS[framing] != self.kind:
             raise ValueError(f"framing {framing!r} is written for a planned {FRAMINGS[framing]}, not a {self.kind}")
         if (framing in SCORED_DISTANCE_FRAMINGS) != mode.scored_distance_framings:
-            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer and steer_vel modes")
+            raise ValueError(f"framing {framing!r} does not go with the {mode.name} output mode: the scored-distance framings go only with the steer, steer_vel and skills modes")
 
     def output_text(self) -> str:
         u = self.mode.units
@@ -55,7 +53,7 @@ class PromptBuilder:
                       "coordinates": u.coordinates, "positive_turn": u.positive_turn, "negative_turn": u.negative_turn}
         output = load_prompt("output", self.mode.template, self.kind).format(unit=u.name, dt=DT, dt2=2 * DT, max_steps=self.max_steps,
                                                                         **axis_words, **self.mode.output_fields(), **PLANNED_AGENT_WORDS[self.kind])
-        return output + "\n" + load_prompt("reply").format(key=self.mode.key, example=self.mode.example_text())
+        return output + "\n" + load_prompt("reply", self.mode.reply_template).format(unit=u.name, **self.mode.reply_fields())
 
     def system(self, scene: Scene) -> str:
         u, site = self.mode.units, scene.site
@@ -89,29 +87,16 @@ class PromptBuilder:
         task = load_prompt("framing", self.framing, self.kind).format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name,
                                                        contact=u.len_text(contact_distance(site)), comfort=u.len_text(comfort_distance(site)),
                                                        contact_person=u.len_text(2 * PERSON_BODY_RADIUS_M), comfort_person=u.len_text(PERSON_BODY_RADIUS_M + PERSONAL_SPACE_RADIUS_M["human"]))
-        parts = [task, self.captions(scene, self.images), self.state(scene, "\n\n", True), self.output_text()]
+        parts = [task, self.captions(scene, self.images), self.state(scene, "\n\n", True), self.output_text(), self.mode.closing_text(scene)]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
-
-    @property
-    def prefill(self) -> str:
-        """The start of a reply, to continue from when the thinking is cut off."""
-        return f'{{"{self.mode.key}": [['
-
-    def parse(self, text: str) -> np.ndarray | None:
-        """The (k, 2) array under self.mode.key of the JSON object in the reply, or None if the reply is not a valid plan."""
-        try:
-            plan = np.atleast_2d(np.array(json.loads(text[text.index("{"): text.rindex("}") + 1])[self.mode.key], float))  # atleast_2d: the model sometimes drops the inner brackets of a single pair
-        except (ValueError, KeyError, TypeError):  # no braces, bad JSON, missing key, or entries that are not numbers
-            return None
-        ok = plan.ndim == 2 and plan.shape[1] == 2 and 1 <= len(plan) <= self.max_steps and np.isfinite(plan).all()
-        return plan if ok else None
 
     def followup(self, scene: Scene, executed_s: float) -> Turn:
         """Later turn of a conversation: the new state after executing the previous plan, with a one-line map caption (the camera photo is not
         repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
         captions = "\n".join(load_prompt("images", "bev_followup").format(n=n, time_s=f"{scene.time_s:.1f}") for n, _ in enumerate(kinds, 1))
-        text = load_prompt("followup", "default").format(executed_s=f"{executed_s:g}", **PLANNED_AGENT_WORDS[self.kind], images=captions, scene=self.state(scene, "\n", False))
+        text = load_prompt("followup", self.mode.followup_template).format(executed_s=f"{executed_s:g}", **PLANNED_AGENT_WORDS[self.kind], images=captions,
+                                                                           scene=self.state(scene, "\n", False), options=self.mode.closing_text(scene))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
 
     def state(self, scene: Scene, separator: str, first_turn: bool) -> str:

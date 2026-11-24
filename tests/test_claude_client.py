@@ -11,14 +11,15 @@ from traj_gen.observation.prompting import Turn
 
 class FakeMode:
     think_max_tokens = 16384
+    prefill = ""
+
+    def parse(self, text, max_steps):
+        return text if text.startswith("{") else None
 
 
 class FakeBuilder:
-    prefill = ""
     mode = FakeMode()
-
-    def parse(self, text):
-        return text if text.startswith("{") else None
+    max_steps = 75
 
 
 class FakeStream:

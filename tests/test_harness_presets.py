@@ -56,7 +56,7 @@ def test_invalid_harness_settings_are_refused(settings, message):
 
 def test_velocity_outputs_are_refused_for_a_planned_person():
     """There are no person templates for the velocity outputs, so a person run would fail at its first query."""
-    with pytest.raises(ValueError, match="no person templates"):
+    with pytest.raises(ValueError, match="templates for a planned robot only"):
         Harness("rolling", "velseq", "m", "bev", "participant")
 
 

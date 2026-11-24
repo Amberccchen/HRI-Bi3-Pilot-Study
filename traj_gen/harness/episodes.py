@@ -27,8 +27,8 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import SCORED_STEP, provenance
-from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii,
-                             body_radius, comfort_distance, contact_distance, pair_distances)
+from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, SPEED_CAP_M_S, agent_kind, body_radii,
+                             body_radius, comfort_distance, contact_distance, pair_distances, room_half_side)
 from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_model, make_client
 from traj_gen.observation import load_prompt
 from traj_gen.observation.bev import render_result
@@ -187,7 +187,7 @@ class Episode:
         """Positions for a reply, with the plan recorded. steps is how many plan steps will be executed (None for all), for the raw speeds."""
         positions, raw = self.planner.positions(value, scene)
         self.plans.append({"query": self.n_queries - 1 if self.n_queries else None, "time_s": scene.time_s, "units": self.planner.units.name if self.planner.units else None,
-                           "reply": None if value is None else value.tolist(), "positions_m": positions.tolist(),
+                           **self.planner.plan_record(value), "positions_m": positions.tolist(),
                            "raw_speed": None if raw is None else raw.tolist()})
         if raw is not None:
             self.raw.append(raw[:steps])
@@ -227,7 +227,7 @@ class Episode:
         return {**bi3_metrics(t, agent, others), **traj_gen_metrics(
             t, agent, others, self.goal, body_radius(self.agent, self.site), body_radii(self.others, self.site),
             others[:, with_space], [PERSONAL_SPACE_RADIUS_M[agent_kind(self.others[k])] for k in with_space], self.arrival_radius,
-            SPEED_CAP_M_S[kind], self.site["room_m"] / 2 + ROOM_MARGIN_M[kind], raw)}
+            SPEED_CAP_M_S[kind], room_half_side(self.site, kind), raw)}
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
@@ -241,7 +241,7 @@ class Episode:
             "queries": self.n_queries, "samples": len(self.records), "retries": sum(r["attempt"] > 0 for r in self.records),
             "invalid_replies": sum(not r["valid"] for r in self.records), "forced_answers": sum(r["forced"] for r in self.records),
             "prompt_tokens": sum(r["prompt_tokens"] for r in self.records), "completion_tokens": sum(r["completion_tokens"] for r in self.records),
-            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": provenance()}
+            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": provenance(), **self.planner.manifest_fields()}
 
     def save(self, wall_s: float) -> None:
         f, t, a = self.folder, self.trip, self.start

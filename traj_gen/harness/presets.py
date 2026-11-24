@@ -5,7 +5,8 @@ A harness is eight settings:
               (the same in one growing conversation, harness.episodes.ConversationEpisode)
   output      the output mode: positions (one point per step in the world frame, outputs.positions.PositionPlanner), steer (a turn and a
               distance per step from the current heading, with the steer prompts, outputs.steer.SteerPlanner), steer_vel (a turn rate and
-              a speed held for each step, a circular arc, with steer's prompts otherwise, outputs.steer.SteerVelocityPlanner), vel1 (one
+              a speed held for each step, a circular arc, with steer's prompts otherwise, outputs.steer.SteerVelocityPlanner), skills (a skill
+              choice every step: walk, pass an agent on a side, wait or continue, person only, outputs.skills.SkillPlanner), vel1 (one
               velocity step) or velseq (a velocity sequence). vel1 and velseq (robot only) are deprecated: kept for the runs that used them, not for new runs
   units       px (pixels of the map: u right, v down) or m (metres of the room frame: x right, y up), for every number the model reads or
               writes (outputs.planner.UNITS). px needs a map (images bev or bev_cam)
@@ -16,10 +17,11 @@ A harness is eight settings:
               confirmed to be complete
   check       plan-check revision rounds, 0 = off (each plan is tested against the recorded futures, the first conflict is reported back).
               Only with prediction=true_future
-  execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 0.8 s, 0.4 s for vel1, 2.0 s for velseq). None for single shot
+  execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 0.8 s, 0.4 s for vel1 and skills, 2.0 s for velseq). None for single shot
 
-Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer and steer_vel, and those only with them; vel1 and velseq have
-no person templates, so they go only with a robot framing; px units need a map.
+Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer, steer_vel and skills, and those only with them.
+The vel1 and velseq outputs have no person templates, so they go only with a robot framing, and skills only with a person framing. Skills run only in
+rolling_conv episodes at 0.4 s without plan check. The px units need a map.
 
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
   ss / rh (single_shot / rolling and rolling_conv), output, units, images, conv (rolling_conv), true_future / constvel_future, then check
@@ -42,16 +44,21 @@ from traj_gen.observation.prompting import FRAMINGS, SCORED_DISTANCE_FRAMINGS
 from traj_gen.observation.scene import DT
 from traj_gen.outputs.planner import UNITS
 from traj_gen.outputs.positions import PositionPlanner
+from traj_gen.outputs.skills import SkillPlanner
 from traj_gen.outputs.steer import SteerPlanner, SteerVelocityPlanner
 from traj_gen.outputs.velocity import StepVelocityPlanner, VelocityPlanner
 
 HARNESS_FILE = "harness.json"
 EPISODES = {"single_shot": SingleShotEpisode, "rolling": RollingEpisode, "rolling_conv": ConversationEpisode}
-OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "steer_vel": SteerVelocityPlanner, "vel1": StepVelocityPlanner, "velseq": VelocityPlanner}
+OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "steer_vel": SteerVelocityPlanner, "skills": SkillPlanner, "vel1": StepVelocityPlanner,
+           "velseq": VelocityPlanner}
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
 PREDICTIONS = ("none", "true_future", "constvel_future")  # constvel_future is deprecated
-DEFAULT_EXECUTE_S = {"positions": 0.8, "steer": 0.8, "steer_vel": 0.8, "vel1": 0.4, "velseq": 2.0}  # 0.8 s: 2 steps, about 5 decisions in a mean person traversal; vel1 re-plans every step
-ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # deprecated. No person output templates: only prompts/output/robot/ has them
+# 0.8 s: 2 steps, about 5 decisions in a mean person traversal. The vel1 and skills outputs decide every step
+DEFAULT_EXECUTE_S = {"positions": 0.8, "steer": 0.8, "steer_vel": 0.8, "skills": 0.4, "vel1": 0.4, "velseq": 2.0}
+# Outputs with templates for one planned-agent kind only: vel1 and velseq (deprecated) have only prompts/output/robot/, skills only
+# prompts/output/human/
+OUTPUT_KIND = {"vel1": "robot", "velseq": "robot", "skills": "human"}
 
 
 @dataclass(frozen=True)
@@ -73,8 +80,11 @@ class Harness:
         if (self.framing in SCORED_DISTANCE_FRAMINGS) != OUTPUTS[self.output].scored_distance_framings:
             steer_outputs = ", ".join(k for k, v in OUTPUTS.items() if v.scored_distance_framings)
             raise ValueError(f"framing {self.framing!r} does not go with output {self.output!r}: the scored-distance framings ({', '.join(sorted(SCORED_DISTANCE_FRAMINGS))}) go only with {steer_outputs}, and those only with them")
-        if self.output in ROBOT_ONLY_OUTPUTS and self.kind != "robot":
-            raise ValueError(f"output {self.output!r} has no person templates, so it does not go with the person framing {self.framing!r}")
+        if self.output in OUTPUT_KIND and self.kind != OUTPUT_KIND[self.output]:
+            raise ValueError(f"output {self.output!r} has templates for a planned {OUTPUT_KIND[self.output]} only, so it does not go with the framing {self.framing!r}")
+        if self.output == "skills" and (self.episode != "rolling_conv" or self.check or self.execute_s not in (None, DEFAULT_EXECUTE_S["skills"])):
+            raise ValueError(f"output 'skills' runs only with episode=rolling_conv, check=0 and execute_s={DEFAULT_EXECUTE_S['skills']} (a skill choice every "
+                             f"step in one conversation), got episode={self.episode!r}, check={self.check}, execute_s={self.execute_s}")
         if self.units == "px" and "bev" not in IMAGES[self.images]:
             raise ValueError(f"units px are pixels of the map, so they need a map: images={self.images!r} has none")
         if isinstance(self.check, bool) or not isinstance(self.check, int) or self.check < 0:

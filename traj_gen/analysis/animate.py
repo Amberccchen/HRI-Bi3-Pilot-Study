@@ -7,6 +7,8 @@
 - animation.gif of a condition folder: the samples of one condition on one trip, drawn as in the overlay figures (purple VLM-controlled
   paths all drawn the same way, logged agents blue and orange, square robot and triangle person), one frame per time
   step. A sample that has ended holds its final position while the others continue.
+- Skills episodes (output mode skills) also show the skill that moved the planned agent into each position: a label above the agent in
+  the single-episode view, and a marker colour per skill (SKILL_COLOUR, with a legend) on each sample's path in the condition view.
 - timeline.png: the whole episode on one map with colour = time (same colour scale for every agent),
   so a crossing point shows whether both were there at the same moment.
 
@@ -22,6 +24,7 @@ import numpy as np
 from matplotlib import colormaps
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 from PIL import Image
 
@@ -36,11 +39,14 @@ from traj_gen.outputs.baselines import real_path
 TRAIL_S = 3.0      # fading trail length: about the history the model sees (2.8 s)
 GIF_PX = 640       # frames are downscaled to this side: readable, and a 100-frame GIF stays a few MB
 CMAP = "viridis"   # perceptually uniform, so equal colour steps are equal time steps
+SKILL_COLOUR = {"walk": "#2ca02c", "pass": "#e7298a", "wait": "#000000"}  # apart from the agents' blue, orange and purple
 
 
 def load_episode(folder: Path, trips: dict, sites: dict) -> dict:
     """Everything a time view needs from an episode folder and its trip (trips and sites as returned by run.load_run).
-    track is the planned agent's (T, 2) executed track, others {agent id: (T, 2)}, gap the (T,) clearance to the nearest other agent."""
+    track is the planned agent's (T, 2) executed track, others {agent id: (T, 2)}, gap the (T,) clearance to the nearest other agent, and
+    skills, for a skills episode, the (T,) labels of the skill that moved the agent into each position (the decision one step earlier,
+    None at the start), else None."""
     manifest = json.loads((folder / "manifest.json").read_text())
     trip = trips[manifest["trip"]]
     agent = manifest["agent"]
@@ -49,8 +55,14 @@ def load_episode(folder: Path, trips: dict, sites: dict) -> dict:
     site = sites[trip["site"]]
     plans = [json.loads(line) for line in (folder / "plans.jsonl").read_text().splitlines()]
     gap = clearance_gap(track, np.stack(list(positions.values()), axis=1), body_radius(agent, site), body_radii(positions, site))
+    skills = None
+    if plans and "skill" in plans[0]:
+        person = next((person_name(o) for o in positions if agent_kind(o) == "human"), None)
+        names = {"robot": "robot", "person": person}
+        label = {round(p["time_s"], 3): p["skill"] if p["skill"] != "pass" else f"pass {names[p['agent']]} {p['side']}" for p in plans}
+        skills = [None] + [label.get(round(time, 3)) for time in t[:-1]]
     return {"manifest": manifest, "site": site, "agent": agent, "goal": np.asarray(trip["goal_xy"], float), "t": t, "track": track,
-            "others": positions, "gap": gap, "real": real_path(trip), "plans": plans}
+            "others": positions, "gap": gap, "real": real_path(trip), "plans": plans, "skills": skills}
 
 
 def _title(ep: dict) -> str:
@@ -85,6 +97,9 @@ def _frame(ep: dict, k: int) -> bytes:
     for other, track in ep["others"].items():
         if agent_kind(other) == "human":
             ax.text(*track[k], person_name(other), ha="center", va="center", fontsize=LABEL_PT * 0.6, zorder=6)
+    if ep["skills"] and ep["skills"][k]:
+        ax.text(ep["track"][k][0], ep["track"][k][1] + radius + 0.05, ep["skills"][k], ha="center", va="bottom", fontsize=LABEL_PT * 0.55, color="k",
+                bbox={"fc": "white", "ec": "none", "alpha": 0.7, "pad": 1}, zorder=7)
     ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{_title(ep)}\nt = {t:.1f} s   clearance {ep['gap'][k]:+.2f} m\ndashed ring: real {agent_kind(agent)} now, dotted line: current plan, dotted ring: personal space",
             ha="left", va="top", fontsize=LABEL_PT * 0.6, zorder=7)
     return figure_png(fig)
@@ -123,12 +138,19 @@ def animate_samples(folder: Path, eps: list[dict], speed: float) -> Path:
             head = min(k, len(ep["t"]) - 1)  # a finished sample holds its final position
             path = ep["track"][: head + 1]
             ax.plot(*path.T, marker=KIND_MARKER[kind], color=VLM_COLOUR, lw=2.5, ms=4, alpha=0.8, zorder=4)
+            if ep["skills"]:
+                for skill, colour in SKILL_COLOUR.items():
+                    steps = [i for i in range(1, head + 1) if ep["skills"][i].split()[0] == skill]
+                    ax.plot(*path[steps].T, marker=KIND_MARKER[kind], ls="", color=colour, mec="k", mew=0.3, ms=5, zorder=4.5)
             ax.add_patch(Circle(path[-1], body_radius(agent, site), fc=VLM_COLOUR, ec="k", alpha=0.35, zorder=5))
             ax.plot(*path[-1], marker=KIND_MARKER[kind], color=VLM_COLOUR, mec="k", ms=7, zorder=6)
         m = longest["manifest"]
         ax.text(-EXTENT_M / 2 + 0.05, EXTENT_M / 2 - 0.05, f"{m['experiment']} {m['framing']} {m['thinking']}\n{m['trip']}\nt = {k * DT:.1f} s",
                 ha="left", va="top", fontsize=LABEL_PT * 0.6, zorder=7)
-        ax.legend(handles=trajectory_legend(agent, list(others)), ncol=2, loc="lower left", fontsize=LABEL_PT * 0.6, framealpha=0.85)
+        handles = trajectory_legend(agent, list(others))
+        if longest["skills"]:
+            handles += [Line2D([], [], color=colour, marker=KIND_MARKER[kind], ls="", mec="k", ms=7, label=f"skill: {skill}") for skill, colour in SKILL_COLOUR.items()]
+        ax.legend(handles=handles, ncol=2, loc="lower left", fontsize=LABEL_PT * 0.6, framealpha=0.85)
         frames.append(figure_png(fig))
     return _write_gif(frames, folder / "animation.gif", speed)
 
