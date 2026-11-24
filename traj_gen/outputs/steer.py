@@ -18,7 +18,6 @@ class SteerPlanner(QueryPlanner):
     key = "steps"
     scored_distance_framings = True
     system_template = "steer"
-    followup_template = "steer"
     scored_sizes = True
     think_max_tokens = 32768  # most calls with the steer prompts ran past 16384 tokens (robot test runs, 2026-11-16)
     # Largest turn per 0.4 s step, rounded down to a whole degree. Robot: the real robots' largest body yaw change per step within a trip,
@@ -66,7 +65,7 @@ class SteerVelocityPlanner(SteerPlanner):
     """The steer_vel mode: steps [turn rate in degrees per second, speed in the units per second], each held for the step, so the agent
     follows a circular arc of radius speed / turn rate (the unicycle model), straight at a turn rate of 0. The heading starts as steer's and
     continues from each step's end. The turn rate is cut to the kind's steer turn cap per step divided by the step (MAX_TURN_DEG / DT), the
-    speed to [0, the kind's speed cap]. Same framings, system and follow-up texts as steer."""
+    speed to [0, the kind's speed cap]. Same framings and system texts as steer."""
 
     name = "steer_velocity"
     template = "steer_vel"

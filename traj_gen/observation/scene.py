@@ -84,16 +84,17 @@ class Scene:
                   for k, s in stations.items() if len(s["members"]) == 2 for a, b in [s["members"]]]
         return "\n".join(lines)
 
-    def other_text(self, p: dict, units: Metres, predict: bool, scored_sizes: bool = False) -> str:
+    def other_text(self, p: dict, units: Metres, predict: bool, scored_sizes: bool, first_turn: bool) -> str:
         """One other agent's line: position, motion, goal and next goal (for the robot, its goal only, as a station name).
-        scored_sizes gives the robot's scoring radius instead of its drawn (enclosing) radius."""
+        The robot's size is given in the first turn only: its scoring radius with scored_sizes, else its drawn (enclosing) radius."""
         fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
                   "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),
                   "hist_s": PROMPT_HISTORY_S, "dt": DT}
         if p["kind"] == "robot":
             name = "the robot"
-            text = load_prompt("state", "other_robot").format(radius=units.len_text((body_radius if scored_sizes else prompt_radius)(p["id"], self.site)),
-                                                              goal=station_text(p["goal"], self.site["stations"]), **fields)
+            radius = units.len_text((body_radius if scored_sizes else prompt_radius)(p["id"], self.site))
+            size = ", " + load_prompt("state", "robot_size").format(radius=radius, unit=units.name) if first_turn else ""
+            text = load_prompt("state", "other_robot").format(size=size, goal=station_text(p["goal"], self.site["stations"]), **fields)
         else:
             name = person_name(p["id"])
             activity = f"standing at {station_text(p['goal'], self.site['stations'])}" if p["standing"] else "walking"
@@ -105,15 +106,18 @@ class Scene:
             text += " " + load_prompt("state", "other_constvel_future").format(name=name, h1=f"{h1:g}", pos1=units.pos_text(p1), h2=f"{h2:g}", pos2=units.pos_text(p2))
         return text
 
-    def text(self, units: Metres, predict: bool, scored_sizes: bool = False) -> str:
-        """The per-turn state block of the planned agent, with the other agents. predict adds each other agent's constant-velocity positions."""
+    def text(self, units: Metres, predict: bool, scored_sizes: bool, first_turn: bool) -> str:
+        """The per-turn state block of the planned agent, with the other agents. predict adds each other agent's constant-velocity positions.
+        The note on what the others' goals mean and the robot's size are given in the first turn of a conversation only."""
+        kind = agent_kind(self.agent)
         fields = {"time_s": f"{self.time_s:.1f}", "unit": units.name, "dt": DT, "hist_s": PROMPT_HISTORY_S,
+                  "others_note": f" ({load_prompt('state', 'others_note', kind)})" if first_turn else "",
                   "goal": station_text(self.goal, self.site["stations"]), "goal_pos": units.pos_text(self.goal_xy),
                   "goal_dist": units.len_text(np.linalg.norm(self.goal_xy - self.track[-1]))}
         own = {"pos": units.pos_text(self.track[-1]), "history": ", ".join(units.pos_text(q) for q in self.history)}
-        if agent_kind(self.agent) == "robot":
+        if kind == "robot":
             return load_prompt("state", "scene", "robot").format(robot_pos=own["pos"], robot_history=own["history"], **fields,
-                                               people="\n".join(self.other_text(p, units, predict) for p in self.others if p["kind"] == "human"))
+                                               people="\n".join(self.other_text(p, units, predict, scored_sizes, first_turn) for p in self.others if p["kind"] == "human"))
         return load_prompt("state", "scene", "human").format(
             name=person_name(self.agent), **own, **fields, next_goal=station_text(self.next_goal, self.site["stations"]),
-            others="\n".join(self.other_text(p, units, predict, scored_sizes) for p in self.others))
+            others="\n".join(self.other_text(p, units, predict, scored_sizes, first_turn) for p in self.others))

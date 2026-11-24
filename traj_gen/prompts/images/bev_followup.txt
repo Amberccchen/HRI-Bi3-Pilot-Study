@@ -1,0 +1,1 @@
+Image {n}: top-down map at t = {time_s} s, same legend as before.

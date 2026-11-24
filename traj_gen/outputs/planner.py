@@ -76,7 +76,6 @@ class QueryPlanner(Planner):
 
     scored_distance_framings = False  # whether the mode goes with the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS), and only with them
     system_template = "default"
-    followup_template = "default"
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
     # Qwen thinking budget with thinking on: thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k
     # (8 of 12 are forced at 8192). Beyond this the answer is forced

@@ -7,7 +7,7 @@ example, the units (from the units setting) and how the example is written in th
 The planned agent's kind picks the templates (observation.load_prompt): a planned person reads the person version of the system
 prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
-The output mode also names its system and follow-up templates, whether the text gives the scored body sizes, and any extra
+The output mode also names its system template, whether the text gives the scored body sizes, and any extra
 text after the state; the steer and steer_vel modes (outputs.steer) use these, and the scored-distance framings go only with them.
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
@@ -89,7 +89,7 @@ class PromptBuilder:
         task = load_prompt("framing", self.framing, self.kind).format(robot_radius=u.len_text(r), person_radius=u.len_text(PERSON_PROMPT_RADIUS_M), min_centre=u.len_text(r + PERSON_PROMPT_RADIUS_M), unit=u.name,
                                                        contact=u.len_text(contact_distance(site)), comfort=u.len_text(comfort_distance(site)),
                                                        contact_person=u.len_text(2 * PERSON_BODY_RADIUS_M), comfort_person=u.len_text(PERSON_BODY_RADIUS_M + PERSONAL_SPACE_RADIUS_M["human"]))
-        parts = [task, self.captions(scene, self.images), self.state(scene, "\n\n"), self.output_text()]
+        parts = [task, self.captions(scene, self.images), self.state(scene, "\n\n", True), self.output_text()]
         return Turn("\n\n".join(p for p in parts if p), list(self.images))
 
     @property
@@ -107,11 +107,13 @@ class PromptBuilder:
         return plan if ok else None
 
     def followup(self, scene: Scene, executed_s: float) -> Turn:
-        """Later turn of a conversation: the new state after executing the previous plan (the camera photo is not repeated)."""
+        """Later turn of a conversation: the new state after executing the previous plan, with a one-line map caption (the camera photo is not
+        repeated)."""
         kinds = tuple(k for k in self.images if k == "bev")
-        text = load_prompt("followup", self.mode.followup_template, self.kind).format(executed_s=f"{executed_s:g}", **PLANNED_AGENT_WORDS[self.kind], images=self.captions(scene, kinds), scene=self.state(scene, "\n"))
+        captions = "\n".join(load_prompt("images", "bev_followup").format(n=n, time_s=f"{scene.time_s:.1f}") for n, _ in enumerate(kinds, 1))
+        text = load_prompt("followup", "default").format(executed_s=f"{executed_s:g}", **PLANNED_AGENT_WORDS[self.kind], images=captions, scene=self.state(scene, "\n", False))
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
 
-    def state(self, scene: Scene, separator: str) -> str:
+    def state(self, scene: Scene, separator: str, first_turn: bool) -> str:
         """The per-turn state block, then the output mode's extra text (future trajectories, the current heading), if any."""
-        return separator.join(t for t in (scene.text(self.mode.units, self.predict, self.mode.scored_sizes), self.mode.extra_text(scene)) if t)
+        return separator.join(t for t in (scene.text(self.mode.units, self.predict, self.mode.scored_sizes, first_turn), self.mode.extra_text(scene)) if t)
