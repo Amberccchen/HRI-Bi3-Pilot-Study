@@ -16,7 +16,7 @@ A harness is eight settings:
               confirmed to be complete
   check       plan-check revision rounds, 0 = off (each plan is tested against the recorded futures, the first conflict is reported back).
               Only with prediction=true_future
-  execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 2.0 s, 0.4 s for vel1). None for single shot
+  execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 0.8 s, 0.4 s for vel1, 2.0 s for velseq). None for single shot
 
 Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer and steer_vel, and those only with them; vel1 and velseq have
 no person templates, so they go only with a robot framing; px units need a map.
@@ -24,7 +24,7 @@ no person templates, so they go only with a robot framing; px units need a map.
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
   ss / rh (single_shot / rolling and rolling_conv), output, units, images, conv (rolling_conv), true_future / constvel_future, then check
   (2 rounds) or check<N> (another count), then replan<execute_s>s when execute_s is not the output's default (for example
-rh_positions_px_bev_conv, rh_steer_px_bev_conv_true_future_replan0.8s).
+rh_positions_px_bev_conv, rh_steer_px_bev_conv_true_future_replan1.2s).
 Framing is not in the id: it is the next folder level, <run>/<id>/<framing>/. Each harness writes its settings to
 <run>/<id>/<framing>/harness.json (HARNESS_FILE) when it first runs there.
 
@@ -50,7 +50,7 @@ EPISODES = {"single_shot": SingleShotEpisode, "rolling": RollingEpisode, "rollin
 OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "steer_vel": SteerVelocityPlanner, "vel1": StepVelocityPlanner, "velseq": VelocityPlanner}
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
 PREDICTIONS = ("none", "true_future", "constvel_future")  # constvel_future is deprecated
-DEFAULT_EXECUTE_S = {"positions": 2.0, "steer": 2.0, "steer_vel": 2.0, "vel1": 0.4, "velseq": 2.0}  # 2.0 s: 5 steps, about 7 queries per trip; vel1 re-plans every step
+DEFAULT_EXECUTE_S = {"positions": 0.8, "steer": 0.8, "steer_vel": 0.8, "vel1": 0.4, "velseq": 2.0}  # 0.8 s: 2 steps, about 5 decisions in a mean person traversal; vel1 re-plans every step
 ROBOT_ONLY_OUTPUTS = ("vel1", "velseq")  # deprecated. No person output templates: only prompts/output/robot/ has them
 
 
