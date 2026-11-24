@@ -18,6 +18,15 @@ Harness names: "simple harness" is the preset `pilot` (map positions, one conver
 | `20261117_human_m4a_f2b3123` | harness with the largest step stated, without and with + future trajs | Qwen3.8-27B | Walks at the 1.5 m/s cap (real 1.07); contact 8% of episodes without futures, 1% with. |
 | `20261123_human_harness_rate_claude_sonnet_b2aaeb7` | harness (= `harness_v1`) | Claude Sonnet 5.5, medium | Still near the cap (median 1.50 m/s); turning above the band; contact in 15% of episodes. |
 
+## Person, `trips_v3` folders
+Scored with the code of each run's own commit. Skills: the model picks walk, pass (social force around one named agent, on a chosen side), wait or continue every 0.4 s, and code moves the person. Report: `/persistent/projects/HRI/scratchpad/bi3_skill_gen/full_study/report/REPORT.md`.
+
+| Folder | Ran | Model | Finding |
+| --- | --- | --- | --- |
+| `trips_v3/20261124_pilot_v2_full_8ccccaa` | `pilot_v2` (map positions, re-plan every 0.8 s), 100 trips x 3 | Qwen3.8-27B | Speed and distances within or below the reference band; turning above it (UM, and the LAAS point estimate); contact in 2% of episodes (recorded moves 3%). |
+| `trips_v3/20261124_skills_future_0dae446` | skills (`harness_v2`, `output=skills`) + future trajs, same trips | Qwen3.8-27B | W1 like the positions arm, turning inside the band at LAAS; faster than real (median 1.25 vs 1.07 m/s); contact in 19% of episodes, mostly while passing the LAAS robot. |
+| `trips_v3/20261124_skills_nofuture_0dae446` | skills without future trajs, same trips | Qwen3.8-27B | Same as with future trajs (contact 19%). |
+
 ## Robot
 | Folder | Ran | Model | Finding |
 | --- | --- | --- | --- |
