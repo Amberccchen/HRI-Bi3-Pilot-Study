@@ -44,8 +44,13 @@ for _handler in (pysocialforce_logging.c_handler, pysocialforce_logging.f_handle
     _root_logger.removeHandler(_handler)
     _handler.close()
 _root_logger.setLevel(_root_level)
-if not _log_file_existed and Path(pysocialforce_logging.f_handler.baseFilename).stat().st_size == 0:
-    Path(pysocialforce_logging.f_handler.baseFilename).unlink()
+_log_file = Path(pysocialforce_logging.f_handler.baseFilename)
+if not _log_file_existed:
+    try:
+        if _log_file.stat().st_size == 0:
+            _log_file.unlink()
+    except FileNotFoundError:  # another process importing this module from the same working directory removed it first
+        pass
 
 
 SUB_DT = 1 / INPUT_HZ  # s per sub-step of a skill. SCORED_STEP sub-steps make one 0.4 s decision
