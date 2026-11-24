@@ -1,0 +1,1 @@
+Your task: plan the robot's motion from its current position to its goal station, efficiently. There are people in the room.

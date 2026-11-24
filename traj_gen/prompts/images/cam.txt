@@ -1,0 +1,1 @@
+Image {n}: real overhead camera photo at t = 0 (the start of the trip), rotated to the orientation of the map. It shows the room, the people and the robot as they were at the start; perspective makes positions in it only approximate, so use the text for coordinates.

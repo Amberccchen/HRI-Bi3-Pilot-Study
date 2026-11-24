@@ -1,0 +1,1 @@
+goal = the station the person is at or walking to, next goal = the station after that

@@ -1,0 +1,1 @@
+The robot: at {pos}{size}. Goal: {goal}. Velocity {velocity} {unit}/s, speed {speed} {unit}/s. Distance from you {distance} {unit}. Previous positions, oldest first, every {dt} s over the last {hist_s} s: {history}. Between the last of these and now, every {recent_dt} s: {recent}.

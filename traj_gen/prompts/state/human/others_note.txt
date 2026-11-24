@@ -1,0 +1,1 @@
+goal = the station they are at or moving to, next goal = the station after that

@@ -1,0 +1,1 @@
+All coordinates are in metres in the room frame: the origin is the centre of the room, x points right and y points up. The room spans x from {c0_min} to {c0_max} and y from {c1_min} to {c1_max}.

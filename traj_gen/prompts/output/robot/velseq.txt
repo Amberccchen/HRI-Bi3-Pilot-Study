@@ -1,0 +1,1 @@
+Plan the robot's motion as velocities (v{c0}, v{c1}) in {unit}/s, one per step of {dt} s: v{c0} points {c0_direction} and v{c1} points {c1_direction}. The first applies from t to t + {dt} s, the second from t + {dt} s to t + {dt2} s, and so on. Give as many as needed to reach the goal, at most {max_steps}. A velocity whose speed is above the maximum is scaled down to the maximum.

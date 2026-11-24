@@ -1,0 +1,1 @@
+stations {a} and {b} stand together at one shared table, centred at {pos}; "station {a} or {b}" means either of the two.

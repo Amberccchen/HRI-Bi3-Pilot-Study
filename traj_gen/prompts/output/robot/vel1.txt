@@ -1,0 +1,1 @@
+Choose the robot's velocity (v{c0}, v{c1}) in {unit}/s for the next {dt} s: v{c0} points {c0_direction} and v{c1} points {c1_direction}. The robot moves with this velocity for {dt} s. If its speed is above the maximum, the velocity is scaled down to the maximum.

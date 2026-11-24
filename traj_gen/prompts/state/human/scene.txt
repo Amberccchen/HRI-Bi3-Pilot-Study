@@ -1,0 +1,6 @@
+State at t = {time_s} s (time since you set off from your previous station).
+You ({name}): at {pos}. Previous positions, oldest first, every {dt} s over the last {hist_s} s: {history}.
+You are moving at {speed} {unit}/s, heading {heading} degrees{heading_note}.
+Your goal: {goal} at {goal_pos}, {goal_dist} {unit} from you now. Your goal after that: {next_goal}.
+The others in the room{others_note}:
+{others}

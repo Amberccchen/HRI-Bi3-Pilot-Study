@@ -1,0 +1,47 @@
+{
+ "preset": "harness_v2",
+ "kind": "robot",
+ "id": "rh_steer_px_bev_conv",
+ "settings": {
+  "episode": "rolling_conv",
+  "output": "steer",
+  "units": "px",
+  "images": "bev",
+  "framing": "robot_scored_distances",
+  "prediction": "none",
+  "check": 0,
+  "execute_s": 0.8
+ },
+ "think_max_tokens": 32768,
+ "system": "You are the motion planner of a mobile robot that works in a room shared with people. From the state you are given you plan the robot's path.\n\nThe room is a square, 392 px on each side. All coordinates are in pixels of the attached top-down map, which is 448 x 448 pixels: the origin (0, 0) is the top-left corner of the image, u points right and v points down. The room is the square dark outline on the map; it spans u from 28 to 420 and v from 28 to 420.\nStations stand along the walls. They are fixed obstacles: neither the robot nor people pass through a station or leave the room.\nstation 2: (235, 392)\nstation 3: (246, 67)\nstation 5: (403, 269)\n\nThe robot is a disk of radius 18 px. It drives along its heading, and how far the heading can turn in one step is given with the reply format below. Its maximum speed is 34 px/s. So it moves at most 13 px in one step.\nTime advances in steps of 0.4 s. The robot has one goal station and has arrived when its centre is within 56 px of that station's position.",
+ "first": "Your task: move the robot from where it is to its goal station. Two study participants are in the room, carrying blocks between the stations.\nThe robot touches a participant when the robot's centre and the participant's centre are less than 35 px apart. That must not happen. Each participant also has personal space: keep the centres at least 46 px apart whenever you can.\nThe robot may wait in place, for example to let a participant pass.\n\nAttached images, in order:\nImage 1: top-down map at t = 0.0 s, drawn from the same state as the text. Grid lines every 50 pixels, labelled in pixels (u along the bottom, v along the left). Grey boxes labelled S0 to S5 are the stations, along the edge of the room (S3 = station 3; the two stations of a shared table sit in one long box), and the dark square is the room boundary. The blue disk is the robot, to scale, with a blue trail of its last 2.8 s; the green star is its goal station and the dashed green circle is the arrival distance of 56 px. Orange disks are people, to scale, with trails of their last 2.8 s and a label such as \"P1 -> S3 then S5\": person 1, goal station, then next goal station.\n\nState at t = 0.0 s (time since the start of this trip).\nRobot: at (224, 255). Previous positions, oldest first, every 0.4 s over the last 2.8 s: (224, 326), (224, 316), (224, 305), (224, 295), (224, 285), (224, 275), (224, 265).\nThe robot is moving at 25 px/s, heading -90 degrees (0 = +u, right; 90 = +v, down; when standing still, the robot's last heading).\nRobot goal: station 3 at (246, 67), 189 px from the robot now.\nPeople (goal = the station the person is at or walking to, next goal = the station after that):\nP1: at (224, 224), walking. Goal: station 3. Next goal: station 2. Velocity (22, -22) px/s, speed 32 px/s. Distance from the robot 31 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (224, 224), (224, 224), (224, 224), (224, 224), (224, 224), (224, 224), (224, 224). Between the last of these and now, every 0.1 s: (226, 222), (224, 224), (222, 226).\nP2: at (391, 225), walking. Goal: station 5. Next goal: station 3. Velocity (33, -5) px/s, speed 33 px/s. Distance from the robot 170 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (362, 175), (367, 182), (371, 189), (375, 197), (379, 204), (383, 211), (387, 218). Between the last of these and now, every 0.1 s: (390, 217), (389, 221), (388, 225).\n\nPlan the robot's motion as steps, one every 0.4 s: [turn, distance]. turn is how many degrees the robot's heading changes at the start of the step (positive turns clockwise on the map, from +u toward +v; negative turns anticlockwise). A turn is at most 39 degrees either way, and a larger turn is cut to 39. distance is how far it then moves along its new heading, in px, from 0 to the maximum per step. A distance of 0 means the robot waits in place for that step. A longer distance is cut to the maximum. The first step is for t + 0.4 s, the second for t + 0.8 s, and so on. Give as many as needed to reach the goal, at most 3.\nReply with only a JSON object, with nothing before or after it, in exactly this form (the numbers here are only an example):\n{\"steps\": [[0, 11], [-15, 12], [0, 0]]}",
+ "followup": "The robot followed your previous plan for 0.8 s. The state is now:\n\nImage 1: top-down map at t = 0.8 s, same legend as before.\n\nState at t = 0.8 s (time since the start of this trip).\nRobot: at (224, 234). Previous positions, oldest first, every 0.4 s over the last 2.8 s: (224, 305), (224, 295), (224, 285), (224, 275), (224, 265), (224, 255), (224, 244).\nThe robot is moving at 25 px/s, heading -90 degrees.\nRobot goal: station 3 at (246, 67), 168 px from the robot now.\nPeople:\nP1: at (224, 224), walking. Goal: station 3. Next goal: station 2. Velocity (22, -22) px/s, speed 32 px/s. Distance from the robot 10 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (224, 224), (224, 224), (224, 224), (224, 224), (224, 224), (224, 224), (224, 224). Between the last of these and now, every 0.1 s: (226, 222), (224, 224), (222, 226).\nP2: at (399, 239), walking. Goal: station 5. Next goal: station 3. Velocity (33, -5) px/s, speed 33 px/s. Distance from the robot 175 px. Previous positions, oldest first, every 0.4 s over the last 2.8 s: (371, 189), (375, 197), (379, 204), (383, 211), (387, 218), (391, 225), (395, 232). Between the last of these and now, every 0.1 s: (398, 232), (397, 236), (396, 240).\n\nPlan again from the current state, in the same format as before.",
+ "reply": [
+  [
+   0.0,
+   11.0
+  ],
+  [
+   -15.0,
+   12.0
+  ],
+  [
+   30.0,
+   6.0
+  ]
+ ],
+ "positions_m": [
+  [
+   0.0,
+   -0.174513
+  ],
+  [
+   -0.027731,
+   -0.071021
+  ],
+  [
+   -0.013865,
+   -0.019275
+  ]
+ ]
+}
