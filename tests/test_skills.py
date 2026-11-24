@@ -1,6 +1,6 @@
 """The skills output mode (traj_gen/outputs/skills.py): wording and sides, the sided pedestrian force against the package's, passes in
 synthetic scenes judged from geometry only, the 10 Hz reading of the agent being passed, the walker's state across decisions, reply
-validation and the option list."""
+validation, the option list, and the skill labels of the GIFs."""
 
 import json
 from types import SimpleNamespace
@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from tests.fake_trips import SITE, person_trip
+from traj_gen.analysis.animate import load_episode
+from traj_gen.harness.episodes import save_trajectory
 from traj_gen.harness.presets import PRESETS, Harness
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene, track_motion
@@ -267,3 +269,16 @@ def test_skills_run_only_in_the_conversation_every_step(overrides):
 def test_skills_are_for_a_planned_person_only():
     with pytest.raises(ValueError):
         Harness("rolling_conv", "skills", "px", "bev", "robot_scored_distances")
+
+
+def test_gif_labels_each_frame_with_the_skill_that_moved_the_walker_there(tmp_path):
+    trip = {**person_trip(), "end_index": 11}  # the real path of the time view needs the trip's end
+    start, t = trip["start_index"], np.asarray(trip["time"], float)
+    save_trajectory(tmp_path, t[start: start + 3], {a: np.asarray(trip["tracks"][a], float)[start: start + 3, :2] for a in trip["tracks"]})
+    (tmp_path / "manifest.json").write_text(json.dumps({"trip": trip["id"], "agent": trip["agent"]}))
+    plans = [{"time_s": float(t[start]), "positions_m": [], "skill": "walk"},
+             {"time_s": float(t[start + 1]), "positions_m": [], "skill": "pass", "agent": "person", "side": "behind"}]
+    (tmp_path / "plans.jsonl").write_text("".join(json.dumps(p) + "\n" for p in plans))
+    assert load_episode(tmp_path, {trip["id"]: trip}, {trip["site"]: SITE})["skills"] == [None, "walk", "pass P2 behind"]
+    (tmp_path / "plans.jsonl").write_text("".join(json.dumps({"time_s": p["time_s"], "positions_m": [], "reply": [[0, 0.1]]}) + "\n" for p in plans))
+    assert load_episode(tmp_path, {trip["id"]: trip}, {trip["site"]: SITE})["skills"] is None
