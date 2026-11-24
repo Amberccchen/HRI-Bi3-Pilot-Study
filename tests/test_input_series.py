@@ -5,7 +5,7 @@ import pytest
 from scipy.interpolate import PchipInterpolator
 
 from metrics.bi3_metrics import bi3_metrics
-from preprocessing.bi3_derived import INPUT_HZ, RECORDINGS_FILE, SCORED_STEP, load_trips, trip_arrays
+from preprocessing.bi3_derived import INPUT_HZ, RECORDINGS_FILE, SCORED_STEP, load_trips, scored_end_index, trip_arrays
 from preprocessing.extract_trips import GAP_CONTEXT_S, INPUT_BIN_S, binned_track, recording_arrays, recording_series, to_room
 from tests.fake_recordings import OVERLAPPING_AND_SAME_STATION_VISITS, person_trips, visit
 
@@ -115,8 +115,16 @@ def test_trips_are_slices_of_the_recording_series_and_scored_samples_every_fourt
         np.testing.assert_array_equal(trip["time"], dense["time"][::SCORED_STEP])
         np.testing.assert_allclose(np.diff(dense["time"]), 1 / INPUT_HZ, atol=1.5e-3)  # times are rounded to 1 ms
         assert dense["start_index"] == start - first == SCORED_STEP * trip["start_index"] and trip["time"][trip["start_index"]] == 0
-        assert dense["end_index"] == end - first and trip["end_index"] == (end - first) // SCORED_STEP
+        assert dense["end_index"] == end - first and trip["end_index"] == scored_end_index(first, end, last)
         assert dense["time"][dense["end_index"]] == pytest.approx(trip["duration_s"])
+
+
+def test_scored_end_is_the_scored_sample_nearest_the_real_end():
+    """With scored samples every 4th grid sample from first = 10: an end 1 sample past a scored sample rounds down, 2 (a tie) and 3 round up,
+    and an end beyond the last scored sample stays at it."""
+    assert SCORED_STEP == 4
+    assert [scored_end_index(10, end, 30) for end in (22, 23, 24, 25, 26, 29, 30)] == [3, 3, 4, 4, 4, 5, 5]
+    assert scored_end_index(10, 29, 26) == 4  # the nearest scored sample (30) is past the last one (26)
 
 
 def test_real_metrics_are_computed_on_the_scored_tracks(monkeypatch):

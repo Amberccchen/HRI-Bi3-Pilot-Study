@@ -15,6 +15,7 @@ sample the mean of the raw samples (repeated ones dropped) in a centred INPUT_BI
 further smoothing, and an empty bin filled by PCHIP through the raw samples GAP_CONTEXT_S either side of its gap (binned_track).
 A trip's start and end snap to the nearest grid sample. Its scored tracks are every SCORED_STEP-th series sample counted from the
 start, at TRIP_HZ, so the start state and the real-path metrics share one time (time 0); the series itself is the model input.
+The scored end (end_index) is the scored sample nearest the end (bi3_derived.scored_end_index).
 Coordinates are room-centred: the origin is the centre of the
 area people and the robot actually occupy. room_m is the traversable workspace the Bi3 paper
 states, 3.5 x 3.5 m (Stratton et al., ICRA 2026, Sec. IV-A). The workstations stand along its
