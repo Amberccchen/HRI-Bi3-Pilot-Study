@@ -1,11 +1,15 @@
+import json
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
 from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.agents import PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, comfort_distance, contact_distance, pair_distances
-from traj_gen.harness.clients import QwenClient
-from traj_gen.harness.episodes import Episode
-from traj_gen.harness.presets import Harness
+from traj_gen.harness import clients
+from traj_gen.harness.clients import ClaudeClient, QwenClient
+from traj_gen.harness.episodes import ConversationEpisode, Episode
+from traj_gen.harness.presets import PRESETS, Harness
 from traj_gen.harness.experiments import Experiment
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene, track_motion
@@ -165,3 +169,40 @@ def test_a_person_reads_4_s_of_recorded_future_but_the_plan_check_tests_the_whol
     plan = np.vstack([other[1:11] + offset, other[11:12]])  # keep beside human1 for 4 s, then step onto it at t + 4.4 s
     counts, feedback = episode.conflicts(episode.planner.units.pos(plan), scene)
     assert counts == (1, 0) and "at t + 4.4 s" in feedback
+
+
+def test_a_conversation_episode_keeps_claudes_thinking_and_logs_it(tmp_path, monkeypatch):
+    """A whole conversation with fake Claude replies: each later request carries the earlier replies' content blocks unchanged, and
+    the query records log the reasoning in the history (a content block they could not write would stop the run when queries.jsonl is saved)."""
+    requests = []
+
+    class Stream:  # the Messages API's stream, answering each request with a thinking block and a plan 30 px further up the map
+        def __init__(self, **kwargs):
+            requests.append(kwargs)
+            k = len(requests)
+            content = [SimpleNamespace(type="thinking", thinking=f"thought {k}", signature=f"sig {k}"),
+                       SimpleNamespace(type="text", text='{"points": [[235, %d]]}' % (283 - 30 * k))]
+            self.message = SimpleNamespace(content=content, stop_reason="end_turn",
+                                           usage=SimpleNamespace(input_tokens=10, cache_read_input_tokens=0, cache_creation_input_tokens=0, output_tokens=5))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return self.message
+
+    monkeypatch.setattr(clients, "_backend", {"name": "claude"})
+    monkeypatch.setattr(ClaudeClient, "api", SimpleNamespace(messages=SimpleNamespace(stream=Stream)))
+    exp = PRESETS["pilot_v2"].harness("human", {"execute_s": 0.4}).experiment()
+    episode = ConversationEpisode(tmp_path, exp, person_trip(), SITE, "participant", "think", 0)
+    episode.run()
+    assert episode.status == "ok" and len(requests) == 3
+    last = requests[-1]["messages"]
+    assert [m["role"] for m in last] == ["user", "assistant", "user", "assistant", "user"]
+    assert [m["content"][0].thinking for m in last if m["role"] == "assistant"] == ["thought 1", "thought 2"]
+    assert "heading -90 degrees." in last[2]["content"][-1]["text"]  # the executed step went straight up the map
+    logged = json.loads(json.dumps(episode.records))  # as queries.jsonl writes them. Message 0 is the system prompt
+    assert logged[2]["messages"][2]["content"] == [{"reasoning": "thought 1"}, '{"points": [[235, 253]]}']

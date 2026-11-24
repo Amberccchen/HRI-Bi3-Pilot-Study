@@ -169,7 +169,15 @@ class Episode:
         return best
 
     def log(self, scene: Scene, chat: Chat, attempt: int, s: Sample) -> None:
-        messages = [{"role": m["role"], "content": [p[1] if p[0] == "text" else {"image": self.refs[p[2]]} for p in m["parts"]]} for m in chat.messages]
+        def logged(p):  # a message part as it is logged: text, a pointer to the image file, or the reasoning
+            if p[0] == "text":
+                return [p[1]]
+            if p[0] == "image":
+                return [{"image": self.refs[p[2]]}]
+            if p[0] == "reasoning":
+                return [{"reasoning": p[1]}]
+            return [b.text if b.type == "text" else {"reasoning": b.thinking} if b.type == "thinking" else {"block": b.type} for b in p[1]]  # Claude's content blocks
+        messages = [{"role": m["role"], "content": [x for p in m["parts"] for x in logged(p)]} for m in chat.messages]
         self.records.append({
             "query": self.n_queries - 1, "attempt": attempt, "time_s": scene.time_s, "messages": messages, "reply": s.content,
             "reasoning": s.reasoning, "finish": s.finish, "valid": s.value is not None, "forced": load_prompt("backend", "think_cutoff") in s.reasoning,
