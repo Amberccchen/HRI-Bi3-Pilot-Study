@@ -11,7 +11,7 @@ A harness is eight settings:
               writes (outputs.planner.UNITS). px needs a map (images bev or bev_cam)
   images      text (no image), bev (the top-down map) or bev_cam (the map and the camera view)
   framing     the task prompt, one of observation.prompting.FRAMINGS. Its kind (robot or human) is the planned agent's
-  prediction  none, true_future (the other agents' recorded future positions in the text each turn) or constvel_future (each person's
+  prediction  none, true_future (the other agents' recorded future positions in the text each turn, outputs.planner.TRUE_FUTURE_S ahead) or constvel_future (each person's
               constant-velocity position at t + 1 s and t + 2 s, in the text and on the map). constvel_future is deprecated: it is not
               confirmed to be complete
   check       plan-check revision rounds, 0 = off (each plan is tested against the recorded futures, the first conflict is reported back).

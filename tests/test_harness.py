@@ -148,3 +148,20 @@ def test_plan_check_and_scored_distance_framings_use_the_scored_distances():
     assert comfort_distance(SITE) == pytest.approx(0.33 / 2 + 0.25)
     robot = prompts("steer", robot_trip(), "robot_scored_distances")
     assert "less than 35 px apart" in robot and "at least 46 px apart" in robot  # 0.315 m and 0.415 m at 112 px/m
+
+
+def test_a_person_reads_4_s_of_recorded_future_but_the_plan_check_tests_the_whole_of_it(tmp_path):
+    """The text lists the others' recorded positions up to t + 4.0 s only, while a contact at t + 4.4 s must still be found by the plan check:
+    a check run on the cut futures would pass this plan silently."""
+    trip = person_trip()
+    exp = Harness("rolling_conv", "positions", "px", "bev", "participant", prediction="true_future", check=2).experiment()
+    episode = Episode(tmp_path, exp, trip, SITE, "participant", "think", 0)
+    other = np.asarray(trip["tracks"]["human1"], float)[:, :2]
+    offset = np.array([0.0, -0.5])  # beyond the 0.40 m personal space of the other participant
+    episode.track = (other[0] + offset)[None]  # the planned person at index 0, beside human1
+    scene = episode.scene()
+    text = episode.planner.extra_text(scene)
+    assert "P2: t+0.4 s" in text and "t+4.0 s" in text and "t+4.4 s" not in text
+    plan = np.vstack([other[1:11] + offset, other[11:12]])  # keep beside human1 for 4 s, then step onto it at t + 4.4 s
+    counts, feedback = episode.conflicts(episode.planner.units.pos(plan), scene)
+    assert counts == (1, 0) and "at t + 4.4 s" in feedback

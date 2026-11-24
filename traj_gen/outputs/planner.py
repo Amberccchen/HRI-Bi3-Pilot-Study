@@ -36,6 +36,9 @@ from traj_gen.observation.units import Metres, Pixels
 THINKING = ("nothink", "think")  # run option of the model conditions: the model's thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s, about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap. A longer plan could not be scored in a replay anyway
 UNITS = {"m": Metres(), "px": Pixels(bev_transform())}  # the units setting -> the coordinate system the model reads and writes
+# How far ahead each turn lists the other agents' recorded positions (prediction=true_future), by the planned agent's kind. Robot: about the
+# time to cross the 3.5 m room at its 0.3 m/s cap. The plan check tests against the whole recorded futures.
+TRUE_FUTURE_S = {"human": 4.0, "robot": 12.0}
 
 
 def retime(start: np.ndarray, points: np.ndarray, step_m: float) -> tuple[np.ndarray, np.ndarray]:
@@ -99,10 +102,11 @@ class QueryPlanner(Planner):
         return {}
 
     def extra_text(self, scene: Scene) -> str:
-        """Text after the state: the other agents' recorded future positions when the experiment gives them, else nothing."""
+        """Text after the state: the other agents' recorded future positions for the next TRUE_FUTURE_S of the planned agent's kind when the
+        experiment gives them, else nothing."""
         if not self.exp.true_future:
             return ""
-        i = len(scene.track) - 1
+        i, steps = len(scene.track) - 1, round(TRUE_FUTURE_S[self.kind] / DT)
         if self.kind == "robot":
             lines = ["Where each person will actually be (recorded in the study; they walk exactly this way whatever the robot does):"]
         else:  # a planned person is also given the robot's recorded future
@@ -110,7 +114,7 @@ class QueryPlanner(Planner):
         for other, track in self.trip["tracks"].items():
             if other == self.trip["agent"] or (self.kind == "robot" and agent_kind(other) != "human"):
                 continue
-            future = np.asarray(track, float)[i + 1:, :2]
+            future = np.asarray(track, float)[i + 1: i + 1 + steps, :2]
             points = ", ".join(f"t+{DT * (k + 1):.1f} s {self.units.pos_text(xy)}" for k, xy in enumerate(future))
             lines.append(f"{'Robot' if agent_kind(other) == 'robot' else person_name(other)}: {points}.")
         return "\n".join(lines)
