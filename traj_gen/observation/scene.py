@@ -45,6 +45,13 @@ def station_text(label: str, stations: dict) -> str:
     return f"station {label}"
 
 
+def series_velocity(series: np.ndarray, j: int) -> np.ndarray:
+    """The velocity (m/s) at sample j of a (N, 2) INPUT_HZ series: a central difference over one sample either side, one-sided at the ends
+    of the series."""
+    before, after = max(j - 1, 0), min(j + 1, len(series) - 1)
+    return (series[after] - series[before]) * INPUT_HZ / (after - before)
+
+
 def track_motion(track: np.ndarray) -> tuple[float, float]:
     """The heading and speed at the end of a (T, 2) track of 0.4 s steps, looking only backward: the direction of its last movement of at
     least HEADING_MIN_MOVE_M in radians in the room frame (0 if it has not moved), and the speed of its last step in m/s (0 for one point)."""
@@ -79,8 +86,7 @@ class Scene:
                 continue
             dense = np.asarray(series, float)[:, :2]
             xy = dense[: j + 1: SCORED_STEP]
-            before, after = max(j - 1, 0), min(j + 1, len(dense) - 1)  # one sample either side, one-sided at the ends of the series
-            v = (dense[after] - dense[before]) * INPUT_HZ / (after - before)
+            v = series_velocity(dense, j)
             half = site["room_m"] / 2  # agents stay in the room, so the prediction does too
             labels = trip["labels"][other]
             self.others.append({

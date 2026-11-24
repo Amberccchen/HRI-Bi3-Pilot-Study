@@ -10,14 +10,15 @@ wants to continue from, with its reasoning, so the model reads its earlier think
 parsed plan (None when the reply is not a valid plan), the raw reply, the reasoning text, the parts the reply adds to the conversation,
 the finish reason, token counts and latency.
 
-What the reply must look like (JSON key, example, validity checks, the start of a reply) comes from the PromptBuilder of the
-output mode, so the client has no per-mode branches.
+What the reply must look like (validity checks, the start of a reply) comes from the output mode of the PromptBuilder
+(QueryPlanner.parse and prefill), so the client has no per-mode branches.
 """
 
 import base64
 import http.client
 import json
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -57,7 +58,7 @@ TRANSPORT_ERRORS = (OSError, http.client.HTTPException) + ((anthropic.APIConnect
 
 @dataclass
 class Sample:
-    value: np.ndarray | None  # the plan as an (k, 2) array in the output units, None for an invalid reply
+    value: np.ndarray | dict | None  # the parsed reply in the output units (QueryPlanner.parse: a (k, 2) array, a dict for skills), None for an invalid reply
     content: str              # the reply text the plan was read from
     reasoning: str            # the model's thinking ("" without thinking)
     reply_parts: list         # the reply as accept() adds it to the conversation: ("reasoning", str) and ("text", str) for Qwen, ("claude_blocks", content) for Claude
@@ -68,9 +69,14 @@ class Sample:
 
 
 def post(path: str, payload: dict) -> dict:
+    """The server's JSON answer. Raises OSError with the HTTP status and the server's message (for example a prompt longer than
+    SERVER_MAX_LEN) when the server refuses the request."""
     request = urllib.request.Request(BASE + path, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=TIMEOUT_S) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_S) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise OSError(f"HTTP {e.code} from {path}: {e.read().decode(errors='replace')}") from e
 
 
 class QwenClient:
@@ -122,22 +128,22 @@ class QwenClient:
         message, usage = choice["message"], choice["usage"]
         content, reasoning = message.get("content") or "", message.get("reasoning") or ""
         prompt_tokens, completion_tokens = usage["prompt_tokens"], usage["completion_tokens"]
-        if self.thinking and choice["finish_reason"] == "length" and b.parse(content) is None:
+        if self.thinking and choice["finish_reason"] == "length" and b.mode.parse(content, b.max_steps) is None:
             # The budget ran out in the thinking (or in the answer after it): close the thinking and force the answer,
             # continuing from the reasoning so far with the start of the JSON already written.
             room = SERVER_MAX_LEN - usage["prompt_tokens"] - ANSWER_MAX_TOKENS - 512  # 512: the cutoff note, the prefill and template tokens
             if usage["completion_tokens"] > room:  # late in a long conversation the full thinking leaves no room for the answer: keep its start
                 reasoning = reasoning[: int(len(reasoning) * max(room, 0) / usage["completion_tokens"])]
             reasoning += "\n\n" + load_prompt("backend", "think_cutoff")
-            choice, dt = self._call(messages, [{"role": "assistant", "reasoning": reasoning, "content": b.prefill}], max_tokens=ANSWER_MAX_TOKENS,
+            choice, dt = self._call(messages, [{"role": "assistant", "reasoning": reasoning, "content": b.mode.prefill}], max_tokens=ANSWER_MAX_TOKENS,
                                     continue_final_message=True, add_generation_prompt=False)
             message, usage = choice["message"], choice["usage"]
             # The qwen3 reasoning parser finds no </think> in this continuation and files it all under "reasoning".
-            content = b.prefill + (message.get("content") or message.get("reasoning") or "")
+            content = b.mode.prefill + (message.get("content") or message.get("reasoning") or "")
             latency += dt
             prompt_tokens += usage["prompt_tokens"]
             completion_tokens += usage["completion_tokens"]
-        return Sample(b.parse(content), content, reasoning, [("reasoning", reasoning), ("text", content)], choice["finish_reason"], prompt_tokens,
+        return Sample(b.mode.parse(content, b.max_steps), content, reasoning, [("reasoning", reasoning), ("text", content)], choice["finish_reason"], prompt_tokens,
                       completion_tokens, latency)
 
 
@@ -205,7 +211,7 @@ class ClaudeClient:
         usage = r.usage
         prompt_tokens = usage.input_tokens + (usage.cache_read_input_tokens or 0) + (usage.cache_creation_input_tokens or 0)
         finish = {"end_turn": "stop", "max_tokens": "length"}.get(r.stop_reason, r.stop_reason)  # vLLM's names; a refusal stays "refusal"
-        return Sample(self.builder.parse(content), content, reasoning, [("claude_blocks", r.content)], finish, prompt_tokens, usage.output_tokens, latency)
+        return Sample(self.builder.mode.parse(content, self.builder.max_steps), content, reasoning, [("claude_blocks", r.content)], finish, prompt_tokens, usage.output_tokens, latency)
 
 
 BACKENDS = {"qwen": QwenClient, "claude": ClaudeClient}

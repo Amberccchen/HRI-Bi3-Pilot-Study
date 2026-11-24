@@ -21,6 +21,7 @@ speed-violation metric, or None for the baselines, which do not have a reply. Th
 planned agent's (trip["agent"]).
 """
 
+import json
 from functools import cached_property
 
 import numpy as np
@@ -77,13 +78,24 @@ class Planner:
         reply from the scene. Straight steps, so read from the track (track_motion); the modes that plan a heading override it."""
         return track_motion(track)
 
+    def plan_record(self, value) -> dict:
+        """The mode's fields of a plans.jsonl row for a reply (None for the baselines), after its positions() was computed."""
+        return {"reply": None if value is None else value.tolist()}
+
+    def manifest_fields(self) -> dict:
+        """The mode's fields of the episode manifest beyond the shared ones."""
+        return {}
+
 
 class QueryPlanner(Planner):
     """Planners that ask the model. A subclass sets name, template (prompt template), key (JSON key of the reply),
-    example (metres, converted by to_units, per planned-agent kind) and overrides to_units, example_text and max_steps where its mode differs."""
+    example (metres, converted by to_units, per planned-agent kind) and overrides to_units, example_text and max_steps where its mode differs.
+    The reply of these modes is a JSON object holding an array of number pairs under key (parse)."""
 
     scored_distance_framings = False  # whether the mode goes with the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS), and only with them
     system_template = "default"
+    followup_template = "default"  # prompts/followup/<name>.txt
+    reply_template = "default"     # prompts/reply/<name>.txt
     scored_sizes = False  # the text gives the scored body radii instead of the drawn (enclosing) ones
     # Qwen thinking budget with thinking on: thinking and answer in one call. Medium effort needs 1-6k tokens, text-only waypoints about 8k
     # (8 of 12 are forced at 8192). Beyond this the answer is forced
@@ -118,6 +130,24 @@ class QueryPlanner(Planner):
             points = ", ".join(f"t+{DT * (k + 1):.1f} s {self.units.pos_text(xy)}" for k, xy in enumerate(future))
             lines.append(f"{'Robot' if agent_kind(other) == 'robot' else person_name(other)}: {points}.")
         return "\n".join(lines)
+
+    def closing_text(self, scene: Scene) -> str:
+        """Text that closes every user turn of the scene (the first turn and the follow-ups), "" for none."""
+        return ""
+
+    @property
+    def prefill(self) -> str:
+        """The start of a reply, to continue from when the thinking is cut off."""
+        return f'{{"{self.key}": [['
+
+    def parse(self, text: str, max_steps: int) -> np.ndarray | None:
+        """The (k, 2) array under key of the JSON object in the reply, or None if the reply is not a valid plan of at most max_steps steps."""
+        try:
+            plan = np.atleast_2d(np.array(json.loads(text[text.index("{"): text.rindex("}") + 1])[self.key], float))  # atleast_2d: the model sometimes drops the inner brackets of a single pair
+        except (ValueError, KeyError, TypeError):  # no braces, bad JSON, missing key, or entries that are not numbers
+            return None
+        ok = plan.ndim == 2 and plan.shape[1] == 2 and 1 <= len(plan) <= max_steps and np.isfinite(plan).all()
+        return plan if ok else None
 
     def max_steps(self, remaining: int) -> int:
         """Longest plan asked for: the rest of the human replay, at most MAX_PLAN_STEPS."""

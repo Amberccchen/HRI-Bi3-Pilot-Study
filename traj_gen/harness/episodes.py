@@ -187,7 +187,7 @@ class Episode:
         """Positions for a reply, with the plan recorded. steps is how many plan steps will be executed (None for all), for the raw speeds."""
         positions, raw = self.planner.positions(value, scene)
         self.plans.append({"query": self.n_queries - 1 if self.n_queries else None, "time_s": scene.time_s, "units": self.planner.units.name if self.planner.units else None,
-                           "reply": None if value is None else value.tolist(), "positions_m": positions.tolist(),
+                           **self.planner.plan_record(value), "positions_m": positions.tolist(),
                            "raw_speed": None if raw is None else raw.tolist()})
         if raw is not None:
             self.raw.append(raw[:steps])
@@ -241,7 +241,7 @@ class Episode:
             "queries": self.n_queries, "samples": len(self.records), "retries": sum(r["attempt"] > 0 for r in self.records),
             "invalid_replies": sum(not r["valid"] for r in self.records), "forced_answers": sum(r["forced"] for r in self.records),
             "prompt_tokens": sum(r["prompt_tokens"] for r in self.records), "completion_tokens": sum(r["completion_tokens"] for r in self.records),
-            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": provenance()}
+            "query_latency_s": sum(r["latency_s"] for r in self.records), "wall_s": wall_s, "code": provenance(), **self.planner.manifest_fields()}
 
     def save(self, wall_s: float) -> None:
         f, t, a = self.folder, self.trip, self.start
