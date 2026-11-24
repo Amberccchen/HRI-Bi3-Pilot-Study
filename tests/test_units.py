@@ -93,3 +93,10 @@ def test_pixel_prompts_keep_the_pixel_wording():
     text = PromptBuilder("scored_distances", planner, ("bev",), 20, False).first(scene).text
     assert "positive turns clockwise on the map, from +u toward +v; negative turns anticlockwise" in text
     assert "degrees (0 = +u, right; 90 = +v, down; " in text and '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in text  # 0.4 m at 112 px/m
+
+
+def test_numbers_that_round_to_zero_have_no_sign():
+    """A small negative velocity component must read "0" (pixels) or "0.00" (metres), not "-0", while other negatives keep their sign."""
+    assert PX.num(-0.3) == "0" and PX.num(-0.0) == "0" and PX.num(-0.6) == "-1"
+    assert M.num(-0.004) == "0.00" and M.num(-0.006) == "-0.01"
+    assert PX.vec_text([-0.001, 0.0]) == "(0, 0)"

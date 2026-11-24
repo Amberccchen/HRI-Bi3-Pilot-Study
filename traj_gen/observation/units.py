@@ -39,7 +39,9 @@ class Metres:
         return d
 
     def num(self, v: float) -> str:
-        return f"{v:.{self.decimals}f}"
+        """v at the units' decimals. A value that rounds to zero is written without a sign ("0", never "-0")."""
+        text = f"{v:.{self.decimals}f}"
+        return text[1:] if text.startswith("-") and float(text) == 0 else text
 
     def pair(self, a: np.ndarray) -> str:
         return f"({self.num(a[0])}, {self.num(a[1])})"
