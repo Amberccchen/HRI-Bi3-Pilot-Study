@@ -19,6 +19,7 @@ leave room to pass there (side_is_free).
 
 import json
 import logging
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -113,17 +114,26 @@ def crossing(d: np.ndarray, v: np.ndarray) -> bool:
     return CROSSING_ANGLES_DEG[0] <= angle <= CROSSING_ANGLES_DEG[1]
 
 
-def turning_sign(side: str, d: np.ndarray, v: np.ndarray, previous: int) -> int:
-    """The turning side s of SidedSocialForce for a side word: +1 for "left", -1 for "right". "in front" / "behind" of an agent of
-    velocity v, for a walker heading along d, is the side of d it ends on: -sign(cross(d, v)) in front, +sign(cross(d, v)) behind,
-    kept from previous while the agent is slower than CROSSING_MIN_SPEED_M_S or moves exactly along d. cross(d, v) is the z component of
-    d x v, positive when v points to the left of d."""
+def turning_sign(side: str, xy: np.ndarray, v: np.ndarray, goal: np.ndarray, other_xy: np.ndarray, other_v: np.ndarray, previous: int) -> int:
+    """The turning side s of SidedSocialForce for a side word, from t, the interaction direction the force uses (D = lambda (other_v - v)
+    + unit(xy - other_xy)), and d, the walker's direction to its goal. With cross(a, b) = a_x b_y - a_y b_x:
+    - "left": s = -sign(t . d), "right": s = +sign(t . d), so the push s left_normal(t) moves the walker away from that side of d;
+    - "in front": s = +sign(cross(t, other_v)), "behind": s = -sign(cross(t, other_v)), so the push's component along the agent's
+      velocity is positive in front and negative behind.
+    The previous sign is kept when the quantity is exactly 0, or for in front / behind when the agent is slower than
+    CROSSING_MIN_SPEED_M_S. Without a previous sign (0) the base sign applies: +1 left, -1 right, and for in front / behind
+    -sign(cross(d, other_v)) and +sign(cross(d, other_v)), which the rule above gives for t = -d."""
+    d = unit(goal - xy)
+    t = unit(FORCE_CONFIG.config["sided_social_force"]["lambda_importance"] * (other_v - v) + unit(xy - other_xy))
     if side in ("left", "right"):
-        return 1 if side == "left" else -1
-    c = d[0] * v[1] - d[1] * v[0]
-    if np.linalg.norm(v) < CROSSING_MIN_SPEED_M_S or c == 0.0:
-        return previous
-    return int(np.sign(c)) * (-1 if side == "in front" else 1)
+        s = int(np.sign(np.dot(t, d))) * (-1 if side == "left" else 1)
+        base = 1 if side == "left" else -1
+    elif np.linalg.norm(other_v) < CROSSING_MIN_SPEED_M_S:
+        s = base = 0
+    else:
+        s = int(np.sign(t[0] * other_v[1] - t[1] * other_v[0])) * (1 if side == "in front" else -1)
+        base = int(np.sign(d[0] * other_v[1] - d[1] * other_v[0])) * (-1 if side == "in front" else 1)
+    return s or previous or base
 
 
 def side_is_free(side: str, d: np.ndarray, other_xy: np.ndarray, other_v: np.ndarray, contact: float, half_side: float) -> bool:
@@ -158,7 +168,7 @@ def pass_substeps(xy: np.ndarray, v: np.ndarray, goal: np.ndarray, speed: float,
     positions, distances, nonfinite = [], [], 0
     for k in range(n):
         other_xy, other_v = other[j + k], series_velocity(other, j + k)
-        sign = turning_sign(side, unit(goal - xy), other_v, sign)
+        sign = turning_sign(side, xy, v, goal, other_xy, other_v, sign)
         peds = PedState(np.array([[*xy, *v, *goal], [*other_xy, *other_v, *other_xy]]), None, Config({"agent_radius": PERSON_BODY_RADIUS_M}))
         peds.max_speeds = np.array([speed, 0.0])  # DesiredForce reads the desired speed from max_speeds
         goal_and_walls, pedestrian = (DesiredForce(), ObstacleForce()), SidedSocialForce(sign, delta)
@@ -255,7 +265,12 @@ class SkillPlanner(QueryPlanner):
         object, an unknown skill, continue when not offered, walk or pass without a finite speed above 0, pass without an offered agent,
         and a side offered for it (both strings). Fields a skill does not use are dropped."""
         def number(x) -> bool:
-            return isinstance(x, (int, float)) and not isinstance(x, bool) and bool(np.isfinite(x))
+            if not isinstance(x, (int, float)) or isinstance(x, bool):
+                return False
+            try:
+                return math.isfinite(float(x))
+            except OverflowError:  # an int beyond the float range
+                return False
         try:
             reply = json.loads(text[text.index("{"): text.rindex("}") + 1])
         except ValueError:  # no braces or bad JSON

@@ -50,13 +50,23 @@ def test_crossing_pair_needs_the_speed_and_the_angle_range():
 
 
 def test_turning_sign_of_each_side_word():
-    d = np.array([1.0, 0.0])  # the walker heads +x
-    right_to_left = np.array([0.0, 0.8])  # the agent crosses from the walker's right to its left
-    assert turning_sign("left", d, right_to_left, 0) == 1 and turning_sign("right", d, right_to_left, 0) == -1
-    # In front of an agent moving to the walker's left: the walker ends on the agent's left side of travel, i.e. with the agent on its right.
-    assert turning_sign("in front", d, right_to_left, 0) == -1 and turning_sign("behind", d, right_to_left, 0) == 1
-    assert turning_sign("in front", d, -right_to_left, 0) == 1 and turning_sign("behind", d, -right_to_left, 0) == -1
-    assert turning_sign("in front", d, np.array([0.0, 0.1]), -1) == -1 and turning_sign("behind", d, np.array([0.0, 0.1]), 1) == 1  # too slow: kept
+    """Hand-worked: the walker at the origin heading +x (goal at (3, 0)), lambda = 2, t = unit(2 (other_v - v) + unit(walker - other))."""
+    xy, goal = np.zeros(2), np.array([3.0, 0.0])
+    # Head-on, robot standing ahead: t = -x, so left_normal(t) = -y (the walker's right) and s = +1 keeps it on the left.
+    ahead, still, walking = np.array([2.0, 0.0]), np.zeros(2), np.array([1.0, 0.0])
+    assert turning_sign("left", xy, walking, goal, ahead, still, 0) == 1 and turning_sign("right", xy, walking, goal, ahead, still, 0) == -1
+    # Overtaken from behind: t = +x, left_normal(t) = +y (the walker's left), so keeping the agent on the left needs s = -1.
+    behind, faster = np.array([-1.0, 0.0]), np.array([1.4, 0.0])
+    slow = np.array([0.6, 0.0])
+    assert turning_sign("left", xy, slow, goal, behind, faster, 0) == -1 and turning_sign("right", xy, slow, goal, behind, faster, 0) == 1
+    # Crossing from the walker's right to its left, ahead: t = unit(2 (-1, 0.8) + unit(-1.5, 1)) = (-0.80, 0.61), cross(t, v) = -0.64 < 0.
+    crossing_xy, crossing_v = np.array([1.5, -1.0]), np.array([0.0, 0.8])
+    assert turning_sign("in front", xy, walking, goal, crossing_xy, crossing_v, 0) == -1
+    assert turning_sign("behind", xy, walking, goal, crossing_xy, crossing_v, 0) == 1
+    assert turning_sign("in front", xy, walking, goal, crossing_xy, -crossing_v, 0) == 1
+    # Too slow to read: the previous sign is kept, and without one the base sign from d applies.
+    assert turning_sign("in front", xy, walking, goal, crossing_xy, np.array([0.0, 0.1]), -1) == -1
+    assert turning_sign("behind", xy, walking, goal, crossing_xy, np.array([0.0, 0.1]), 1) == 1
 
 
 # The force
@@ -90,8 +100,9 @@ WALKER, GOAL = np.array([0.0, -1.5]), np.array([0.0, 1.6])
 D = np.array([0.0, 1.0])
 
 
-def run_pass(other: np.ndarray, side: str, speed: float = 1.0, delta: float = 0.3, steps: int = 50):
-    return pass_substeps(WALKER, speed * D, GOAL, speed, other, 0, side, 0, delta, HALF_SIDE, steps)[:4]
+def run_pass(other: np.ndarray, side: str, speed: float = 1.0, delta: float = 0.3, steps: int = 50, start_speed: float | None = None):
+    v0 = speed if start_speed is None else start_speed
+    return pass_substeps(WALKER, v0 * D, GOAL, speed, other, 0, side, 0, delta, HALF_SIDE, steps)[:4]
 
 
 @pytest.mark.parametrize("case, other, speed", [("head-on", series((0.0, 1.5), (0.0, -1.0)), 1.0),
@@ -106,13 +117,23 @@ def test_a_pass_keeps_the_agent_on_the_chosen_side(case, other, speed, side):
     assert distances.min() > 0.30  # no contact on the way
 
 
+@pytest.mark.parametrize("start_speed", [1.0, 0.0])
 @pytest.mark.parametrize("side", ["in front", "behind"])
-def test_a_crossing_pass_crosses_on_the_chosen_side(side):
+def test_a_crossing_pass_crosses_on_the_chosen_side(side, start_speed):
     other = series((-1.5, 0.0), (0.8, 0.0))  # crosses the walker's line x = 0 at t = 1.9 s, from its left to its right
-    positions, _, _, _ = run_pass(other, side)
+    positions, _, _, _ = run_pass(other, side, start_speed=start_speed)
     k = int(np.flatnonzero(positions[:, 1] >= other[1:len(positions) + 1, 1])[0])  # the walker reaches the agent's line of travel
     walker_first = other[k + 1, 0] < positions[k, 0]  # the agent has not yet reached the walker's x
     assert walker_first == (side == "in front")
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_an_agent_overtaking_the_walker_passes_on_the_chosen_side(side):
+    other = series((0.05, -2.3), (0.0, 1.4))  # starts 0.8 m behind the walker, which passes at 0.6 m/s
+    positions, _, _, distances = run_pass(other, side, speed=0.6, steps=40)
+    k = int(np.flatnonzero(other[1:len(positions) + 1, 1] >= positions[:, 1] + 0.5)[0])  # the agent is 0.5 m past the walker
+    assert np.sign(cross(D, positions[k] - other[k + 1])) == (-1 if side == "left" else 1)  # the agent on the walker's left: walker to its right
+    assert distances.min() > 0.30
 
 
 def test_a_larger_delta_keeps_a_larger_distance():
@@ -227,7 +248,8 @@ def test_delta_is_the_passed_agents_extra_body_radius():
                                    '{"skill": "pass", "agent": "robot", "side": "behind", "speed": NaN}',
                                    '{"skill": "pass", "agent": ["robot"], "side": "behind", "speed": 1}',
                                    '{"skill": "pass", "agent": "robot", "side": ["behind"], "speed": 1}',
-                                   '{"skill": "pass", "agent": {"a": 1}, "side": {"b": 2}, "speed": 1}'])
+                                   '{"skill": "pass", "agent": {"a": 1}, "side": {"b": 2}, "speed": 1}',
+                                   '{"skill": "walk", "speed": 1' + '0' * 400 + '}'])  # an int beyond the float range
 def test_invalid_replies(reply):
     planner, trip, track, start = skill_setup()
     planner.closing_text(scene_at(trip, track, start))  # the fake trip offers in front / behind for both others
@@ -243,6 +265,7 @@ def test_valid_replies_in_pixels():
     planner.positions(value, scene)
     assert planner.record["speed_m_s"] == pytest.approx(1.0)
     assert planner.parse('{"skill": "wait", "speed": 1}', 1) == {"skill": "wait"}
+    assert planner.parse('{"skill": "walk", "speed": 18446744073709551616}', 1)["speed"] == 2 ** 64  # a huge whole number is a speed, cut later
 
 
 def test_options_leave_out_blocked_sides_and_offer_continue_after_a_choice():
