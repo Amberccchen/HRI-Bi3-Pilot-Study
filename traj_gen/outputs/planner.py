@@ -36,8 +36,8 @@ from traj_gen.observation.units import Metres, Pixels
 THINKING = ("nothink", "think")  # run option of the model conditions: the model's thinking off, on
 MAX_PLAN_STEPS = 75  # 30 s, about 3x the straight-line time across the room's diagonal (4.9 m) at the speed cap. A longer plan could not be scored in a replay anyway
 UNITS = {"m": Metres(), "px": Pixels(bev_transform())}  # the units setting -> the coordinate system the model reads and writes
-# How far ahead each turn lists the other agents' recorded positions (prediction=true_future), by the planned agent's kind. Robot: about the
-# time to cross the 3.5 m room at its 0.3 m/s cap. The plan check tests against the whole recorded futures.
+# How far ahead each turn lists the other agents' recorded positions (prediction=true_future), by the planned agent's kind. The plan check
+# tests against the whole recorded futures.
 TRUE_FUTURE_S = {"human": 4.0, "robot": 12.0}
 
 
