@@ -6,7 +6,7 @@ import pytest
 from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.harness.presets import Harness
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import DT, Scene
+from traj_gen.observation.scene import DT, Scene, track_motion
 from traj_gen.outputs.planner import UNITS
 
 PX, M = UNITS["px"], UNITS["m"]
@@ -17,7 +17,7 @@ def setup(output: str, units: str, framing: str, trip: dict, episode: str = "rol
     exp = harness.experiment()
     planner = exp.planner(exp, trip, framing, "think")
     track = np.asarray(trip["tracks"][trip["agent"]], float)[: trip["start_index"] + 1, :2]
-    return planner, Scene(trip, SITE, trip["start_index"], track)
+    return planner, Scene(trip, SITE, trip["start_index"], track, track_motion(track))
 
 
 def test_pixel_conversions_go_both_ways_and_flip_the_vertical_axis():
@@ -58,7 +58,7 @@ def test_a_steer_reply_gives_the_same_path_in_either_units():
     np.testing.assert_allclose(a, b, atol=1e-9)
     np.testing.assert_allclose(raw_a, raw_b, atol=1e-9)
     np.testing.assert_allclose(raw_b, steps_m[:, 1] / DT)
-    assert planner_px.heading(scene) == pytest.approx(-planner_m.heading(scene))
+    assert planner_px.units.heading_deg(scene.heading) == pytest.approx(-planner_m.units.heading_deg(scene.heading))
 
 
 def test_a_velocity_reply_gives_the_same_path_in_either_units():
@@ -85,11 +85,11 @@ def test_metre_prompts_name_metres_and_the_metre_axes_only(output, framing):
         assert '{"points": [[-0.50, 0.40], [-0.12, 0.52], [0.26, 0.64]]}' in text
     else:
         assert "positive turns anticlockwise on the map, from +x toward +y; negative turns clockwise" in text
-        assert "degrees (0 = +x, right; 90 = +y, up)" in text and '{"steps": [[0, 0.40], [-15, 0.40], [0, 0.00]]}' in text
+        assert "degrees (0 = +x, right; 90 = +y, up; " in text and '{"steps": [[0, 0.40], [-15, 0.40], [0, 0.00]]}' in text
 
 
 def test_pixel_prompts_keep_the_pixel_wording():
     planner, scene = setup("steer", "px", "scored_distances", person_trip())
     text = PromptBuilder("scored_distances", planner, ("bev",), 20, False).first(scene).text
     assert "positive turns clockwise on the map, from +u toward +v; negative turns anticlockwise" in text
-    assert "degrees (0 = +u, right; 90 = +v, down)" in text and '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in text  # 0.4 m at 112 px/m
+    assert "degrees (0 = +u, right; 90 = +v, down; " in text and '{"steps": [[0, 45], [-15, 45], [0, 0]]}' in text  # 0.4 m at 112 px/m

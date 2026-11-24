@@ -28,6 +28,7 @@ PROMPT_HISTORY_S = round(PROMPT_HISTORY_STEPS * DT, 1)  # 2.8, as written in the
 # (the robot moves on this plan before it can re-plan), 1 s halfway, so a person's position is given for the
 # middle and the end of the stretch the robot is committed to.
 PREDICT_S = (1.0, 2.0)
+HEADING_MIN_MOVE_M = 0.005  # a heading read from a track is the direction of its last movement at least this long
 
 
 def person_name(agent_id: str) -> str:
@@ -44,15 +45,27 @@ def station_text(label: str, stations: dict) -> str:
     return f"station {label}"
 
 
+def track_motion(track: np.ndarray) -> tuple[float, float]:
+    """The heading and speed at the end of a (T, 2) track of 0.4 s steps, looking only backward: the direction of its last movement of at
+    least HEADING_MIN_MOVE_M in radians in the room frame (0 if it has not moved), and the speed of its last step in m/s (0 for one point)."""
+    moves = np.diff(track, axis=0)
+    moved = np.flatnonzero(np.linalg.norm(moves, axis=1) >= HEADING_MIN_MOVE_M)
+    heading = float(np.arctan2(moves[moved[-1], 1], moves[moved[-1], 0])) if moved.size else 0.0
+    return heading, float(np.linalg.norm(moves[-1]) / DT) if len(moves) else 0.0
+
+
 class Scene:
-    """State at index i of a trip. track is the (>= i + 1, 2) track of the planned agent (trip["agent"]) aligned with the trip arrays.
+    """State at index i of a trip. track is the (>= i + 1, 2) track of the planned agent (trip["agent"]) aligned with the trip arrays, and motion
+    its heading (radians in the room frame) and speed (m/s) at the end of the last step: from the executed motion, or track_motion of the real
+    history before the planned agent sets off.
 
     others holds one dict per other agent, in the trip's tracks order: id, kind, position, history, velocity, speed,
     constant-velocity prediction, whether it stands at a station, its goal labels, and its distance from the planned agent.
     """
 
-    def __init__(self, trip: dict, site: dict, i: int, track: np.ndarray):
+    def __init__(self, trip: dict, site: dict, i: int, track: np.ndarray, motion: tuple[float, float]):
         self.site = site
+        self.heading, self.speed = motion
         self.agent = trip["agent"]
         self.time_s = trip["time"][i]
         self.track = np.asarray(track, float)[: i + 1, :2]
@@ -114,6 +127,9 @@ class Scene:
                   "others_note": f" ({load_prompt('state', 'others_note', kind)})" if first_turn else "",
                   "goal": station_text(self.goal, self.site["stations"]), "goal_pos": units.pos_text(self.goal_xy),
                   "goal_dist": units.len_text(np.linalg.norm(self.goal_xy - self.track[-1]))}
+        (c0, c1), (d0, d1) = units.axes, units.directions
+        heading_note = load_prompt("state", "heading_note").format(c0=c0, c1=c1, d0=d0, d1=d1, **PLANNED_AGENT_WORDS[kind])
+        fields |= {"speed": units.len_text(self.speed), "heading": str(round(units.heading_deg(self.heading))), "heading_note": f" ({heading_note})" if first_turn else ""}
         own = {"pos": units.pos_text(self.track[-1]), "history": ", ".join(units.pos_text(q) for q in self.history)}
         if kind == "robot":
             return load_prompt("state", "scene", "robot").format(robot_pos=own["pos"], robot_history=own["history"], **fields,

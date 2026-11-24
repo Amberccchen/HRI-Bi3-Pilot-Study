@@ -8,7 +8,7 @@ from traj_gen.harness.episodes import Episode
 from traj_gen.harness.presets import Harness
 from traj_gen.harness.experiments import Experiment
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import Scene
+from traj_gen.observation.scene import Scene, track_motion
 
 
 # The experiments of the tests: positions in pixels and steer in one conversation on the map, steer with the recorded futures, and with the plan check.
@@ -24,7 +24,8 @@ def prompts(name: str, trip: dict, framing: str) -> str:
     exp = experiment(name, framing)
     planner = exp.planner(exp, trip, framing, "think")
     builder = PromptBuilder(framing, planner, exp.images, 20, exp.predict)
-    scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"][trip["agent"]])[: trip["start_index"] + 1, :2])
+    track = np.asarray(trip["tracks"][trip["agent"]], float)[: trip["start_index"] + 1, :2]
+    scene = Scene(trip, SITE, trip["start_index"], track, track_motion(track))
     return builder.system(scene) + "\n" + builder.first(scene).text
 
 
@@ -59,8 +60,9 @@ def test_steer_steps_are_cut_to_the_turn_and_speed_limits():
     trip = person_trip()
     exp = experiment("steer", "scored_distances")
     planner = exp.planner(exp, trip, "scored_distances", "think")
-    scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[: trip["start_index"] + 1, :2])
-    heading = planner.heading(scene)
+    track = np.asarray(trip["tracks"]["human0"], float)[: trip["start_index"] + 1, :2]
+    scene = Scene(trip, SITE, trip["start_index"], track, track_motion(track))
+    heading = planner.units.heading_deg(scene.heading)
     start = planner.units.pos(scene.track[-1])
     uv = planner.units.pos(planner.positions(np.array([[170.0, 500.0], [0.0, -30.0]]), scene)[0])
     step_px = planner.units.length(planner.step_m)

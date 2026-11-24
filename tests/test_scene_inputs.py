@@ -6,11 +6,12 @@ import pytest
 from tests.fake_trips import SERIES_WIGGLE_M, SITE, person_trip
 from traj_gen.harness.episodes import Episode
 from traj_gen.harness.presets import PRESETS
-from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene
+from traj_gen.observation.scene import PROMPT_HISTORY_STEPS, Scene, track_motion
 
 
 def scene_at(trip: dict, i: int) -> Scene:
-    return Scene(trip, SITE, i, np.asarray(trip["tracks"][trip["agent"]], float)[: i + 1, :2])
+    track = np.asarray(trip["tracks"][trip["agent"]], float)[: i + 1, :2]
+    return Scene(trip, SITE, i, track, track_motion(track))
 
 
 def test_other_agents_positions_and_history_come_from_the_series_not_the_scored_tracks():

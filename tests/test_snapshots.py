@@ -15,7 +15,7 @@ from tests.fake_trips import SITE, person_trip, robot_trip
 from traj_gen.harness.episodes import ConversationEpisode
 from traj_gen.harness.presets import PRESETS
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import Scene
+from traj_gen.observation.scene import Scene, track_motion
 from traj_gen.outputs.planner import UNITS
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
@@ -45,8 +45,8 @@ def render(case: str) -> dict:
     track, start = np.asarray(trip["tracks"][trip["agent"]], float)[:, :2], trip["start_index"]
     planner = exp.planner(exp, trip, harness.framing, "think")
     builder = PromptBuilder(harness.framing, planner, exp.images, planner.max_steps(len(trip["time"]) - start - 1), exp.predict)
-    scene = Scene(trip, SITE, start, track[: start + 1])
-    later = Scene(trip, SITE, start + FOLLOWUP_STEPS, track[: start + FOLLOWUP_STEPS + 1])
+    scene = Scene(trip, SITE, start, track[: start + 1], track_motion(track[: start + 1]))
+    later = Scene(trip, SITE, start + FOLLOWUP_STEPS, track[: start + FOLLOWUP_STEPS + 1], track_motion(track[: start + FOLLOWUP_STEPS + 1]))
     value = reply(harness.output, harness.units)
     snapshot = {"preset": name, "kind": kind, "id": harness.id, "settings": harness.settings(), "think_max_tokens": planner.think_max_tokens,
                 "system": builder.system(scene), "first": builder.first(scene).text,

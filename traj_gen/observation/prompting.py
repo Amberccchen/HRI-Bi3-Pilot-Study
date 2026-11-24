@@ -115,5 +115,5 @@ class PromptBuilder:
         return Turn(text.replace("\n\n\n", "\n\n"), list(kinds))
 
     def state(self, scene: Scene, separator: str, first_turn: bool) -> str:
-        """The per-turn state block, then the output mode's extra text (future trajectories, the current heading), if any."""
+        """The per-turn state block, then the output mode's extra text (the recorded futures), if any."""
         return separator.join(t for t in (scene.text(self.mode.units, self.predict, self.mode.scored_sizes, first_turn), self.mode.extra_text(scene)) if t)

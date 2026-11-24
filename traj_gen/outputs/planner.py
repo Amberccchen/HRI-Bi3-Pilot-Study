@@ -29,7 +29,7 @@ from traj_gen.agents import SPEED_CAP_M_S, agent_kind
 from traj_gen.observation.bev import bev_transform, render_bev
 from traj_gen.observation.camera import camera_frame
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import DT, Scene, person_name
+from traj_gen.observation.scene import DT, Scene, person_name, track_motion
 from traj_gen.observation.units import Metres, Pixels
 
 
@@ -68,6 +68,11 @@ class Planner:
     def positions(self, value: np.ndarray | None, scene: Scene) -> tuple[np.ndarray, np.ndarray | None]:
         """(n, 2) positions of the planned agent in metres for steps 1..n after the scene's time, and the raw speeds (n_reply,) in m/s."""
         raise NotImplementedError
+
+    def motion(self, value: np.ndarray | None, scene: Scene, track: np.ndarray) -> tuple[float, float]:
+        """The heading (radians in the room frame) and speed (m/s) at the end of track, the planned agent's track after executing steps of this
+        reply from the scene. Straight steps, so read from the track (track_motion); the modes that plan a heading override it."""
+        return track_motion(track)
 
 
 class QueryPlanner(Planner):

@@ -3,7 +3,7 @@ import numpy as np
 from tests.fake_trips import SITE, person_trip
 from traj_gen.harness.presets import Harness
 from traj_gen.observation.prompting import PromptBuilder
-from traj_gen.observation.scene import Scene
+from traj_gen.observation.scene import Scene, track_motion
 from traj_gen.outputs.positions import PositionPlanner
 
 
@@ -13,7 +13,8 @@ def test_person_prompt_has_no_robot_template_and_gives_the_others_goals_and_size
     trip = person_trip()
     planner = PositionPlanner(Harness("single_shot", "positions", "m", "text", "participant").experiment(), trip, "participant", "nothink")
     builder = PromptBuilder("participant", planner, (), 20, False)
-    scene = Scene(trip, SITE, trip["start_index"], np.asarray(trip["tracks"]["human0"])[:, :2])
+    track = np.asarray(trip["tracks"]["human0"], float)[: trip["start_index"] + 1, :2]
+    scene = Scene(trip, SITE, trip["start_index"], track, track_motion(track))
     system, turn = builder.system(scene), builder.first(scene).text
     text = system + "\n" + turn
     for robot_phrase in ("motion planner", "Robot goal", "the robot's path", "Robot: at"):

@@ -33,7 +33,7 @@ from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_mo
 from traj_gen.observation import load_prompt
 from traj_gen.observation.bev import render_result
 from traj_gen.observation.prompting import Turn
-from traj_gen.observation.scene import DT, Scene, person_name
+from traj_gen.observation.scene import DT, Scene, person_name, track_motion
 from traj_gen.outputs.baselines import real_path
 
 # Layout of a run folder: the trip list, the configuration, then <experiment>/... episode folders, and the outputs of analyze.
@@ -67,6 +67,7 @@ class Episode:
         self.goal = np.asarray(trip["goal_xy"], float)
         self.arrival_radius = ARRIVAL_RADIUS_M[agent_kind(self.agent)]
         self.track = np.asarray(trip["input_tracks_10hz"]["tracks"][self.agent], float)[::SCORED_STEP][: self.start + 1, :2]  # the real history, from the series
+        self.motion = track_motion(self.track)  # heading and speed at the end of the track: before setting off, from the real history only
         self.others = [a for a in trip["tracks"] if a != self.agent]
         self.status, self.error = "ok", None
         self.plans, self.records, self.raw, self.n_queries = [], [], [], 0
@@ -87,7 +88,7 @@ class Episode:
         return manifest.exists() and json.loads(manifest.read_text())["status"] != "error"
 
     def scene(self) -> Scene:
-        return Scene(self.trip, self.site, len(self.track) - 1, self.track)
+        return Scene(self.trip, self.site, len(self.track) - 1, self.track, self.motion)
 
     def open_turn(self, scene: Scene) -> tuple[Chat, Turn]:
         """The chat to ask and the user turn to add to it."""
@@ -290,6 +291,7 @@ class RollingEpisode(Episode):
             positions = np.vstack([positions, np.repeat(positions[-1:], steps - len(positions), axis=0)])  # a plan shorter than the window: hold the last position
             if self.execute(positions):
                 return
+            self.motion = self.planner.motion(value, scene, self.track)
 
 
 class ConversationEpisode(RollingEpisode):
