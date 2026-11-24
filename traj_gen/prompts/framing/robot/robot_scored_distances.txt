@@ -1,3 +1,3 @@
 Your task: move the robot from where it is to its goal station. Two study participants are in the room, carrying blocks between the stations.
 The robot touches a participant when the robot's centre and the participant's centre are less than {contact} {unit} apart. That must not happen. Each participant also has personal space: keep the centres at least {comfort} {unit} apart whenever you can.
-The robot may wait in place (a step of distance 0), for example to let a participant pass.
+The robot may wait in place, for example to let a participant pass.
