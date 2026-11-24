@@ -38,6 +38,12 @@ def agent_kind(agent_id: str) -> str:
     raise ValueError(f"unknown agent id {agent_id!r}: expected 'robot' or 'human<k>'")
 
 
+def room_half_side(site: dict, kind: str) -> float:
+    """Half side (m) of the square around the room centre beyond which an agent of this kind is out of the room: half the room plus
+    ROOM_MARGIN_M."""
+    return site["room_m"] / 2 + ROOM_MARGIN_M[kind]
+
+
 # The robot has two radii. The prompts and maps use the footprint's circumscribed disk (prompt_radius), which is larger
 # than the robot on purpose, so that planned paths keep a margin from people. Scoring uses the inscribed disk (body_radius),
 # the realistic body.

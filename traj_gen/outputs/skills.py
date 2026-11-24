@@ -12,7 +12,7 @@ trip's 10 Hz input series at every 0.1 s sub-step (position, and velocity as the
 text. The walker's 10 Hz velocity carries over from one decision to the next.
 
 Sides. "left" / "right" keep the agent on the walker's left or right, judged along d, the walker's direction to its goal. "in front" /
-"behind" cross ahead of or behind a moving agent's direction of travel; they are offered when the agent moves at CROSSING_MIN_SPEED_M_S
+"behind" cross ahead of or behind a moving agent's direction of travel. They are offered when the agent moves at CROSSING_MIN_SPEED_M_S
 or more and its direction is within CROSSING_ANGLES_DEG of d, and the others get "left" / "right". A side is offered only when the walls
 leave room to pass there (side_is_free).
 """
@@ -25,7 +25,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from preprocessing.bi3_derived import INPUT_HZ, SCORED_STEP
-from traj_gen.agents import PERSON_BODY_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, pair_distances
+from traj_gen.agents import PERSON_BODY_RADIUS_M, SPEED_CAP_M_S, agent_kind, pair_distances, room_half_side
 from traj_gen.observation import load_prompt
 from traj_gen.observation.scene import DT, Scene, person_name, series_velocity
 from traj_gen.outputs.planner import QueryPlanner
@@ -47,7 +47,7 @@ if not _log_file_existed and Path(pysocialforce_logging.f_handler.baseFilename).
     Path(pysocialforce_logging.f_handler.baseFilename).unlink()
 
 
-SUB_DT = 1 / INPUT_HZ  # s per sub-step of a skill; SCORED_STEP sub-steps make one 0.4 s decision
+SUB_DT = 1 / INPUT_HZ  # s per sub-step of a skill. SCORED_STEP sub-steps make one 0.4 s decision
 CROSSING_MIN_SPEED_M_S = 0.15     # an agent at least this fast can be crossed in front of or behind
 CROSSING_ANGLES_DEG = (45.0, 135.0)  # ... when its direction of travel is within this range of the walker's direction to its goal
 PASS_CAP_MULTIPLIER = 1.3  # the walker's speed in a pass is capped at this times the chosen speed (the package's max_speed_multiplier)
@@ -59,7 +59,6 @@ FORCE_CONFIG = Config({"desired_force": {"factor": 1.0, "relaxation_time": 0.5, 
                        "obstacle_force": {"factor": 1.0, "sigma": 0.2, "threshold": 0.2}})
 WALL_POINTS_PER_M = 10  # wall sampling of the package's EnvState (its default resolution)
 SIDE_ROOM_M = PERSON_BODY_RADIUS_M  # a side is free when the wall is at least the contact distance plus this beyond the agent's centre
-SKILLS = ("walk", "pass", "wait", "continue")
 SIDES = {"crossing": ("in front", "behind"), "beside": ("left", "right")}
 REPLY_AGENTS = {"robot": "robot", "human": "person"}  # an other agent's kind -> its name in the reply's agent field
 
@@ -71,9 +70,9 @@ class SidedSocialForce(SocialForce):
     + e (e: unit vector from the other to self), t = D / |D|, theta the angle from e to t and B = gamma |D|:
         f = exp(-d / B - (n' B theta)^2) t + s exp(-d / B - (n B theta)^2) left_normal(t)
     Three edits to the package's computation:
-    - the turning side s is the given side (+1 keeps the other on self's left, -1 on its right) instead of -sign(theta);
-    - d is the centre distance minus delta, which enlarges the other by delta and multiplies both terms by exp(delta / B);
-    - theta is wrapped to (-pi, pi]; the package takes the difference of two arctan2 angles unwrapped, so a pair whose t and e lie on
+    - the turning side s is the given side (+1 keeps the other on self's left, -1 on its right) instead of -sign(theta).
+    - d is the centre distance minus delta, which enlarges the other by delta and multiplies both terms by exp(delta / B).
+    - theta is wrapped to (-pi, pi]. The package takes the difference of two arctan2 angles unwrapped, so a pair whose t and e lie on
       either side of the -x axis gets a theta near 2 pi and no force."""
 
     def __init__(self, side: int, delta: float):
@@ -104,34 +103,6 @@ class SidedSocialForce(SocialForce):
         return np.sum(force.reshape((self.peds.size(), -1, 2)), axis=1) * self.factor
 
 
-def walls(site: dict) -> list[np.ndarray]:
-    """The wall points of the package's obstacle force: the square of half side room_m / 2 + a person's room margin (where a person
-    counts as out of the room)."""
-    h = site["room_m"] / 2 + ROOM_MARGIN_M["human"]
-    return EnvState([(-h, h, -h, -h), (-h, h, h, h), (-h, -h, -h, h), (h, h, -h, h)], WALL_POINTS_PER_M).obstacles
-
-
-def pass_acceleration(xy: np.ndarray, v: np.ndarray, goal: np.ndarray, speed: float, other_xy: np.ndarray, other_v: np.ndarray, side: int,
-                      delta: float, wall_points: list[np.ndarray]) -> np.ndarray:
-    """The walker's acceleration (m/s^2) in a pass: the goal force toward goal at the desired speed, the sided pedestrian force from the
-    agent being passed, and the wall force, from the package's forces on a two-agent state (row 0 the walker, row 1 the agent)."""
-    peds = PedState(np.array([[*xy, *v, *goal], [*other_xy, *other_v, *other_xy]]), None, Config({"agent_radius": PERSON_BODY_RADIUS_M}))
-    peds.max_speeds = np.array([speed, 0.0])  # DesiredForce reads the desired speed from max_speeds
-    scene = SimpleNamespace(peds=peds, get_obstacles=lambda: wall_points)
-    forces = (DesiredForce(), SidedSocialForce(side, delta), ObstacleForce())
-    for force in forces:
-        force.init(scene, FORCE_CONFIG)
-    a = sum(force.get_force() for force in forces)[0]
-    if not np.isfinite(a).all():  # exp((delta - d) / B) overflows when |D| nearly vanishes inside the enlarged agent
-        raise FloatingPointError(f"pass force {a} at walker {xy}, other {other_xy}, delta {delta}")
-    return a
-
-
-def cross(a: np.ndarray, b: np.ndarray) -> float:
-    """The z component of a x b: positive when b points to the left of a."""
-    return float(a[0] * b[1] - a[1] * b[0])
-
-
 def crossing(d: np.ndarray, v: np.ndarray) -> bool:
     """Whether an agent of velocity v gets the "in front" / "behind" pair for a walker heading along the unit vector d."""
     speed = np.linalg.norm(v)
@@ -144,10 +115,11 @@ def crossing(d: np.ndarray, v: np.ndarray) -> bool:
 def turning_sign(side: str, d: np.ndarray, v: np.ndarray, previous: int) -> int:
     """The turning side s of SidedSocialForce for a side word: +1 for "left", -1 for "right". "in front" / "behind" of an agent of
     velocity v, for a walker heading along d, is the side of d it ends on: -sign(cross(d, v)) in front, +sign(cross(d, v)) behind,
-    kept from previous while the agent is slower than CROSSING_MIN_SPEED_M_S or moves exactly along d."""
+    kept from previous while the agent is slower than CROSSING_MIN_SPEED_M_S or moves exactly along d. cross(d, v) is the z component of
+    d x v, positive when v points to the left of d."""
     if side in ("left", "right"):
         return 1 if side == "left" else -1
-    c = cross(d, v)
+    c = d[0] * v[1] - d[1] * v[0]
     if np.linalg.norm(v) < CROSSING_MIN_SPEED_M_S or c == 0.0:
         return previous
     return int(np.sign(c)) * (-1 if side == "in front" else 1)
@@ -170,18 +142,29 @@ def unit(v: np.ndarray) -> np.ndarray:
 
 
 def pass_substeps(xy: np.ndarray, v: np.ndarray, goal: np.ndarray, speed: float, other: np.ndarray, j: int, side: str, sign: int, delta: float,
-                  wall_points: list[np.ndarray], n: int) -> tuple[np.ndarray, np.ndarray, int, np.ndarray]:
-    """n sub-steps of SUB_DT of a pass from sample j of the passed agent's (N, 2) 10 Hz series. Sub-step k reads the agent at sample j + k
-    (position, and series_velocity), re-reads the turning sign (turning_sign, from sign), and integrates the walker as the package's
+                  half_side: float, n: int) -> tuple[np.ndarray, np.ndarray, int, np.ndarray]:
+    """n sub-steps of SUB_DT of a pass from sample j of the passed agent's (N, 2) 10 Hz series, inside walls of half side half_side. Sub-step
+    k reads the agent at sample j + k (position, and series_velocity), re-reads the turning sign (turning_sign, from sign), takes the
+    walker's acceleration from the package's forces on a two-agent state (row 0 the walker, row 1 the agent): the goal force toward goal
+    at the desired speed, the sided pedestrian force from the agent and the wall force. It integrates the walker as the package's
     PedState.step does: v <- v + dt a capped at min(PASS_CAP_MULTIPLIER speed, the person speed cap), then xy <- xy + dt v. Returns the
     (n, 2) walker positions, its velocity and the turning sign after the last sub-step, and the (n,) centre distances to the agent at
     samples j + 1 .. j + n."""
+    h = half_side
+    wall_points = EnvState([(-h, h, -h, -h), (-h, h, h, h), (-h, -h, -h, h), (h, h, -h, h)], WALL_POINTS_PER_M).obstacles
     cap = np.array([min(PASS_CAP_MULTIPLIER * speed, SPEED_CAP_M_S["human"])])
     positions, distances = [], []
     for k in range(n):
         other_xy, other_v = other[j + k], series_velocity(other, j + k)
         sign = turning_sign(side, unit(goal - xy), other_v, sign)
-        a = pass_acceleration(xy, v, goal, speed, other_xy, other_v, sign, delta, wall_points)
+        peds = PedState(np.array([[*xy, *v, *goal], [*other_xy, *other_v, *other_xy]]), None, Config({"agent_radius": PERSON_BODY_RADIUS_M}))
+        peds.max_speeds = np.array([speed, 0.0])  # DesiredForce reads the desired speed from max_speeds
+        forces = (DesiredForce(), SidedSocialForce(sign, delta), ObstacleForce())
+        for force in forces:
+            force.init(SimpleNamespace(peds=peds, get_obstacles=lambda: wall_points), FORCE_CONFIG)
+        a = sum(force.get_force() for force in forces)[0]
+        if not np.isfinite(a).all():  # exp((delta - d) / B) overflows when |D| nearly vanishes inside the enlarged agent
+            raise FloatingPointError(f"pass force {a} at walker {xy}, other {other_xy}, delta {delta}")
         v = PedState.capped_velocity((v + SUB_DT * a)[None], cap)[0]
         xy = xy + SUB_DT * v
         positions.append(xy)
@@ -200,16 +183,11 @@ def walk_substeps(xy: np.ndarray, goal: np.ndarray, speed: float, n: int) -> tup
     return np.array(positions), v
 
 
-def clearance_delta(clearance: float, contact: float) -> float:
-    """delta (m) of SidedSocialForce for a chosen clearance (m, centre to centre) against an agent of this contact distance."""
-    return clearance - contact
-
-
 class SkillPlanner(QueryPlanner):
     """The skills mode for a planned person: a reply is one skill choice (parse), executed for one 0.4 s step at 10 Hz (positions). The
     planner is made per episode and holds the skill under way, the walker's 10 Hz velocity and heading, the options of the current
     turn (closing_text), the record of the last decision (plan_record) and the passes so far (manifest_fields). Speeds and clearances
-    of a reply are in the units; a speed above the person speed cap is cut to it, a clearance below the pair's scored contact
+    of a reply are in the units. A speed above the person speed cap is cut to it, a clearance below the pair's scored contact
     distance is raised to it."""
 
     name = "skills"
@@ -221,6 +199,7 @@ class SkillPlanner(QueryPlanner):
     def __init__(self, exp, trip, framing, thinking):
         super().__init__(exp, trip, framing, thinking)
         self.others = {REPLY_AGENTS[agent_kind(a)]: a for a in trip["tracks"] if a != trip["agent"]}  # reply agent name -> agent id
+        self.names = {agent: "the robot" if agent == "robot" else person_name(i) for agent, i in self.others.items()}  # reply agent name -> its name in the prompts
         self.current = None    # the skill under way: skill, agent, side, speed_m_s, requested_m_s, clearance_m, clearance_raised, delta_m
         self.sign = 0          # the turning sign of the pass under way
         self.velocity = None   # the walker's velocity (m/s) at the end of the last sub-step, None before the first decision
@@ -242,18 +221,19 @@ class SkillPlanner(QueryPlanner):
         """The option list of this turn, which parse checks replies against: continue (once a skill is under way), walk, wait, and per
         other agent its wording pair minus the sides the walls block."""
         u, d = self.units, unit(scene.goal_xy - scene.track[-1])
-        half_side = scene.site["room_m"] / 2 + ROOM_MARGIN_M["human"]
+        half_side = room_half_side(scene.site, "human")
         self.offered = {"continue": self.current is not None, "agents": {}}
         lines = []
         if self.current is not None:
             c = self.current
             fields = {"unit": u.name, "speed": u.len_text(c["speed_m_s"]) if c["speed_m_s"] is not None else None}
             if c["skill"] == "pass":
-                fields |= {"agent": c["agent"], "name": self.agent_name(c["agent"]), "side": c["side"], "clearance": u.len_text(c["clearance_m"])}
+                fields |= {"agent": c["agent"], "name": self.names[c["agent"]], "side": c["side"], "clearance": u.len_text(c["clearance_m"])}
             lines.append(load_prompt("skill_options", f"continue_{c['skill']}").format(**fields))
         lines += [load_prompt("skill_options", "walk"), load_prompt("skill_options", "wait")]
         for p in scene.others:
-            agent, name = REPLY_AGENTS[p["kind"]], self.agent_name(REPLY_AGENTS[p["kind"]])
+            agent = REPLY_AGENTS[p["kind"]]
+            name = self.names[agent]
             contact = pair_distances(self.trip["agent"], p["id"], scene.site)[0]
             sides = [s for s in SIDES["crossing" if crossing(d, p["velocity"]) else "beside"]
                      if side_is_free(s, d, p["xy"], p["velocity"], contact, half_side)]
@@ -263,10 +243,6 @@ class SkillPlanner(QueryPlanner):
             phrases = [load_prompt("skill_options", "side_" + s.replace(" ", "_")).format(name=name) for s in sides]
             lines.append(load_prompt("skill_options", f"pass_{len(sides)}").format(agent=agent, name=name, side1=phrases[0], side2=phrases[-1]))
         return load_prompt("skill_options", "list").format(lines="\n".join(lines))
-
-    def agent_name(self, agent: str) -> str:
-        """The name of a reply agent in the prompts: "the robot", or the other person's name (P1, P2)."""
-        return "the robot" if agent == "robot" else person_name(self.others[agent])
 
     def parse(self, text: str, max_steps: int) -> dict | None:
         """The reply's fields if they are a valid choice among the options of the current turn (closing_text), else None. Invalid: no JSON
@@ -308,7 +284,7 @@ class SkillPlanner(QueryPlanner):
         else:
             other = np.asarray(self.trip["input_tracks_10hz"]["tracks"][self.others[c["agent"]]], float)[:, :2]
             substeps, self.velocity, self.sign, distances = pass_substeps(xy, self.velocity, goal, c["speed_m_s"], other, j, c["side"], self.sign,
-                                                                          c["delta_m"], walls(scene.site), SCORED_STEP)
+                                                                          c["delta_m"], room_half_side(scene.site, "human"), SCORED_STEP)
             if value["skill"] == "pass":
                 self.passes.append({"start_s": scene.time_s, "agent": c["agent"], "side": c["side"], "clearance_m": c["clearance_m"],
                                     "clearance_raised": c["clearance_raised"], "delta_m": c["delta_m"], "closest_m": np.inf})
@@ -335,7 +311,7 @@ class SkillPlanner(QueryPlanner):
             contact = pair_distances(self.trip["agent"], self.others[value["agent"]], scene.site)[0]
             clearance = float(self.units.length_to_metres(value["clearance"]))
             c |= {"agent": value["agent"], "side": value["side"], "clearance_m": max(clearance, contact), "clearance_raised": clearance < contact,
-                  "delta_m": clearance_delta(max(clearance, contact), contact)}
+                  "delta_m": max(clearance, contact) - contact}
         return c
 
     def motion(self, value, scene, track):

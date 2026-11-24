@@ -19,9 +19,9 @@ A harness is eight settings:
               Only with prediction=true_future
   execute_s   executed motion between queries, rolling episodes only (DEFAULT_EXECUTE_S: 0.8 s, 0.4 s for vel1 and skills, 2.0 s for velseq). None for single shot
 
-Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer, steer_vel and skills, and those only with them;
-vel1 and velseq have no person templates, so they go only with a robot framing, and skills only with a person framing; skills run only in
-rolling_conv episodes at 0.4 s without plan check; px units need a map.
+Pairing rules: the scored-distance framings (observation.prompting.SCORED_DISTANCE_FRAMINGS) go only with steer, steer_vel and skills, and those only with them.
+The vel1 and velseq outputs have no person templates, so they go only with a robot framing, and skills only with a person framing. Skills run only in
+rolling_conv episodes at 0.4 s without plan check. The px units need a map.
 
 The experiment id (the run folder level above the framing) is derived from the settings (Harness.id), in this order:
   ss / rh (single_shot / rolling and rolling_conv), output, units, images, conv (rolling_conv), true_future / constvel_future, then check
@@ -54,7 +54,7 @@ OUTPUTS = {"positions": PositionPlanner, "steer": SteerPlanner, "steer_vel": Ste
            "velseq": VelocityPlanner}
 IMAGES = {"text": (), "bev": ("bev",), "bev_cam": ("bev", "cam")}
 PREDICTIONS = ("none", "true_future", "constvel_future")  # constvel_future is deprecated
-# 0.8 s: 2 steps, about 5 decisions in a mean person traversal; vel1 and skills decide every step
+# 0.8 s: 2 steps, about 5 decisions in a mean person traversal. The vel1 and skills outputs decide every step
 DEFAULT_EXECUTE_S = {"positions": 0.8, "steer": 0.8, "steer_vel": 0.8, "skills": 0.4, "vel1": 0.4, "velseq": 2.0}
 # Outputs with templates for one planned-agent kind only: vel1 and velseq (deprecated) have only prompts/output/robot/, skills only
 # prompts/output/human/

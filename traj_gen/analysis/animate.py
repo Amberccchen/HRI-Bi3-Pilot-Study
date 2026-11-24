@@ -45,7 +45,7 @@ SKILL_COLOUR = {"walk": "#ffd700", "pass": "#e7298a", "wait": "#000000"}  # apar
 def load_episode(folder: Path, trips: dict, sites: dict) -> dict:
     """Everything a time view needs from an episode folder and its trip (trips and sites as returned by run.load_run).
     track is the planned agent's (T, 2) executed track, others {agent id: (T, 2)}, gap the (T,) clearance to the nearest other agent, and
-    skills, for a skills episode, the (T,) labels of the skill that moved the agent into each position (the decision one step earlier;
+    skills, for a skills episode, the (T,) labels of the skill that moved the agent into each position (the decision one step earlier,
     None at the start), else None."""
     manifest = json.loads((folder / "manifest.json").read_text())
     trip = trips[manifest["trip"]]

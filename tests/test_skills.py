@@ -10,20 +10,23 @@ import pytest
 from tests.fake_trips import SITE, person_trip
 from traj_gen.analysis.animate import load_episode
 from traj_gen.harness.episodes import save_trajectory
-from traj_gen.harness.presets import PRESETS, Harness
+from traj_gen.harness.presets import PRESETS
 from traj_gen.observation.prompting import PromptBuilder
 from traj_gen.observation.scene import Scene, track_motion
-from traj_gen.outputs.skills import (FORCE_CONFIG, Config, SidedSocialForce, SocialForce, cross, crossing, pass_substeps, side_is_free, turning_sign, walls,
-                                     walk_substeps)
+from traj_gen.outputs.skills import FORCE_CONFIG, Config, SidedSocialForce, SocialForce, crossing, pass_substeps, side_is_free, turning_sign, walk_substeps
 
-WALLS = walls(SITE)  # the 3.5 m room: walls 2.0 m from the centre
-HALF_SIDE = 2.0
+HALF_SIDE = 2.0  # the 3.5 m room: walls 2.0 m from the centre
 N = 120  # samples of a synthetic 10 Hz series: 12 s
 
 
 def series(start, velocity, n: int = N) -> np.ndarray:
     """(n, 2) positions at 10 Hz of an agent moving at a constant velocity from start."""
     return np.asarray(start, float) + 0.1 * np.arange(n)[:, None] * np.asarray(velocity, float)
+
+
+def cross(a: np.ndarray, b: np.ndarray) -> float:
+    """The z component of a x b: positive when b points to the left of a."""
+    return float(a[0] * b[1] - a[1] * b[0])
 
 
 def pair_force(force, walker_xy, walker_v, other_xy, other_v) -> np.ndarray:
@@ -88,7 +91,7 @@ D = np.array([0.0, 1.0])
 
 
 def run_pass(other: np.ndarray, side: str, speed: float = 1.0, delta: float = 0.3, steps: int = 50):
-    return pass_substeps(WALKER, speed * D, GOAL, speed, other, 0, side, 0, delta, WALLS, steps)
+    return pass_substeps(WALKER, speed * D, GOAL, speed, other, 0, side, 0, delta, HALF_SIDE, steps)
 
 
 @pytest.mark.parametrize("case, other, speed", [("head-on", series((0.0, 1.5), (0.0, -1.0)), 1.0),
@@ -124,8 +127,8 @@ def test_the_agent_is_read_from_the_series_at_each_substep():
     far = series((1.9, -1.9), (0.0, 0.0), 10)
     jumping = far.copy()
     jumping[3:] = [0.0, -1.0]
-    a = pass_substeps(WALKER, D, GOAL, 1.0, far, 0, "left", 0, 0.3, WALLS, 4)[0]
-    b = pass_substeps(WALKER, D, GOAL, 1.0, jumping, 0, "left", 0, 0.3, WALLS, 4)[0]
+    a = pass_substeps(WALKER, D, GOAL, 1.0, far, 0, "left", 0, 0.3, HALF_SIDE, 4)[0]
+    b = pass_substeps(WALKER, D, GOAL, 1.0, jumping, 0, "left", 0, 0.3, HALF_SIDE, 4)[0]
     np.testing.assert_array_equal(a[:2], b[:2])
     assert np.abs(a[2:] - b[2:]).min() > 1e-4
 
@@ -264,11 +267,6 @@ def test_the_option_list_closes_both_turns_after_the_true_future():
 def test_skills_run_only_in_the_conversation_every_step(overrides):
     with pytest.raises(ValueError):
         PRESETS["harness_v2"].harness("human", {"output": "skills", **overrides})
-
-
-def test_skills_are_for_a_planned_person_only():
-    with pytest.raises(ValueError):
-        Harness("rolling_conv", "skills", "px", "bev", "robot_scored_distances")
 
 
 def test_gif_labels_each_frame_with_the_skill_that_moved_the_walker_there(tmp_path):

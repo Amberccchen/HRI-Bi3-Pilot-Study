@@ -8,7 +8,7 @@ The planned agent's kind picks the templates (observation.load_prompt): a planne
 prompt, steer output format, map captions and state, and its own framings. The follow-up and the positions output format are one
 template for both kinds, filled with the planned agent's words (observation.PLANNED_AGENT_WORDS).
 The output mode also names its system, reply and follow-up templates, whether the text gives the scored body sizes, any extra
-text after the state, and any text that closes every turn (the skills mode's options); the steer, steer_vel and skills modes use these,
+text after the state, and any text that closes every turn (the skills mode's options). The steer, steer_vel and skills modes use these,
 and the scored-distance framings go only with them. The output mode, not the builder, reads a reply (QueryPlanner.parse and prefill).
 Image kinds in a Turn are "bev" (render_bev of the turn's scene) and "cam" (camera_frame of the trip),
 in the order they are described in the text.
@@ -25,7 +25,7 @@ from traj_gen.observation.scene import DT, PREDICT_S, PROMPT_HISTORY_S, Scene, p
 
 # Prompt framing (prompts/framing/<kind>/<framing>.txt) -> the planned-agent kind it is written for. neutral: reach the goal station efficiently, with no social instruction.
 # participant: walk as a participant of the study would, given the robot's and the other person's sizes.
-# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed; only with the steer, steer_vel and skills modes.
+# scored_distances (person) and robot_scored_distances (robot): the scored contact and personal-space distances, and that waiting is allowed. Only with the steer, steer_vel and skills modes.
 FRAMINGS = {"neutral": "robot", "robot_scored_distances": "robot", "participant": "human", "scored_distances": "human"}
 SCORED_DISTANCE_FRAMINGS = {"scored_distances", "robot_scored_distances"}
 

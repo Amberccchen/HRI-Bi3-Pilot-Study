@@ -27,8 +27,8 @@ import numpy as np
 from metrics.bi3_metrics import bi3_metrics
 from metrics.traj_gen_metrics import move_end_index, traj_gen_metrics
 from preprocessing.bi3_derived import SCORED_STEP, provenance
-from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, ROOM_MARGIN_M, SPEED_CAP_M_S, agent_kind, body_radii,
-                             body_radius, comfort_distance, contact_distance, pair_distances)
+from traj_gen.agents import (ARRIVAL_RADIUS_M, PERSON_BODY_RADIUS_M, PERSONAL_SPACE_RADIUS_M, SPEED_CAP_M_S, agent_kind, body_radii,
+                             body_radius, comfort_distance, contact_distance, pair_distances, room_half_side)
 from traj_gen.harness.clients import TRANSPORT_ERRORS, Chat, Sample, describe_model, make_client
 from traj_gen.observation import load_prompt
 from traj_gen.observation.bev import render_result
@@ -227,7 +227,7 @@ class Episode:
         return {**bi3_metrics(t, agent, others), **traj_gen_metrics(
             t, agent, others, self.goal, body_radius(self.agent, self.site), body_radii(self.others, self.site),
             others[:, with_space], [PERSONAL_SPACE_RADIUS_M[agent_kind(self.others[k])] for k in with_space], self.arrival_radius,
-            SPEED_CAP_M_S[kind], self.site["room_m"] / 2 + ROOM_MARGIN_M[kind], raw)}
+            SPEED_CAP_M_S[kind], room_half_side(self.site, kind), raw)}
 
     def manifest(self, wall_s: float) -> dict:
         t = self.trip
