@@ -59,7 +59,8 @@ class Scene:
     its heading (radians in the room frame) and speed (m/s) at the end of the last step: from the executed motion, or track_motion of the real
     history before the planned agent sets off.
 
-    others holds one dict per other agent, in the trip's tracks order: id, kind, position, history, velocity, speed,
+    others holds one dict per other agent, in the trip's tracks order: id, kind, position, history (every DT), the series positions between the
+    last history point and now (every 0.1 s), velocity, speed,
     constant-velocity prediction, whether it stands at a station, its goal labels, and its distance from the planned agent.
     """
 
@@ -83,7 +84,9 @@ class Scene:
             half = site["room_m"] / 2  # agents stay in the room, so the prediction does too
             labels = trip["labels"][other]
             self.others.append({
-                "id": other, "kind": agent_kind(other), "xy": xy[-1], "history": xy[-1 - PROMPT_HISTORY_STEPS: -1], "velocity": v,
+                "id": other, "kind": agent_kind(other), "xy": xy[-1], "history": xy[-1 - PROMPT_HISTORY_STEPS: -1],
+                "recent": dense[j - SCORED_STEP + 1: j],  # the series samples between the last history point and now
+                "velocity": v,
                 "speed": float(np.linalg.norm(v)), "predicted": np.clip(xy[-1] + np.outer(PREDICT_S, v), -half, half), "standing": labels["state"][i] == "at_station",
                 "goal": labels["goal"][i], "next_goal": labels["next_goal"][i],
                 "distance": float(np.linalg.norm(xy[-1] - self.track[-1]))})
@@ -102,7 +105,7 @@ class Scene:
         The robot's size is given in the first turn only: its scoring radius with scored_sizes, else its drawn (enclosing) radius."""
         fields = {"pos": units.pos_text(p["xy"]), "velocity": units.vec_text(p["velocity"]), "speed": units.len_text(p["speed"]),
                   "distance": units.len_text(p["distance"]), "unit": units.name, "history": ", ".join(units.pos_text(q) for q in p["history"]),
-                  "hist_s": PROMPT_HISTORY_S, "dt": DT}
+                  "hist_s": PROMPT_HISTORY_S, "dt": DT, "recent": ", ".join(units.pos_text(q) for q in p["recent"]), "recent_dt": f"{1 / INPUT_HZ:g}"}
         if p["kind"] == "robot":
             name = "the robot"
             radius = units.len_text((body_radius if scored_sizes else prompt_radius)(p["id"], self.site))
