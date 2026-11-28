@@ -246,6 +246,11 @@ tr.pick td:first-child::after { content: "  ← fix this one"; font-weight: 500;
     <p class="lead">Each Bi3 survey row is one person rating one trial, and the two people in a session often disagree. So we asked Claude Opus 5.5 about each trial twice, once as person A and once as person B, at the same six inputs as before. That makes 972 answers, each scored against that person's own ratings.</p>
   </header>
 
+  <div class="note" aria-label="Summary of the perception runs">
+    <div class="eyebrow">Summary of the perception runs</div>
+    <p>Across six perception inputs and 1,539 calls, Claude Opus 5.5 reproduced the spread of people's RoSAS ratings of 81 Bi³ trials, with both participants' discomfort ratings falling inside its predicted range in over 80% of trials. However, it captured little of people's sensitivity to controllers or individuals, suggesting that the model knows how people rate robots in general, and that the missing ingredient for simulating participants is information about the person rather than about the robot's motion.</p>
+  </div>
+
   <div class="answer" aria-label="Short answer">
     <div class="answer-text">
       <div class="eyebrow">Short answer</div>
