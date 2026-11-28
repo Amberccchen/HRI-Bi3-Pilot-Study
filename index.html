@@ -155,6 +155,11 @@ td.hl { font-weight: 600; }
 .prompt { border-left: 3px solid var(--model); padding: 4px 0 4px 14px; display: grid; gap: 8px; }
 .prompt p { margin: 0; font-size: 14.5px; max-width: 76ch; }
 .prompt .who { font-size: 12px; color: var(--ink-2); font-family: var(--font-data); text-transform: uppercase; letter-spacing: 0.05em; }
+pre.prompttext { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; background: var(--code-bg); border-radius: 8px; padding: 14px 16px; font: 13.5px/1.6 var(--font-body); color: var(--ink); max-width: 86ch; }
+pre.prompttext mark { background: rgba(37, 125, 224, 0.16); color: inherit; border-radius: 3px; padding: 0 2px; }
+.prompt ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: 14.5px; max-width: 80ch; }
+.prompt details summary { cursor: pointer; color: var(--ink-2); font-weight: 500; font-size: 13.5px; }
+.prompt details pre { margin-top: 8px; }
 
 .pair { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
 .voice { border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
@@ -284,10 +289,60 @@ tr.pick td:first-child::after { content: "  ← fix this one"; font-weight: 500;
         </table>
       </div>
       <div class="prompt">
-        <div class="who">The per-person question (person A shown)</div>
-        <p>“Imagine that about 40 different people had each experienced this trial as person A: in person A's place, doing what person A did and meeting the robot when and where person A met it.” The model then gives how many of the 40 would choose each score from 1 to 9, for discomfort and for competence.</p>
-        <div class="who">How the model knows who A is</div>
-        <p>Coordinates, the description and the plot already label the two people A and B. Video frames have no labels, so the prompt adds one sentence per trial, for example: “In the video frames, person A is the person who starts further to the left in the first frame (t = 0 s), and person B is the person who starts further to the right.” The sentence is computed from each trial's starting positions and checked against the video on three trials.</p>
+        <div class="who">The full prompt, exactly as sent (per-person run, person A, raw frames C1, one LAAS trial)</div>
+        <pre class="prompttext">You will see an anonymized recording or representation of one completed robot navigation trial. Two people, A and B, shared the workspace with the robot. <mark>In the video frames, person A is the person who starts further to the left in the first frame (t = 0 s), and person B is the person who starts further to the right.</mark>
+
+Imagine that about 40 different people had each experienced this trial as person A: in person A's place, doing what person A did and meeting the robot when and where person A met it. Each then rated how closely each word below is associated with the robot as it behaved in this trial, on a scale from 1 = definitely not associated to 9 = definitely associated:
+
+Aggressive; awful; scary; awkward; dangerous; strange; knowledgeable; interactive; responsive; capable; reliable; competent.
+
+A person's discomfort score is the average of their ratings for aggressive, awful, scary, awkward, dangerous and strange. Their competence score is the average of their ratings for knowledgeable, interactive, responsive, capable, reliable and competent. Round each score to the nearest integer.
+
+If ~40 people experienced this trial as person A, how many would give each score 1–9 for discomfort overall and for competence overall?
+
+Use only the trial material provided. Do not infer or use the controller's identity, and do not assume that a measured distance directly reveals either person's feelings.
+
+Return JSON with exactly these keys: `discomfort_counts`, `competence_counts`, `brief_behavioral_evidence`. Each of `discomfort_counts` and `competence_counts` must be an object with the keys "1" to "9", each mapped to a non-negative integer count, with the nine counts summing to about 40. `brief_behavioral_evidence` must be one sentence about observed behavior that person A experienced, without speculation about the participants' internal state.</pre>
+        <div class="who">What changes from call to call</div>
+        <ul>
+          <li><b>The 12 words</b> are the 12 RoSAS items Bi³ used: six for discomfort (aggressive, awful, scary, awkward, dangerous, strange) and six for competence (knowledgeable, interactive, responsive, capable, reliable, competent). Each is rated from 1 to 9. The anchor wording is our adaptation; Bi³ does not publish its exact survey form.</li>
+          <li><b>Person B:</b> “person A” becomes “person B” throughout.</li>
+          <li><b>Who-is-who sentence</b> (highlighted): with frames only (C1), it says where each person starts in the first frame. It reads left/right or top/bottom, computed per trial from the motion capture and checked against the video on three trials. With coordinates, plot or description only (C2), it reads “The trial material labels them A and B.” With both (C3–C6), it has both sentences.</li>
+          <li><b>Trial material:</b> images (video contact sheets, top-down plot) come before the prompt. Text (coordinates, motion description) comes after it, in one <code>&lt;trial_material&gt;</code> block.</li>
+          <li><b>System prompt</b>, the same for every call: “Answer the user's request using only the material provided. Return only the requested JSON object.”</li>
+        </ul>
+        <details>
+          <summary>The generic-run prompt (v4, one call per trial)</summary>
+          <pre class="prompttext">You will see an anonymized recording or representation of one completed robot navigation trial. Two people shared the workspace with the robot.
+
+Imagine that about 40 different people had each experienced this trial as one of the people sharing the workspace, and each then rated how closely each word below is associated with the robot as it behaved in this trial, on a scale from 1 = definitely not associated to 9 = definitely associated:
+
+Aggressive; awful; scary; awkward; dangerous; strange; knowledgeable; interactive; responsive; capable; reliable; competent.
+
+A person's discomfort score is the average of their ratings for aggressive, awful, scary, awkward, dangerous and strange. Their competence score is the average of their ratings for knowledgeable, interactive, responsive, capable, reliable and competent. Round each score to the nearest integer.
+
+If ~40 people experienced this trial, how many would give each score 1–9 for discomfort overall and for competence overall?
+
+Use only the trial material provided. Do not infer or use the controller's identity, and do not assume that a measured distance directly reveals either person's feelings.
+
+Return JSON with exactly these keys: `discomfort_counts`, `competence_counts`, `brief_behavioral_evidence`. Each of `discomfort_counts` and `competence_counts` must be an object with the keys "1" to "9", each mapped to a non-negative integer count, with the nine counts summing to about 40. `brief_behavioral_evidence` must be one sentence about observed behavior, without speculation about the participants' internal state.</pre>
+        </details>
+        <details>
+          <summary>The no-input prompt (R0, no trial material)</summary>
+          <pre class="prompttext">You will not see any recording or representation of the trial. It was one completed robot navigation trial in which two people shared the workspace with the robot.
+
+Imagine that about 40 different people had each experienced this trial as one of the people sharing the workspace, and each then rated how closely each word below is associated with the robot as it behaved in this trial, on a scale from 1 = definitely not associated to 9 = definitely associated:
+
+Aggressive; awful; scary; awkward; dangerous; strange; knowledgeable; interactive; responsive; capable; reliable; competent.
+
+A person's discomfort score is the average of their ratings for aggressive, awful, scary, awkward, dangerous and strange. Their competence score is the average of their ratings for knowledgeable, interactive, responsive, capable, reliable and competent. Round each score to the nearest integer.
+
+If ~40 people experienced this trial, how many would give each score 1–9 for discomfort overall and for competence overall?
+
+Answer without any trial material. Do not infer or use the controller's identity, and do not assume that a measured distance directly reveals either person's feelings.
+
+Return JSON with exactly these keys: `discomfort_counts`, `competence_counts`, `brief_behavioral_evidence`. Each of `discomfort_counts` and `competence_counts` must be an object with the keys "1" to "9", each mapped to a non-negative integer count, with the nine counts summing to about 40. `brief_behavioral_evidence` must be one sentence on what you assumed the robot did, without speculation about the participants' internal state.</pre>
+        </details>
       </div>
       <dl class="facts">
         <div><dt>Answers</dt><dd>972 = 6 inputs × 81 trials × 2 people. All valid; 4 needed one automatic retry for a formatting slip.</dd></div>
