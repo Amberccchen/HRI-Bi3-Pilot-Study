@@ -1,0 +1,1159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Per-Person Participant Simulation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one 1080px frame (sibling of the Perception Ladder page); prose ~68ch, figures on chart cards. People = orange, model = blue (hollow = swapped assignment), no input = grey. */
+:root {
+  --page: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #15181e;
+  --ink-2: #576070;
+  --ink-3: #8b93a0;
+  --hair: #e3e6eb;
+  --axis: #c2c7ce;
+  --hover: rgba(21, 24, 30, 0.045);
+  --model: #257de0;
+  --people: #f47230;
+  --noinput: #8a8f98;
+  --zone: rgba(10, 172, 35, 0.10);
+  --good: #0aac23;
+  --warn: #fbb315;
+  --bad: #dc3c3d;
+  --code-bg: #eceff4;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0e0f12; --surface: #191919; --ink: #eceef1; --ink-2: #a3abb7; --ink-3: #6f7783;
+    --hair: #2c3036; --axis: #474b52; --hover: rgba(255, 255, 255, 0.05);
+    --model: #338ced; --people: #e76624; --noinput: #8b919b; --zone: rgba(10, 172, 35, 0.16);
+    --code-bg: #23262c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0e0f12; --surface: #191919; --ink: #eceef1; --ink-2: #a3abb7; --ink-3: #6f7783;
+  --hair: #2c3036; --axis: #474b52; --hover: rgba(255, 255, 255, 0.05);
+  --model: #338ced; --people: #e76624; --noinput: #8b919b; --zone: rgba(10, 172, 35, 0.16);
+  --code-bg: #23262c; color-scheme: dark;
+}
+
+body { background: var(--page); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6; }
+.wrap {
+  max-width: 1080px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 56px;
+}
+section { display: grid; gap: 20px; min-width: 0; }
+.prose { max-width: 68ch; display: grid; gap: 12px; }
+.prose p, .prose ul { margin: 0; }
+.prose ul { padding-left: 1.2em; display: grid; gap: 6px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; font-weight: 600; }
+h2 { font-size: clamp(22px, 3vw, 28px); line-height: 1.2; font-weight: 600; }
+h3 { font-size: 16px; line-height: 1.3; font-weight: 600; }
+.eyebrow { font-family: var(--font-data); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.lead { font-size: 18px; color: var(--ink-2); max-width: 66ch; margin: 0; }
+code, .mono { font-family: var(--font-data); font-size: 0.88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+strong { font-weight: 600; }
+header { display: grid; gap: 14px; }
+
+.answer { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 24px; display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+.answer-text { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.answer-text p { margin: 0; }
+.verdict-word { font-family: var(--font-display); font-size: 34px; font-weight: 600; line-height: 1.05; }
+.tiles { display: grid; gap: 12px; min-width: 0; }
+.tile { display: grid; grid-template-columns: 124px 1fr; gap: 12px; align-items: baseline; padding-block: 10px; border-top: 1px solid var(--hair); }
+.tile:first-child { border-top: 0; padding-top: 0; }
+.tile-v { font-size: 26px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile-l { font-size: 14px; line-height: 1.4; }
+.tile-l span { display: block; color: var(--ink-2); font-size: 13px; }
+
+.note { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 18px 20px; display: grid; gap: 8px; max-width: 80ch; }
+.note p { margin: 0; font-size: 15px; }
+.note .eyebrow { color: var(--ink-2); }
+
+.fig { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.fig-head { display: grid; gap: 4px; }
+.fig-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.fig-sub { color: var(--ink-2); font-size: 14px; line-height: 1.5; max-width: 82ch; }
+.fig-bar { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.key-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.key-ring { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 2px solid var(--model); box-sizing: border-box; }
+.key-line { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+.key-dash { width: 18px; height: 0; border-top: 2px dashed var(--ink-3); display: inline-block; }
+.key-zone { width: 14px; height: 10px; background: var(--zone); border-radius: 2px; display: inline-block; }
+.key-box { width: 18px; height: 8px; border-radius: 3px; display: inline-block; }
+.grid-3 { display: grid; gap: 22px 22px; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.grid-2 { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
+.panel { display: grid; gap: 4px; min-width: 0; align-content: start; }
+.panel-title { font-weight: 600; font-size: 14px; }
+.panel-title .mono { color: var(--ink-2); margin-right: 6px; }
+.panel-sub { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.plot { width: 100%; min-width: 0; }
+.plot svg { display: block; overflow: visible; }
+.caption { font-size: 13px; color: var(--ink-2); line-height: 1.5; max-width: 82ch; margin: 0; }
+
+.t-ax { fill: var(--ink-2); font: 11.5px var(--font-body); font-variant-numeric: tabular-nums; }
+.t-mono { font-family: var(--font-data); }
+.t-lab { fill: var(--ink); font: 500 12.5px var(--font-body); }
+.t-strong { font-weight: 600; }
+.t-note { fill: var(--ink-2); font: 11.5px var(--font-body); }
+.grid { stroke: var(--hair); stroke-width: 1; shape-rendering: crispEdges; }
+.axis { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
+.ci { stroke-width: 2; stroke-linecap: round; }
+.zone { fill: var(--zone); }
+.ref { stroke-width: 1.5; fill: none; }
+.ref-people { stroke: var(--people); }
+.ref-chance { stroke: var(--ink-3); stroke-dasharray: 5 4; }
+.ref-r0 { stroke: var(--noinput); }
+.nopt { pointer-events: none; }
+.hit { fill: transparent; outline: none; }
+.hit:hover { fill: var(--hover); }
+.hit:focus-visible { fill: var(--hover); stroke: var(--ink-2); stroke-width: 1.5; }
+.pt-hit { fill: transparent; }
+
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,0.14); max-width: 320px; }
+.tip-head { color: var(--ink-2); font-size: 12px; margin-bottom: 3px; }
+.tip-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tip-key { width: 12px; height: 0; border-top: 2px solid; display: inline-block; flex: none; }
+.tip-row strong { font-variant-numeric: tabular-nums; }
+.tip-label { color: var(--ink-2); }
+
+.seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 8px; padding: 2px; gap: 2px; background: var(--page); }
+.seg button { font: 500 13px var(--font-body); color: var(--ink-2); background: transparent; border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.seg button:focus-visible, .copy:focus-visible, summary:focus-visible { outline: 2px solid var(--model); outline-offset: 2px; }
+
+details.data { font-size: 13px; }
+details.data summary { cursor: pointer; color: var(--ink-2); font-weight: 500; width: max-content; max-width: 100%; }
+.tbl { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 100%; }
+th, td { text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--hair); white-space: nowrap; vertical-align: top; }
+th { color: var(--ink-2); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+td.hl { font-weight: 600; }
+
+.facts { display: grid; gap: 12px 28px; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); margin: 0; }
+.facts div { display: grid; gap: 2px; min-width: 0; }
+.facts dt { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-data); }
+.facts dd { margin: 0; font-size: 14.5px; }
+
+.prompt { border-left: 3px solid var(--model); padding: 4px 0 4px 14px; display: grid; gap: 8px; }
+.prompt p { margin: 0; font-size: 14.5px; max-width: 76ch; }
+.prompt .who { font-size: 12px; color: var(--ink-2); font-family: var(--font-data); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.pair { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.voice { border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.voice-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.voice-top b { font-family: var(--font-display); font-size: 16px; }
+.voice-top span { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+.voice-top span strong { color: var(--ink); font-size: 18px; }
+.voice p { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+.claims { display: grid; background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+.claim { display: grid; grid-template-columns: minmax(0, 1.1fr) 190px minmax(0, 1.6fr); gap: 8px 20px; padding: 16px 20px; border-top: 1px solid var(--hair); align-items: start; }
+.claim:first-child { border-top: 0; }
+.claim-q { font-weight: 600; font-size: 15px; line-height: 1.45; }
+.claim-q span { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-2); font-family: var(--font-data); margin-top: 2px; }
+.claim-why { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+@media (max-width: 760px) { .claim { grid-template-columns: 1fr; } }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; border: 1px solid var(--hair); border-radius: 999px; padding: 3px 10px 3px 6px; width: max-content; max-width: 100%; background: var(--surface); }
+.chip i { font-style: normal; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; color: #fff; line-height: 1; flex: none; }
+.chip.bad i { background: var(--bad); }
+.chip.good i { background: var(--good); }
+.chip.warn i { background: var(--warn); color: #0b0b0b; }
+
+.cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 18px 20px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+.quote { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 20px; display: grid; gap: 12px; }
+.quote p { margin: 0; max-width: 76ch; font-size: 15px; }
+.copy { justify-self: start; font: 500 13px var(--font-body); color: var(--ink); background: var(--page); border: 1px solid var(--hair); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.todo { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; max-width: 82ch; }
+.todo li { display: grid; grid-template-columns: 18px 1fr; gap: 10px; font-size: 14.5px; }
+.todo li::before { content: ""; width: 12px; height: 12px; border: 1.5px solid var(--ink-3); border-radius: 3px; margin-top: 5px; }
+footer { font-size: 13px; color: var(--ink-2); display: grid; gap: 6px; border-top: 1px solid var(--hair); padding-top: 20px; }
+footer p { margin: 0; }
+
+[hidden] { display: none !important; }
+.wrap, section, .fig { grid-template-columns: minmax(0, 1fr); }
+.tbl, .fig > *, section > * { min-width: 0; }
+/* top navigation: one view per tab, routed on the hash */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.topnav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--hair); }
+.topnav-in { max-width: 1080px; margin: 0 auto; padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 22px; }
+.brand { font-family: var(--font-display); font-weight: 600; font-size: 14px; white-space: nowrap; color: var(--ink); }
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a { font: 500 14px var(--font-body); color: var(--ink-2); text-decoration: none; padding: 14px 12px 12px; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--model); }
+.tabs a:focus-visible { outline: 2px solid var(--model); outline-offset: -2px; border-radius: 4px; }
+@media (max-width: 720px) { .brand { display: none; } }
+.paperfig { background: #ffffff; border: 1px solid var(--hair); border-radius: 12px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.paperfig img { display: block; width: 100%; height: auto; }
+.paperfig figcaption { font-size: 13px; color: #576070; line-height: 1.5; }
+.paperfig figcaption b { color: #15181e; }
+.rec { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 22px 24px; display: grid; gap: 10px; }
+.rec .verdict-word { font-size: 30px; }
+.rec p { margin: 0; max-width: 72ch; }
+.steps { margin: 0; padding-left: 1.4em; display: grid; gap: 10px; max-width: 82ch; }
+.steps li { font-size: 15px; padding-left: 4px; }
+.steps li b { font-weight: 600; }
+pre.cmd { background: var(--code-bg); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font: 13px/1.55 var(--font-data); margin: 6px 0 0; }
+tr.pick td { font-weight: 600; }
+tr.pick td:first-child::after { content: "  ← fix this one"; font-weight: 500; color: var(--model); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Report pages">
+  <div class="topnav-in">
+    <span class="brand">Simulated participants · final experiment</span>
+    <div class="tabs">
+      <a href="#results">Per-person results</a>
+      <a href="#generic">Generic run</a>
+      <a href="#input-choice">Input for generation</a>
+      <a href="#paper">Paper</a>
+      <a href="#reproduce">Reproduce &amp; share</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap" data-view="results">
+  <header>
+    <div class="eyebrow">Where Simulated Participants Hold Up in HRI · per-person run (pp)</div>
+    <h1>Can the model stand in for one specific participant?</h1>
+    <p class="lead">Each Bi3 survey row is one person rating one trial, and the two people in a session often disagree. So we asked Claude Opus 5.5 about each trial twice, once as person A and once as person B, at the same six inputs as before. That makes 972 answers, each scored against that person's own ratings.</p>
+  </header>
+
+  <div class="answer" aria-label="Short answer">
+    <div class="answer-text">
+      <div class="eyebrow">Short answer</div>
+      <div class="verdict-word">No. It reads the encounter, not the person.</div>
+      <p>The model gives A and B different answers, and for a reason you can see: the person who came closer to the robot gets more discomfort. People don't work that way. Which of the two reported more discomfort has nothing to do with who came closer, so the model's A−B differences don't track the real ones at any input.</p>
+      <p>Its A−B differences are also small, about a seventh of how much the two participants really differ. Averaging A and B into one pair answer still fails the decision test. To simulate a specific participant, the model needs information about the person, not more detail about the motion.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="tile-v">0.18–0.27</div><div class="tile-l">Model's mean A−B gap in discomfort, by input<span>The two real participants differ by 1.52 on the same 1–9 scale</span></div></div>
+      <div class="tile"><div class="tile-v">≤ +0.08</div><div class="tile-l">Best correlation between the model's A−B and people's difference<span>No input reaches an interval above 0 (pre-registered HP1)</span></div></div>
+      <div class="tile"><div class="tile-v">35–56%</div><div class="tile-l">How often the model picks the more uncomfortable person<span>Chance is 50%</span></div></div>
+      <div class="tile"><div class="tile-v">−0.60</div><div class="tile-l">Model's A−B vs who came closer to the robot (C4)<span>People's own difference vs the same measure: +0.08</span></div></div>
+    </div>
+  </div>
+
+  <div class="note" aria-label="Why per person">
+    <div class="eyebrow">Why this is the main setting now</div>
+    <p>The earlier run (v4) asked how a typical participant would rate each trial, and compared that one answer with both people in the session. Those two people agree only weakly: across trials, their discomfort ratings correlate at ρ = 0.11. A single generic answer can't match two people who disagree, so this page treats the per-person run as the experiment. The generic run only appears where the pre-registered HP3 compares against it.</p>
+    <p>The no-input baseline (R0) still applies. With no trial material the model cannot tell A from B, so its per-person answer is the same as its generic one.</p>
+  </div>
+
+  <section aria-labelledby="s-setup">
+    <div class="prose">
+      <div class="eyebrow">Setup</div>
+      <h2 id="s-setup">Same trials, same inputs, asked once per person</h2>
+      <p>Everything matches the earlier run except the question. The model sees the same material: video frames, text coordinates, a top-down plot or a motion description, in the same six combinations. Each answer is about one named person.</p>
+    </div>
+    <div class="fig">
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Code</th><th>What the model sees for each trial</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">R0</td><td>No trial material at all, only the question (the no-input baseline)</td></tr>
+            <tr><td class="mono">C1</td><td>Raw frames: a sparse set of overhead video frames</td></tr>
+            <tr><td class="mono">C2</td><td>Text coordinates: robot and people positions over time, written out as numbers</td></tr>
+            <tr><td class="mono">C3</td><td>C1 + C2: frames and coordinates</td></tr>
+            <tr><td class="mono">C4</td><td>C3 + a top-down plot of the robot's and people's paths</td></tr>
+            <tr><td class="mono">C5</td><td>C3 + a written description of the motion</td></tr>
+            <tr><td class="mono">C6</td><td>All four: frames, coordinates, plot and description</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prompt">
+        <div class="who">The per-person question (person A shown)</div>
+        <p>“Imagine that about 40 different people had each experienced this trial as person A: in person A's place, doing what person A did and meeting the robot when and where person A met it.” The model then gives how many of the 40 would choose each score from 1 to 9, for discomfort and for competence.</p>
+        <div class="who">How the model knows who A is</div>
+        <p>Coordinates, the description and the plot already label the two people A and B. Video frames have no labels, so the prompt adds one sentence per trial, for example: “In the video frames, person A is the person who starts further to the left in the first frame (t = 0 s), and person B is the person who starts further to the right.” The sentence is computed from each trial's starting positions and checked against the video on three trials.</p>
+      </div>
+      <dl class="facts">
+        <div><dt>Answers</dt><dd>972 = 6 inputs × 81 trials × 2 people. All valid; 4 needed one automatic retry for a formatting slip.</dd></div>
+        <div><dt>Model</dt><dd>Claude Opus 5.5, medium reasoning effort, tools off. Input lock <span class="mono" id="lock"></span>.</dd></div>
+        <div><dt>Who is A</dt><dd>A = motion-capture track 0 (LAAS Helmet_1, UM human_1), B = track 1. The helmet audit confirms this holds in every recording.</dd></div>
+        <div><dt>Identity assumption</dt><dd>Scoring A against survey person 0 assumes the survey index matches the track. This is unverified, so results are also shown with A and B swapped.</dd></div>
+        <div><dt>Tests</dt><dd>HP1–HP3 fixed before the first call (run record). Motion checks and “picks the right person” were added afterwards and are exploratory.</dd></div>
+        <div><dt>Intervals</dt><dd>95% session bootstrap, 2,000 draws within site, seed 0. Discomfort is primary.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-spread">
+    <div class="prose">
+      <div class="eyebrow">How different are A and B?</div>
+      <h2 id="s-spread">The model separates the two people by a fraction of the real gap</h2>
+      <p>For each trial, take the gap between the two answers. People's gaps are large: the middle half of trials runs from 0.8 to 1.8 points on the 1–9 discomfort scale. The model's gaps sit mostly under 0.4, at every input. It treats A and B as two versions of the same typical person.</p>
+    </div>
+    <div class="fig">
+      <div class="fig-bar">
+        <div class="fig-head">
+          <div class="fig-title">Size of the within-pair gap, per trial</div>
+          <div class="fig-sub">The line spans the 10th–90th percentile of the 81 trials, the bar the middle half, and the dot the median.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="legend"><span><i class="key-box" style="background:var(--people)"></i>People: |person 0 − person 1|</span><span><i class="key-box" style="background:var(--model)"></i>Model: |A − B|</span></div>
+      <div class="plot" id="f-spread"></div>
+      <details class="data"><summary>Show the numbers</summary><div class="tbl" id="t-spread"></div></details>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-track">
+    <div class="prose">
+      <div class="eyebrow">HP1 and HP2 · does it know who was more uncomfortable?</div>
+      <h2 id="s-track">It doesn't pick out the more uncomfortable person</h2>
+      <p id="scatter-prose">Each dot is one trial. Across is the people's difference (person 0 minus person 1); up is the model's (A minus B). If the model tracked individuals, the dots would rise from lower left to upper right, and most would sit in the two shaded corners where the model and the people pick the same person. At every input they form a flat band.</p>
+    </div>
+    <div class="fig" id="scatter-fig">
+      <div class="fig-bar">
+        <div class="fig-head">
+          <div class="fig-title">Model A − B vs people's 0 − 1, one dot per trial</div>
+          <div class="fig-sub">Direct assignment (A = person 0). Swapping A and B mirrors each panel left to right. The vertical axis is zoomed: the model's differences are much smaller than people's.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="legend"><span><i class="key-dot" style="background:var(--model)"></i>LAAS trial</span><span><i class="key-ring"></i>UM trial</span><span><i class="key-zone"></i>Model and people pick the same person</span></div>
+      <div class="grid-3" id="f-scatter"></div>
+      <details class="data"><summary>Show the numbers</summary><div class="tbl" id="t-scatter"></div></details>
+    </div>
+    <div class="fig">
+      <div class="fig-head">
+        <div class="fig-title">The pre-registered tests, by input</div>
+        <div class="fig-sub">HP1 passes if the interval for ρ(model A−B, people 0−1) lies above 0. With A and B swapped, every value flips sign. HP2 uses the sizes of the two gaps, so it needs no identity assumption. A hollow dot means the interval crosses 0.</div>
+      </div>
+      <div class="legend"><span><i class="key-dot" style="background:var(--model)"></i>Model (Spearman ρ, 95% interval)</span><span><i class="key-zone"></i>Pass region</span></div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-title">HP1 · direction of the difference</div><div class="panel-sub" id="hp1-sub"></div><div class="plot" id="f-hp1"></div></div>
+        <div class="panel"><div class="panel-title">HP2 · size of the difference</div><div class="panel-sub" id="hp2-sub"></div><div class="plot" id="f-hp2"></div></div>
+      </div>
+      <p class="caption">The one interval that excludes 0 is HP1 at C4, and it lies below 0, so on that input the swapped assignment would pass. No other input agrees, so this reads as noise across 12 tests rather than evidence that the identity match is reversed.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-pref">
+    <div class="prose">
+      <div class="eyebrow">HP3 · each person's controller preferences</div>
+      <h2 id="s-pref">Preferences come out right about as often as chance, for either assignment</h2>
+      <p>For each person and each pair of controllers, did the model's answers for that person order the two controllers the way that person did? If the model were simulating individuals, scoring it against the right person should beat scoring it against the wrong one. It doesn't: direct and swapped land close together, near the 50% chance line. One participant predicting the other reaches 60%.</p>
+    </div>
+    <div class="fig">
+      <div class="fig-bar">
+        <div class="fig-head">
+          <div class="fig-title">Per-person preference agreement</div>
+          <div class="fig-sub">Share of controller pairs the model orders like the person, excluding pairs the person rated equal. A model tie counts as a miss.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="legend"><span><i class="key-dot" style="background:var(--model)"></i>Scored against the matched person (direct)</span><span><i class="key-ring"></i>Scored against the other person (swapped)</span><span><i class="key-dash"></i>Chance</span><span><i class="key-line" style="border-color:var(--noinput)"></i>No input (R0)</span><span><i class="key-line" style="border-color:var(--people)"></i>One participant predicting the other</span></div>
+      <div class="plot" id="f-pref"></div>
+      <details class="data"><summary>Show the numbers, with the pre-registered HP3 comparison against the generic run</summary><div class="tbl" id="t-pref"></div>
+        <p class="caption" style="margin-top:10px">HP3 compared per-person agreement with the generic run's agreement at the same input. It nominally passes at C1 and C3, but those are the inputs where the generic run fell below chance (42% and 35%), and swapped scoring gains as much as direct. At C1 part of the gain also comes from fewer ties (11% → 6%).</p>
+      </details>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-why">
+    <div class="prose">
+      <div class="eyebrow">Exploratory · what the model does use</div>
+      <h2 id="s-why">The model gives more discomfort to whoever came closer. People don't.</h2>
+      <p>From the motion capture, we measured each person's own encounter: their closest approach to the robot, and how long they spent within 1 m of it. Then we asked which A−B differences follow these.</p>
+      <p>The model's do, at every input and most strongly once the plot is added (C4–C6). People's don't. The person who came closer was not more likely to report more discomfort. The model is doing what it was asked, reasoning from each person's encounter, but that isn't what drives the participants' disagreement.</p>
+    </div>
+    <div class="fig">
+      <div class="fig-bar">
+        <div class="fig-head">
+          <div class="fig-title">Correlation of each A−B difference with the people's motion difference</div>
+          <div class="fig-sub">Spearman ρ over 81 trials, 95% session bootstrap. Negative on the left: the person who came closer gets higher discomfort. People are scored under the direct assignment; swapping flips the sign of their ρ, and it stays near 0 either way.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="legend"><span><i class="key-dot" style="background:var(--people)"></i>People (0 − 1)</span><span><i class="key-dot" style="background:var(--model)"></i>Model (A − B)</span><span>Hollow dot: interval crosses 0</span></div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-title">Closest approach to the robot</div><div class="panel-sub" id="m1-sub"></div><div class="plot" id="f-m1"></div></div>
+        <div class="panel"><div class="panel-title">Time within 1 m of the robot</div><div class="panel-sub" id="m2-sub"></div><div class="plot" id="f-m2"></div></div>
+      </div>
+      <details class="data"><summary>Show the numbers, including distance walked and the identity-free version</summary><div class="tbl" id="t-motion"></div></details>
+    </div>
+    <div class="fig" id="ex-fig">
+      <div class="fig-head">
+        <div class="fig-title">The largest A−B gap the model gave, in its own words</div>
+        <div class="fig-sub" id="ex-sub"></div>
+      </div>
+      <div class="pair" id="ex"></div>
+      <p class="caption">Both answers reason from who met the robot where and when. This is the model reading the trial correctly. Whether person A in this session actually felt more uncomfortable is a separate question, and across the 81 trials that is what the model cannot predict.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-pair">
+    <div class="prose">
+      <div class="eyebrow">Pair level · averaging A and B</div>
+      <h2 id="s-pair">Averaging the two answers still doesn't separate the controllers</h2>
+      <p>Averaging each trial's A and B answers gives one answer per trial, which we score with the same pair-level tests as before. The controller gaps stay a small fraction of people's. Simulated studies built from these answers almost never reach the people's conclusion, whether each simulated participant is drawn from the pair average or from their own person's answer.</p>
+      <p>Raw frames (C1) show the only hint of structure. The averaged answers rate CV least uncomfortable, ordering the controllers like people on 63% of pairs. The gaps are still a seventh of people's (0.10 vs 0.69), and the generic run at the same input showed none of this (42%). Treat it as one input out of six, not a finding.</p>
+    </div>
+    <div class="fig">
+      <div class="fig-bar">
+        <div class="fig-head">
+          <div class="fig-title">Controller gaps, A and B averaged</div>
+          <div class="fig-sub">Gap in the mean rating between two controllers, with a 95% interval. The pass region starts at half the people's gap, the spec's S1 rule.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="legend"><span><i class="key-dot" style="background:var(--people)"></i>People</span><span><i class="key-dot" style="background:var(--noinput)"></i>No input (R0)</span><span><i class="key-dot" style="background:var(--model)"></i>Model, A and B averaged</span><span><i class="key-zone"></i>Pass region</span></div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-title">Blind − CV</div><div class="plot" id="f-g1"></div></div>
+        <div class="panel"><div class="panel-title">CV − CoHAN</div><div class="plot" id="f-g2"></div></div>
+      </div>
+      <div class="tbl" id="t-pair"></div>
+      <p class="caption" id="pair-cap"></p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-sites">
+    <div class="prose">
+      <div class="eyebrow">By site</div>
+      <h2 id="s-sites">Neither site shows individual tracking</h2>
+      <p>LAAS has 20 sessions (60 trials); UM has 7 (21 trials), so its intervals are wide. At UM the model's gap is, if anything, larger where the pair agreed more (HP2 below 0 at C2, C3 and C6). With seven sessions, that is as likely noise as anything else.</p>
+    </div>
+    <div class="fig">
+      <div class="fig-bar">
+        <div class="fig-head"><div class="fig-title">HP1, HP2 and preference agreement, LAAS vs UM</div></div>
+        <div class="seg" role="group" aria-label="Scale"><button type="button" data-scale="discomfort" aria-pressed="true">Discomfort</button><button type="button" data-scale="competence" aria-pressed="false">Competence</button></div>
+      </div>
+      <div class="tbl" id="t-sites" style="margin-top:0"></div>
+      <p class="caption">ρ with its 95% interval. Preference agreement is shown as direct / swapped. An asterisk marks an interval that excludes 0.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-verdict">
+    <div class="prose">
+      <div class="eyebrow">Verdict</div>
+      <h2 id="s-verdict">What the per-person run can claim</h2>
+    </div>
+    <div class="claims">
+      <div class="claim"><div class="claim-q">Does the model's A−B difference follow which person was more uncomfortable?<span>HP1 · pre-registered</span></div><div><span class="chip bad"><i>✕</i>No, at all six inputs</span></div><div class="claim-why">ρ ranges from −0.23 to +0.08. The model picks the more uncomfortable person 35–56% of the time, against 50% chance.</div></div>
+      <div class="claim"><div class="claim-q">Does the size of its gap follow how much the pair disagreed?<span>HP2 · pre-registered, needs no identity assumption</span></div><div><span class="chip bad"><i>✕</i>No, at all six inputs</span></div><div class="claim-why">ρ ranges from −0.18 to +0.08. The model's gaps are 0.18–0.27 points; people's are 1.52.</div></div>
+      <div class="claim"><div class="claim-q">Are per-person preferences better than the generic run's?<span>HP3 · pre-registered</span></div><div><span class="chip warn"><i>!</i>Nominal at C1 and C3 only</span></div><div class="claim-why">Not specific to the person: swapped scoring does as well as direct, and agreement (42–56%) sits around chance. The gains come from the generic run being below chance at those two inputs.</div></div>
+      <div class="claim"><div class="claim-q">Does averaging A and B separate the controllers?<span>Descriptive</span></div><div><span class="chip bad"><i>✕</i>No</span></div><div class="claim-why">Gaps are at most 0.14 points, against people's 0.6–0.7. Simulated studies reach the people's conclusion in at most 0.6% of runs for discomfort; the bar is 32%.</div></div>
+      <div class="claim"><div class="claim-q">What does the model base its A−B difference on?<span>Exploratory</span></div><div><span class="chip good"><i>✓</i>Who came closer to the robot</span></div><div class="claim-why">ρ is −0.23 to −0.60 with the closest-approach difference, at every input. People's own differences don't follow it (ρ +0.08), so this explains the model's answers, not the participants'.</div></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-need">
+    <div class="prose">
+      <div class="eyebrow">For the study aim</div>
+      <h2 id="s-need">What does the model need to know to act as a participant?</h2>
+      <p>This run adds a sharper answer to the earlier one. The representation of the motion is not the bottleneck. With any input, the model correctly works out which person had the closer encounter. The two participants of a session just don't rate the robot according to their encounters, so getting the encounter right doesn't help.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>The model already has the trial</h3><p>Frames alone (C1) are enough for it to tell the two people apart and reason about each person's encounter. With the plot or description added (C4–C6) it leans harder on proximity (ρ −0.46 to −0.60, against −0.25 with frames alone), and gets no closer to people.</p></div>
+      <div class="card"><h3>It lacks the person</h3><p>The participants' disagreement is personal: it doesn't follow proximity, time close to the robot or distance walked. To simulate a specific participant, the model would need something about that person, such as their own rating of another trial or their attitude toward robots.</p></div>
+      <div class="card"><h3>A possible next test</h3><p>Give the model one of the person's three ratings and ask for the other two. If per-person information is the missing piece, this should beat the zero-shot answers here. It is outside the current plan and needs team agreement.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Sources: <code>outputs/bi3/final_perception_pp/analysis/results.json</code> and <code>report.md</code> (pre-registered tests), <code>exploratory.json</code> (motion and “right person” checks, <code>src/bi3/explore_pp.py</code>), and <code>run_logs/run_record_pp.md</code>.</p>
+    <p>Trial identities stay blinded: the per-trial dots carry no trial, session or controller label. The example names only the model-side trial code.</p>
+  </footer>
+</div>
+
+<div class="wrap" data-view="paper" hidden>
+  <header>
+    <div class="eyebrow">Paper · Sec. III, Sec. V-B and Appendix A</div>
+    <h1>What goes into the paper</h1>
+    <p class="lead">The LaTeX drafts now make the per-person run the main final experiment and move the generic run to an appendix. Every number in the two tables below was checked against the analysis output.</p>
+  </header>
+
+  <section aria-labelledby="s-struct">
+    <div class="prose">
+      <div class="eyebrow">Structure</div>
+      <h2 id="s-struct">Where each result sits</h2>
+    </div>
+    <div class="fig">
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Part</th><th>File in <code>final_report/</code></th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td>Sec. III, design</td><td><code>design_update_perception.tex</code></td><td style="white-space:normal">Perception inputs C1–C6; the simulated participant (A/B, identity sentence, swapped scoring); H1–H3 on the A/B average; HP1–HP3; conditions run</td></tr>
+            <tr><td>Sec. V-B, results</td><td><code>results_perception.tex</code></td><td style="white-space:normal">Setup; Table I and Fig. 1 (A/B averaged, by input); Table II and Fig. 2 (per-person tests); HP1–HP3, the exploratory proximity check, H3, H1, H2, S3, sites, summary</td></tr>
+            <tr><td>Appendix A</td><td><code>appendix_generic_perception.tex</code></td><td style="white-space:normal">The generic-participant run: why it was replaced, its table and figure, H1–H3, sites</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">Include the appendix after <code>\appendices</code>. Earlier versions of all three files are in <code>final_report/backup_before_pp/</code>. The drafts were checked for balanced braces, environments and references, but not compiled; this PC has no TeX.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-tables">
+    <div class="prose">
+      <div class="eyebrow">Tables</div>
+      <h2 id="s-tables">Table I and Table II</h2>
+    </div>
+    <div class="fig">
+      <div class="fig-head"><div class="fig-title">Table I · Discomfort results per input, A and B averaged</div></div>
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Input</th><th class="num">Blind − CV</th><th class="num">CV − CoHAN</th><th class="num">ρ</th><th class="num">P</th><th class="num">D2</th><th class="num">F1</th></tr></thead>
+          <tbody>
+            <tr><td>People (reference)</td><td class="num">+0.69</td><td class="num">−0.60</td><td class="num">0.11</td><td class="num">60%</td><td class="num">63.1%</td><td class="num">–</td></tr>
+            <tr><td>R0 No input</td><td class="num">−0.06</td><td class="num">+0.05</td><td class="num">−0.19</td><td class="num">40%</td><td class="num">0.0%</td><td class="num">5/6</td></tr>
+            <tr><td>C1 Raw frames</td><td class="num">+0.10</td><td class="num">−0.09</td><td class="num">+0.13</td><td class="num">63%</td><td class="num">0.6%</td><td class="num">4/6</td></tr>
+            <tr><td>C2 Text coordinates</td><td class="num">−0.01</td><td class="num">+0.00</td><td class="num">−0.01</td><td class="num">48%</td><td class="num">0.4%</td><td class="num">3/6</td></tr>
+            <tr><td>C3 Frames + coords</td><td class="num">+0.02</td><td class="num">−0.01</td><td class="num">−0.05</td><td class="num">52%</td><td class="num">0.4%</td><td class="num">5/6</td></tr>
+            <tr><td>C4 C3 + top-down plot</td><td class="num">−0.01</td><td class="num">−0.04</td><td class="num">−0.20</td><td class="num">49%</td><td class="num">0.3%</td><td class="num">4/6</td></tr>
+            <tr><td>C5 C3 + description</td><td class="num">+0.00</td><td class="num">+0.02</td><td class="num">−0.21</td><td class="num">46%</td><td class="num">0.2%</td><td class="num">5/6</td></tr>
+            <tr><td>C6 All four</td><td class="num">+0.07</td><td class="num">−0.03</td><td class="num">+0.01</td><td class="num">45%</td><td class="num">0.6%</td><td class="num">5/6</td></tr>
+            <tr><td>Pass rule</td><td class="num" colspan="2">same sign, ≥ half</td><td class="num">CI &gt; 0</td><td class="num">CI &gt; 50%</td><td class="num">≥ 32%</td><td class="num">≥ 4</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="fig">
+      <div class="fig-head"><div class="fig-title">Table II · Per-person discomfort results</div><div class="fig-sub">HP1 and HP2 are Spearman ρ under the direct assignment. P is per-person preference agreement, scored against the matched participant / against the other one. Closest is the exploratory ρ with the closest-approach difference. * marks an interval that excludes 0.</div></div>
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Input</th><th class="num">|A − B|</th><th class="num">HP1</th><th class="num">HP2</th><th class="num">P direct / swapped</th><th class="num">Closest</th></tr></thead>
+          <tbody>
+            <tr><td>People (reference)</td><td class="num">1.52</td><td class="num">–</td><td class="num">–</td><td class="num">60%</td><td class="num">+0.08</td></tr>
+            <tr><td>C1 Raw frames</td><td class="num">0.27</td><td class="num">−0.14</td><td class="num">+0.08</td><td class="num">56% / 56%</td><td class="num">−0.25*</td></tr>
+            <tr><td>C2 Text coordinates</td><td class="num">0.18</td><td class="num">−0.05</td><td class="num">−0.08</td><td class="num">45% / 45%</td><td class="num">−0.38*</td></tr>
+            <tr><td>C3 Frames + coords</td><td class="num">0.18</td><td class="num">+0.08</td><td class="num">−0.06</td><td class="num">49% / 42%</td><td class="num">−0.23*</td></tr>
+            <tr><td>C4 C3 + top-down plot</td><td class="num">0.25</td><td class="num">−0.23*</td><td class="num">−0.04</td><td class="num">42% / 49%</td><td class="num">−0.60*</td></tr>
+            <tr><td>C5 C3 + description</td><td class="num">0.24</td><td class="num">−0.02</td><td class="num">−0.18</td><td class="num">45% / 44%</td><td class="num">−0.46*</td></tr>
+            <tr><td>C6 All four</td><td class="num">0.25</td><td class="num">−0.11</td><td class="num">−0.05</td><td class="num">45% / 44%</td><td class="num">−0.52*</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-figs">
+    <div class="prose">
+      <div class="eyebrow">Figures</div>
+      <h2 id="s-figs">Fig. 1 and Fig. 2</h2>
+    </div>
+    <figure class="paperfig" style="margin:0"><img src="figures/perception_ladder.png" alt="Four panels by input R0 and C1 to C6: fidelity cells, controller gaps as a share of the human gap, trial tracking correlation, and share of simulated studies reaching the human conclusion. All inputs stay near zero on the last three." loading="lazy"><figcaption><b>Fig. 1.</b> Alignment with people across perception inputs, A and B answers averaged: (a) fidelity, (b) controller gaps, (c) trial tracking, (d) study conclusion. The no-input baseline is grey.</figcaption></figure>
+    <figure class="paperfig" style="margin:0"><img src="figures/perception_person.png" alt="Three panels by input C1 to C6: the model's A minus B gap far below people's 1.52; HP1 and HP2 correlations around zero; correlation with closest-approach difference between minus 0.23 and minus 0.60 for the model, against plus 0.08 for people." loading="lazy"><figcaption><b>Fig. 2.</b> Per-person results: (a) gap between the two answers vs the two people's, (b) HP1 and HP2, (c) correlation with the closest-approach difference (exploratory).</figcaption></figure>
+  </section>
+
+  <section aria-labelledby="s-report">
+    <div class="prose">
+      <div class="eyebrow">For the paper</div>
+      <h2 id="s-report">How to report the two settings</h2>
+      <p>The per-person design was chosen after the generic run had finished, so the paper should say so and keep the generic run as a reported earlier version; an appendix is enough. The conclusion doesn't depend on which setting leads, because both fail the same tests. Saying this up front protects the per-person result from looking like a rerun until something worked.</p>
+    </div>
+    <div class="quote">
+      <div class="eyebrow">Suggested wording · Results, per-person simulation</div>
+      <p id="wording">Bi3 records each participant's own ratings, and the two participants of a session often disagree (discomfort ρ = 0.11 across trials). We therefore asked the model to rate each trial once for each participant, at all six inputs (972 calls), identifying the participant by their motion-capture track and, in video frames, by their starting position. The model distinguished the two participants, but its within-pair differences were small (mean 0.18–0.27 on the 1–9 scale, against 1.52 between real participants). They did not track which participant reported more discomfort (Spearman ρ −0.23 to +0.08; no interval above 0) or how much the pair disagreed (ρ −0.18 to +0.08). The model's differences instead followed which participant came closer to the robot (ρ −0.23 to −0.60), while the participants' own differences did not (ρ = 0.08). The model reasons from each participant's encounter, but the participants' disagreement is not explained by that encounter. Simulating an individual therefore needs information about the person, not more detail about the motion. Matching participants to survey rows assumes that survey index i is motion track i; under the reverse assignment the results are equally null. An earlier run that asked about a generic participant reached the same conclusions (Appendix).</p>
+      <button type="button" class="copy" id="copy">Copy wording</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-todo">
+    <div class="prose">
+      <div class="eyebrow">Open items</div>
+      <h2 id="s-todo">Before you finalise</h2>
+    </div>
+    <ul class="todo">
+      <li>Team sign-off on making the per-person run the main experiment and moving the generic run to an appendix.</li>
+      <li>Ask the Bi3 authors whether survey human_index 0 is LAAS Helmet_1 and UM human_1 (motion track 0). Until then, keep the direct/swapped caveat.</li>
+      <li>Label the motion checks and the “picks the right person” rate as exploratory: they were added after the results.</li>
+      <li>Decide whether to keep the C1 pair-level ordering (63%) in the text. It's one input of six, it wasn't a pre-registered test, and the generic run didn't reproduce it. The draft mentions it once, with that caveat.</li>
+      <li>Fill in the first-round subsection (collaborator's numbers), then compile and check the page length. Fig. 2 is the first thing to cut, since Table II carries the same numbers.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Figures are drawn by <code>src/bi3/figure_pp.py</code> from <code>results.json</code> and <code>exploratory.json</code>; the generic-run figure by <code>figure_v4.py</code>.</p>
+  </footer>
+</div>
+
+<div class="wrap" data-view="generic" hidden>
+  <header>
+    <div class="eyebrow">Appendix A · generic-participant run (v4)</div>
+    <h1>The earlier run asked about a typical participant</h1>
+    <p class="lead">Before the per-person design, the final experiment asked once per trial how a typical participant would rate the robot. That single answer was scored against both people in the session. Model, effort, inputs, trials and analysis were the same as in the per-person run: 486 calls, all valid on the first attempt. We replaced it because two people who disagree can't both match one answer; that decision came after these results. It reaches the same conclusions.</p>
+  </header>
+
+  <div class="answer" aria-label="Short answer, generic run">
+    <div class="answer-text">
+      <div class="eyebrow">Short answer</div>
+      <div class="verdict-word">Same verdict: no input wins.</div>
+      <p>All six inputs gave a human-like spread of ratings, with no sensitivity to the controller or the trial. Raw frames did as well as anything else. On sensitivity and the decision test, so did the baseline that showed the model no trial at all.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="tile-v">0.13</div><div class="tile-l">Largest controller gap at any input<span>People: 0.69 (Blind vs CV) and 0.60 (CV vs CoHAN)</span></div></div>
+      <div class="tile"><div class="tile-v">0.4%</div><div class="tile-l">Simulated studies reaching the people's conclusion, best input<span>Pass bar 32%; resampled human data 63%</span></div></div>
+      <div class="tile"><div class="tile-v">35–55%</div><div class="tile-l">Controller preferences matched<span>Chance 50%; one participant vs the other 60%</span></div></div>
+    </div>
+  </div>
+
+  <section aria-labelledby="g-table">
+    <div class="prose">
+      <div class="eyebrow">Results</div>
+      <h2 id="g-table">Discomfort results per input</h2>
+    </div>
+    <div class="fig">
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Input</th><th class="num">Blind − CV</th><th class="num">CV − CoHAN</th><th class="num">ρ</th><th class="num">P</th><th class="num">D2</th><th class="num">F1</th></tr></thead>
+          <tbody>
+            <tr><td>People (reference)</td><td class="num">+0.69</td><td class="num">−0.60</td><td class="num">0.11</td><td class="num">60%</td><td class="num">63.1%</td><td class="num">–</td></tr>
+            <tr><td>R0 No input</td><td class="num">−0.06</td><td class="num">+0.05</td><td class="num">−0.19</td><td class="num">40%</td><td class="num">0.0%</td><td class="num">5/6</td></tr>
+            <tr><td>C1 Raw frames</td><td class="num">+0.05</td><td class="num">−0.03</td><td class="num">+0.03</td><td class="num">42%</td><td class="num">0.4%</td><td class="num">5/6</td></tr>
+            <tr><td>C2 Text coordinates</td><td class="num">−0.05</td><td class="num">+0.04</td><td class="num">+0.14</td><td class="num">55%</td><td class="num">0.0%</td><td class="num">3/6</td></tr>
+            <tr><td>C3 Frames + coords</td><td class="num">−0.13</td><td class="num">+0.03</td><td class="num">−0.00</td><td class="num">35%</td><td class="num">0.1%</td><td class="num">4/6</td></tr>
+            <tr><td>C4 C3 + top-down plot</td><td class="num">−0.01</td><td class="num">+0.07</td><td class="num">−0.09</td><td class="num">43%</td><td class="num">0.0%</td><td class="num">4/6</td></tr>
+            <tr><td>C5 C3 + description</td><td class="num">−0.05</td><td class="num">+0.09</td><td class="num">−0.01</td><td class="num">42%</td><td class="num">0.0%</td><td class="num">5/6</td></tr>
+            <tr><td>C6 All four</td><td class="num">+0.01</td><td class="num">−0.01</td><td class="num">+0.02</td><td class="num">43%</td><td class="num">0.2%</td><td class="num">5/6</td></tr>
+            <tr><td>Pass rule</td><td class="num" colspan="2">same sign, ≥ half</td><td class="num">CI &gt; 0</td><td class="num">CI &gt; 50%</td><td class="num">≥ 32%</td><td class="num">≥ 4</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">ρ is trial tracking against the pair's mean rating, P is controller preferences matched, D2 is simulated studies reaching the people's exact conclusion, and F1 counts fidelity cells over both scales.</p>
+    </div>
+    <figure class="paperfig" style="margin:0"><img src="figures/perception_ladder_generic.png" alt="Four panels by input R0 and C1 to C6 for the generic run: fidelity cells, controller gaps, trial tracking and study conclusion, all near zero except fidelity." loading="lazy"><figcaption><b>Appendix figure.</b> Generic run: (a) fidelity, (b) controller gaps as a share of the human gap, (c) trial tracking, (d) study conclusion. The no-input baseline is grey.</figcaption></figure>
+  </section>
+
+  <section aria-labelledby="g-claims">
+    <div class="prose">
+      <div class="eyebrow">Hypotheses</div>
+      <h2 id="g-claims">What the generic run showed</h2>
+    </div>
+    <div class="claims">
+      <div class="claim"><div class="claim-q">Fidelity: a human-like spread of ratings<span>H3</span></div><div><span class="chip good"><i>✓</i>Five of six inputs</span></div><div class="claim-why">It fails for coordinates alone. No input also matched five of six cells, so the spread comes from the model's prior, not the trial.</div></div>
+      <div class="claim"><div class="claim-q">Sensitivity to the controller and the trial<span>H1</span></div><div><span class="chip bad"><i>✕</i>Not supported</span></div><div class="claim-why">Gaps stayed within ±0.13 points, at most 8% of people's in their direction. Two reversed with intervals excluding 0. Trial tracking ρ ranged from −0.09 to +0.14. No richer input beat raw frames.</div></div>
+      <div class="claim"><div class="claim-q">Reaching the people's study conclusion<span>H2</span></div><div><span class="chip bad"><i>✕</i>Unestablished</span></div><div class="claim-why">At most 0.4% of 1,000 simulated studies, against a 32% bar. CV came out best in 22–37% of studies, close to chance.</div></div>
+      <div class="claim"><div class="claim-q">Did seeing the trial change the answers?<span>S3</span></div><div><span class="chip warn"><i>!</i>Level only</span></div><div class="claim-why">Mean discomfort rose from 2.65 without input to 2.87–3.12 with it, for all three controllers alike.</div></div>
+      <div class="claim"><div class="claim-q">Did either site do better?<span>Descriptive</span></div><div><span class="chip warn"><i>!</i>UM only looks better</span></div><div class="claim-why">UM simulated studies matched the UM conclusion in 89–92% of draws, but that conclusion was “no difference”, and no input matched it as often (91%).</div></div>
+    </div>
+    <div class="note" id="generic-link-note"><p>The full interactive page for this run, with every chart and the exploratory motion checks, is the earlier results page: <a href="https://claude.ai/artifact/G4SxUNc2PxVyf5fYbtbnWg" target="_blank" rel="noopener">Perception Ladder Results</a>. It's private until shared from its own Share menu.</p></div>
+  </section>
+</div>
+
+<div class="wrap" data-view="input-choice" hidden>
+  <header>
+    <div class="eyebrow">Next step · generation experiments</div>
+    <h1>Which perception input to fix for the generation experiments</h1>
+    <p class="lead">Every input failed on sensitivity, so no input “works”. The choice is a tie-break by a stated rule: use the simplest input unless a richer one is reliably better.</p>
+  </header>
+
+  <div class="rec" aria-label="Recommendation">
+    <div class="eyebrow">Recommendation</div>
+    <div class="verdict-word">Fix C1, raw frames.</div>
+    <p>No richer input beat raw frames in the generic run's pre-registered comparison. Averaged over both runs, C1 ranks first on preference agreement, trial tracking and the decision test, and it passes fidelity in both. Write the rule down before the first generation call, so the paper can say the input was chosen by rule rather than tuned to results.</p>
+  </div>
+
+  <section aria-labelledby="i-table">
+    <div class="prose">
+      <div class="eyebrow">Evidence</div>
+      <h2 id="i-table">Both runs, side by side</h2>
+      <p>Single-run rankings flip: C1 was mid-pack in the generic run and best in the per-person run. Averaging the two runs is fairer. The differences are within noise, which is why this is a tie-break.</p>
+    </div>
+    <div class="fig">
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Input</th><th class="num">Fidelity cells (generic / per person)</th><th class="num">Preference P</th><th class="num">P, average</th><th class="num">Trial ρ</th><th class="num">ρ, average</th><th class="num">D2</th><th class="num">D2, average</th></tr></thead>
+          <tbody>
+            <tr class="pick"><td>C1 Raw frames</td><td class="num">5 / 4</td><td class="num">42% / 63%</td><td class="num">52.4%</td><td class="num">+0.03 / +0.13</td><td class="num">+0.08</td><td class="num">0.4% / 0.6%</td><td class="num">0.50%</td></tr>
+            <tr><td>C2 Text coordinates</td><td class="num">3 / 3 ✗</td><td class="num">55% / 48%</td><td class="num">51.7%</td><td class="num">+0.14 / −0.01</td><td class="num">+0.06</td><td class="num">0.0% / 0.4%</td><td class="num">0.20%</td></tr>
+            <tr><td>C3 Frames + coords</td><td class="num">4 / 5</td><td class="num">35% / 52%</td><td class="num">43.6%</td><td class="num">−0.00 / −0.05</td><td class="num">−0.02</td><td class="num">0.1% / 0.4%</td><td class="num">0.25%</td></tr>
+            <tr><td>C4 C3 + top-down plot</td><td class="num">4 / 4</td><td class="num">43% / 49%</td><td class="num">45.6%</td><td class="num">−0.09 / −0.20</td><td class="num">−0.15</td><td class="num">0.0% / 0.3%</td><td class="num">0.15%</td></tr>
+            <tr><td>C5 C3 + description</td><td class="num">5 / 5</td><td class="num">42% / 46%</td><td class="num">43.9%</td><td class="num">−0.01 / −0.21</td><td class="num">−0.11</td><td class="num">0.0% / 0.2%</td><td class="num">0.10%</td></tr>
+            <tr><td>C6 All four</td><td class="num">5 / 5</td><td class="num">43% / 45%</td><td class="num">44.3%</td><td class="num">+0.02 / +0.01</td><td class="num">+0.01</td><td class="num">0.2% / 0.6%</td><td class="num">0.40%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">Discomfort. People: P 60% (one participant vs the other), ρ 0.11, D2 63%. Pass rules: fidelity ≥ 4 of 6, ρ interval above 0, D2 ≥ 32%. ✗ marks failing fidelity in both runs.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="i-why">
+    <div class="prose">
+      <div class="eyebrow">Reasons and cautions</div>
+      <h2 id="i-why">Why C1, and what not to claim</h2>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>Nothing richer was better</h3><p>Coordinates, the plot and the description added cost without adding sensitivity. With the plot or description, the model leaned harder on proximity (ρ −0.46 to −0.60 against −0.25 for frames), a cue people's ratings don't follow.</p></div>
+      <div class="card"><h3>C2 is out</h3><p>Text coordinates are the cheapest input, with no images, but they failed fidelity in both runs: their competence distributions moved away from people's.</p></div>
+      <div class="card"><h3>Frames are what a person sees</h3><p>C1 adds no researcher-made features, and it's cheaper than C3–C6, which all carry the same frames plus more. Images are most of the cost of a call.</p></div>
+      <div class="card"><h3>Don't expect sensitivity</h3><p>C1 failed sensitivity like every other input. The per-person run points to missing information about the person, not about the motion. Expect the same failure in generation unless the person is added, for example one of their own ratings.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="i-how">
+    <div class="prose">
+      <div class="eyebrow">How to fix it</div>
+      <h2 id="i-how">Locking C1 so the generation runs see exactly what was tested</h2>
+    </div>
+    <ol class="steps">
+      <li><b>Write the choice down first.</b> Add a run-record entry with the rule, the evidence and the caveat that all inputs failed sensitivity, and one sentence in Sec. III.</li>
+      <li><b>Reuse the exact frames.</b> C1 is each trial's contact sheets, for example <code>stimuli/T02C9AE/overview_5s_part1..3.jpg</code> and <code>closest_1s.jpg</code>. Their SHA-256 hashes are in <code>final_perception_pp/inputs.json</code>. Copy those hashes into the new lock and refuse to run if any file differs. Don't regenerate the frames: new JPEG bytes would be a different input.</li>
+      <li><b>Freeze the rest of the condition.</b> Keep Opus 5.5 at medium effort, the pinned CLI 2.1.332, tools off, the same system prompt, images first, the same 81 trials, and the frames identity sentence if you keep the per-person framing. Only the task wording changes.</li>
+      <li><b>Build the driver as a thin wrapper</b>, like <code>perception_r0.py</code>: set <code>CONDITIONS = (("C1", ("R3",)),)</code> with a new study name, prompt and output folder. Locking, the usage pause, resuming and QA come with it.</li>
+      <li><b>Run a drift check.</b> Re-ask about 10 of the original C1 trials with the original prompt and compare them with the per-person answers before the full run. It costs about 20 calls.</li>
+    </ol>
+  </section>
+</div>
+
+<div class="wrap" data-view="reproduce" hidden>
+  <header>
+    <div class="eyebrow">For collaborators</div>
+    <h1>Settings, files and how to rerun</h1>
+    <p class="lead">The code, settings, run records and aggregate results go into the public repository. The model answers go in a private bundle shared directly, because the C2–C6 prompts contain material derived from the motion capture.</p>
+  </header>
+
+  <section aria-labelledby="r-files">
+    <div class="prose">
+      <div class="eyebrow">What to share</div>
+      <h2 id="r-files">Two tiers</h2>
+    </div>
+    <div class="fig">
+      <div class="tbl" style="margin-top:0">
+        <table>
+          <thead><tr><th>Tier</th><th>Location</th><th class="num">Size</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td>Public: commit</td><td><code>HRI-Bi3-Pilot-Study/final_perception/</code></td><td class="num">37 files, 1.0 MB</td><td style="white-space:normal">README (settings, studies, deviations, how to rerun), RESULTS, code overlay for the handoff package, prompt, launchers, run records, aggregate <code>report.md</code> / <code>results.json</code>, paper LaTeX and figures (PDF), helmet-audit script</td></tr>
+            <tr><td>Private: share directly</td><td><code>Project/final_perception_private/</code></td><td class="num">23 MB; 9.1 MB zipped</td><td style="white-space:normal">All 1,539 model answers, with raw CLI output removed (it held local paths); the input locks, byte-identical; per-trial exploratory data; the per-recording helmet audit; launch logs; this page and its builder</td></tr>
+            <tr><td>Not shared</td><td>–</td><td class="num">~265 MB</td><td style="white-space:normal">Bi³ data (download separately); generated frames and plots, which can be regenerated and are hash-checked by the locks; the blinded trial key, which is never written</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">The repository's rule is that participant-level ratings and motion-capture-derived outputs are committed only with the owner's explicit approval. The public tier contains neither: it was scanned for per-trial arrays and local paths, and none were found.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="r-set">
+    <div class="prose">
+      <div class="eyebrow">Settings</div>
+      <h2 id="r-set">How every call was made</h2>
+    </div>
+    <div class="fig">
+      <dl class="facts">
+        <div><dt>Model</dt><dd>claude-opus-5-5 at medium effort, tools off, Claude Code CLI 2.1.332 pinned for all runs</dd></div>
+        <div><dt>Question</dt><dd>Verbalised counts of ~40 people over 1–9, for RoSAS discomfort and competence, plus one evidence sentence</dd></div>
+        <div><dt>Message</dt><dd>Images first, then the prompt, then the text trial material; call order shuffled with seed 16867; 2 workers</dd></div>
+        <div><dt>Studies</dt><dd>Per person 972 calls (main); generic 486 (appendix); no input 81 (baseline). A low-effort run (v3) was stopped and is not scored</dd></div>
+        <div><dt>Locks</dt><dd>Per person <span class="mono">abc10c72…</span>, generic <span class="mono">5f45ab7c…</span>, no input <span class="mono">5f23c93e…</span>. Every answer records its lock's hash</dd></div>
+        <div><dt>Usage guard</dt><dd>Stops starting calls at a set share of five-hour or seven-day usage. The per-person run used 50%, then 80%, then 90% with automatic resume after the reset</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section aria-labelledby="r-how">
+    <div class="prose">
+      <div class="eyebrow">Rerun</div>
+      <h2 id="r-how">Re-analyse without new calls</h2>
+    </div>
+    <ol class="steps">
+      <li>Get the handoff package and copy <code>final_perception/handoff_overlay/*</code> into it.</li>
+      <li>Copy the private bundle's <code>outputs/bi3/*</code> into the handoff's <code>outputs/bi3/</code>. The handoff also needs its generated <code>outputs/bi3/ladder/</code>, because the trial key is rebuilt from the R1 texts.</li>
+      <li>Put Bi³ at <code>&lt;parent of handoff&gt;/Bi3/Bi3/</code>.</li>
+      <li>From the handoff root, with Python 3.11 and numpy, scipy, matplotlib, pyyaml and pillow:
+        <pre class="cmd">python -m src.bi3.analysis_v4
+python -m src.bi3.analysis_pp
+python -m src.bi3.explore_pp
+python -m src.bi3.figure_v4
+python -m src.bi3.figure_pp</pre></li>
+    </ol>
+    <div class="note"><div class="eyebrow">Tested</div><p>On 2026-11-27, a handoff rebuilt from only the original handoff files, this overlay and the private bundle reran all three analyses. <code>results.json</code> and <code>report.md</code> for both runs, and <code>exploratory.json</code>, came out byte-identical to the originals.</p></div>
+    <div class="prose">
+      <p>New calls run through <code>launcher/run_perception.ps1 check|smoke|run|status -Study v4|r0|pp</code>, placed next to the handoff folder. It fixes UTF-8 for Python, pins the CLI, keeps the PC awake and logs the console. Never edit a locked file after its smoke run: the driver refuses to continue if a hash changes.</p>
+    </div>
+  </section>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+  const D = {"people":{"all":{"C1":{"discomfort":{"hp1":[-0.1369,-0.3678,0.1201],"hp2":[0.0756,-0.1315,0.2799],"prD":[56.1,47.3,65.1],"prS":[56.1,47.9,63.9],"v4":41.9,"hp3":[14.2,1.3,27.8],"tiesV4":11.1,"tiesPP":6.2,"ab":0.27,"hum":1.52},"competence":{"hp1":[-0.1636,-0.3923,0.0909],"hp2":[0.0784,-0.1283,0.2841],"prD":[49.0,40.1,57.7],"prS":[50.3,41.1,59.2],"v4":39.2,"hp3":[9.8,-3.8,22.1],"tiesV4":19.8,"tiesPP":16.7,"ab":0.19,"hum":1.28}},"C2":{"discomfort":{"hp1":[-0.0452,-0.2549,0.1704],"hp2":[-0.0845,-0.315,0.1427],"prD":[45.3,36.3,53.6],"prS":[44.6,35.6,53.3],"v4":55.4,"hp3":[-10.1,-21.8,1.4],"tiesV4":7.4,"tiesPP":8.0,"ab":0.18,"hum":1.52},"competence":{"hp1":[0.0605,-0.1693,0.2748],"hp2":[0.1129,-0.0805,0.3066],"prD":[46.4,37.8,54.3],"prS":[47.1,38.2,55.8],"v4":42.5,"hp3":[3.9,-8.6,15.6],"tiesV4":9.9,"tiesPP":5.6,"ab":0.26,"hum":1.28}},"C3":{"discomfort":{"hp1":[0.0826,-0.1242,0.2908],"hp2":[-0.0551,-0.2516,0.1229],"prD":[49.3,40.3,58.4],"prS":[41.9,32.7,51.0],"v4":35.1,"hp3":[14.2,1.4,26.2],"tiesV4":7.4,"tiesPP":11.1,"ab":0.18,"hum":1.52},"competence":{"hp1":[0.1323,-0.0648,0.3217],"hp2":[-0.022,-0.2375,0.2035],"prD":[49.0,40.5,57.7],"prS":[41.8,34.2,49.4],"v4":35.9,"hp3":[13.1,0.7,24.5],"tiesV4":11.1,"tiesPP":8.6,"ab":0.27,"hum":1.28}},"C4":{"discomfort":{"hp1":[-0.2314,-0.437,-0.0075],"hp2":[-0.0418,-0.2303,0.1703],"prD":[41.9,33.6,51.0],"prS":[48.6,39.3,57.9],"v4":42.6,"hp3":[-0.7,-14.1,12.6],"tiesV4":8.6,"tiesPP":7.4,"ab":0.25,"hum":1.52},"competence":{"hp1":[-0.0896,-0.2877,0.0978],"hp2":[-0.0674,-0.2306,0.1136],"prD":[39.2,29.6,48.3],"prS":[48.4,38.5,57.3],"v4":39.9,"hp3":[-0.7,-12.3,10.8],"tiesV4":11.1,"tiesPP":3.7,"ab":0.27,"hum":1.28}},"C5":{"discomfort":{"hp1":[-0.0181,-0.2513,0.2142],"hp2":[-0.1762,-0.364,0.0358],"prD":[44.6,35.8,53.3],"prS":[43.9,36.4,51.8],"v4":41.9,"hp3":[2.7,-11.3,17.2],"tiesV4":9.9,"tiesPP":10.5,"ab":0.24,"hum":1.52},"competence":{"hp1":[0.1701,-0.0407,0.364],"hp2":[-0.2328,-0.4131,-0.0405],"prD":[45.8,36.8,54.9],"prS":[45.1,34.8,55.6],"v4":48.4,"hp3":[-2.6,-19.9,15.0],"tiesV4":8.6,"tiesPP":7.4,"ab":0.23,"hum":1.28}},"C6":{"discomfort":{"hp1":[-0.1101,-0.3447,0.1353],"hp2":[-0.0486,-0.261,0.1716],"prD":[44.6,34.3,53.8],"prS":[43.9,34.2,53.1],"v4":43.2,"hp3":[1.4,-15.0,17.3],"tiesV4":13.6,"tiesPP":9.9,"ab":0.25,"hum":1.52},"competence":{"hp1":[0.1634,-0.0671,0.3753],"hp2":[-0.1108,-0.2724,0.0476],"prD":[43.8,34.6,52.6],"prS":[41.2,32.3,49.7],"v4":46.4,"hp3":[-2.6,-13.7,8.5],"tiesV4":9.9,"tiesPP":12.3,"ab":0.23,"hum":1.28}}},"laas":{"C1":{"discomfort":{"hp1":[-0.0735,-0.352,0.223],"hp2":[0.0748,-0.1917,0.314],"prD":[52.3,41.4,63.1],"prS":[60.4,50.0,70.2],"v4":40.5,"hp3":[11.7,-3.8,27.7],"tiesV4":8.3,"tiesPP":5.8,"ab":0.24,"hum":1.44},"competence":{"hp1":[-0.1122,-0.3726,0.1878],"hp2":[0.0247,-0.2407,0.2907],"prD":[47.4,37.1,58.1],"prS":[50.0,40.7,59.8],"v4":35.3,"hp3":[12.1,-4.3,26.5],"tiesV4":18.3,"tiesPP":19.2,"ab":0.17,"hum":1.07}},"C2":{"discomfort":{"hp1":[-0.0559,-0.3016,0.2062],"hp2":[-0.0546,-0.3357,0.227],"prD":[45.0,33.3,55.3],"prS":[50.5,39.5,61.2],"v4":54.1,"hp3":[-9.0,-23.1,4.6],"tiesV4":8.3,"tiesPP":9.2,"ab":0.18,"hum":1.44},"competence":{"hp1":[0.1033,-0.1927,0.3886],"hp2":[0.1843,-0.0635,0.4246],"prD":[48.3,38.3,57.9],"prS":[48.3,38.1,58.1],"v4":37.1,"hp3":[11.2,-3.5,25.4],"tiesV4":10.0,"tiesPP":6.7,"ab":0.27,"hum":1.07}},"C3":{"discomfort":{"hp1":[-0.0371,-0.3134,0.2503],"hp2":[-0.0257,-0.2457,0.1848],"prD":[49.5,39.1,60.4],"prS":[41.4,31.3,51.8],"v4":34.2,"hp3":[15.3,0.0,28.5],"tiesV4":10.0,"tiesPP":12.5,"ab":0.17,"hum":1.44},"competence":{"hp1":[0.1423,-0.0594,0.361],"hp2":[-0.0648,-0.3587,0.2279],"prD":[44.8,34.2,55.7],"prS":[41.4,32.5,50.4],"v4":34.5,"hp3":[10.3,-4.3,24.8],"tiesV4":13.3,"tiesPP":9.2,"ab":0.26,"hum":1.07}},"C4":{"discomfort":{"hp1":[-0.3157,-0.5273,-0.0168],"hp2":[-0.0833,-0.3218,0.174],"prD":[49.5,38.8,61.2],"prS":[50.5,38.7,62.0],"v4":44.1,"hp3":[5.4,-11.2,22.7],"tiesV4":10.0,"tiesPP":6.7,"ab":0.23,"hum":1.44},"competence":{"hp1":[-0.0429,-0.2409,0.1468],"hp2":[-0.1018,-0.3457,0.1567],"prD":[42.2,31.0,53.5],"prS":[44.8,34.5,55.1],"v4":37.1,"hp3":[5.2,-7.8,17.4],"tiesV4":13.3,"tiesPP":4.2,"ab":0.26,"hum":1.07}},"C5":{"discomfort":{"hp1":[0.0349,-0.2472,0.3098],"hp2":[-0.111,-0.3356,0.159],"prD":[45.9,35.5,57.3],"prS":[39.6,30.4,50.0],"v4":39.6,"hp3":[6.3,-12.6,24.1],"tiesV4":10.0,"tiesPP":12.5,"ab":0.23,"hum":1.44},"competence":{"hp1":[0.1967,-0.0616,0.4249],"hp2":[-0.258,-0.4373,-0.045],"prD":[41.4,30.3,52.2],"prS":[41.4,28.4,54.7],"v4":50.9,"hp3":[-9.5,-31.6,12.2],"tiesV4":8.3,"tiesPP":7.5,"ab":0.24,"hum":1.07}},"C6":{"discomfort":{"hp1":[-0.1243,-0.3888,0.1581],"hp2":[0.0684,-0.2048,0.341],"prD":[46.8,35.3,57.8],"prS":[44.1,34.3,54.1],"v4":41.4,"hp3":[5.4,-13.3,25.2],"tiesV4":15.0,"tiesPP":9.2,"ab":0.25,"hum":1.44},"competence":{"hp1":[0.1131,-0.1335,0.3589],"hp2":[-0.0679,-0.2551,0.1034],"prD":[44.0,32.8,54.8],"prS":[41.4,30.4,52.1],"v4":50.0,"hp3":[-6.0,-18.6,5.3],"tiesV4":8.3,"tiesPP":13.3,"ab":0.25,"hum":1.07}}},"um":{"C1":{"discomfort":{"hp1":[-0.1876,-0.6425,0.4086],"hp2":[-0.0653,-0.4464,0.4467],"prD":[67.6,55.0,80.6],"prS":[43.2,33.3,52.8],"v4":45.9,"hp3":[21.6,-3.0,42.1],"tiesV4":19.0,"tiesPP":7.1,"ab":0.34,"hum":1.77},"competence":{"hp1":[-0.1559,-0.6546,0.3639],"hp2":[-0.0059,-0.4315,0.559],"prD":[54.1,33.3,72.2],"prS":[51.4,27.8,73.5],"v4":51.4,"hp3":[2.7,-17.5,22.9],"tiesV4":23.8,"tiesPP":9.5,"ab":0.25,"hum":1.9}},"C2":{"discomfort":{"hp1":[-0.0059,-0.2107,0.3932],"hp2":[-0.3501,-0.6015,-0.0203],"prD":[45.9,30.6,61.0],"prS":[27.0,8.6,46.2],"v4":59.5,"hp3":[-13.5,-31.6,5.6],"tiesV4":4.8,"tiesPP":4.8,"ab":0.19,"hum":1.77},"competence":{"hp1":[-0.0029,-0.2951,0.3523],"hp2":[0.0362,-0.1935,0.4155],"prD":[40.5,27.3,56.8],"prS":[43.2,28.6,58.5],"v4":59.5,"hp3":[-18.9,-38.5,-2.8],"tiesV4":9.5,"tiesPP":2.4,"ab":0.24,"hum":1.9}},"C3":{"discomfort":{"hp1":[0.306,-0.2208,0.6766],"hp2":[-0.4086,-0.701,-0.1074],"prD":[48.6,30.8,68.6],"prS":[43.2,24.4,65.7],"v4":37.8,"hp3":[10.8,-10.5,38.3],"tiesV4":0.0,"tiesPP":7.1,"ab":0.21,"hum":1.77},"competence":{"hp1":[0.0628,-0.5236,0.4775],"hp2":[-0.1181,-0.3152,0.2196],"prD":[62.2,51.4,73.0],"prS":[43.2,30.6,54.8],"v4":40.5,"hp3":[21.6,2.8,42.5],"tiesV4":4.8,"tiesPP":7.1,"ab":0.31,"hum":1.9}},"C4":{"discomfort":{"hp1":[-0.0622,-0.4321,0.2804],"hp2":[-0.2057,-0.6319,0.3302],"prD":[18.9,5.4,33.3],"prS":[43.2,29.7,56.8],"v4":37.8,"hp3":[-18.9,-41.7,2.8],"tiesV4":4.8,"tiesPP":9.5,"ab":0.31,"hum":1.77},"competence":{"hp1":[-0.2623,-0.7185,0.2096],"hp2":[0.1356,-0.0987,0.4831],"prD":[29.7,11.4,48.6],"prS":[59.5,34.3,82.1],"v4":48.6,"hp3":[-18.9,-45.0,13.5],"tiesV4":4.8,"tiesPP":2.4,"ab":0.28,"hum":1.9}},"C5":{"discomfort":{"hp1":[-0.0271,-0.4297,0.3517],"hp2":[-0.4435,-0.7175,0.0792],"prD":[40.5,28.6,52.5],"prS":[56.8,46.2,66.7],"v4":48.6,"hp3":[-8.1,-28.9,10.5],"tiesV4":9.5,"tiesPP":4.8,"ab":0.26,"hum":1.77},"competence":{"hp1":[0.2934,-0.1274,0.729],"hp2":[-0.2066,-0.6797,0.2603],"prD":[59.5,45.9,74.3],"prS":[56.8,40.0,71.4],"v4":40.5,"hp3":[18.9,-2.7,41.2],"tiesV4":9.5,"tiesPP":7.1,"ab":0.22,"hum":1.9}},"C6":{"discomfort":{"hp1":[-0.1061,-0.482,0.3723],"hp2":[-0.4946,-0.7557,-0.0237],"prD":[37.8,19.4,57.9],"prS":[43.2,18.4,65.8],"v4":48.6,"hp3":[-10.8,-41.2,20.0],"tiesV4":9.5,"tiesPP":11.9,"ab":0.26,"hum":1.77},"competence":{"hp1":[0.3001,-0.1987,0.6061],"hp2":[-0.1308,-0.4331,0.2724],"prD":[43.2,27.0,56.8],"prS":[40.5,30.3,50.0],"v4":35.1,"hp3":[8.1,-20.0,34.2],"tiesV4":14.3,"tiesPP":9.5,"ab":0.18,"hum":1.9}}}},"pair":{"R0":{"discomfort":{"bcv":[-0.063,-0.126,0.002],"cvco":[0.052,-0.003,0.108],"s2":[-0.191,-0.409,0.046],"P":[39.9,30.1,50.0],"Dbest":"Blind","Dholds":false,"F1":2,"means":[2.63,2.69,2.64]},"competence":{"bcv":[-0.015,-0.106,0.08],"cvco":[0.032,-0.053,0.119],"s2":[0.108,-0.111,0.317],"P":[43.1,32.5,54.1],"Dbest":"CV","Dholds":false,"F1":3,"means":[5.23,5.24,5.21]},"F1all":5},"C1":{"discomfort":{"bcv":[0.103,0.025,0.178],"cvco":[-0.087,-0.156,-0.022],"s2":[0.132,-0.136,0.388],"P":[62.8,53.7,72.0],"Dbest":"CV","Dholds":true,"F1":2,"means":[3.2,3.1,3.19],"d2":0.6,"d2pp":0.5,"bar":31.6},"competence":{"bcv":[-0.056,-0.123,0.015],"cvco":[0.052,-0.008,0.113],"s2":[0.031,-0.214,0.274],"P":[54.9,45.5,63.8],"Dbest":"CV","Dholds":false,"F1":2,"means":[5.23,5.29,5.24],"d2":0.6,"d2pp":0.6,"bar":9.7},"F1all":4},"C2":{"discomfort":{"bcv":[-0.007,-0.081,0.054],"cvco":[0.002,-0.064,0.074],"s2":[-0.014,-0.231,0.208],"P":[48.0,37.9,57.9],"Dbest":"Blind","Dholds":false,"F1":2,"means":[2.93,2.93,2.93],"d2":0.4,"d2pp":0.3,"bar":31.6},"competence":{"bcv":[0.043,-0.061,0.145],"cvco":[-0.049,-0.148,0.041],"s2":[-0.109,-0.269,0.069],"P":[51.6,41.7,62.1],"Dbest":"CoHAN","Dholds":false,"F1":1,"means":[5.52,5.48,5.53],"d2":0.2,"d2pp":0.1,"bar":9.7},"F1all":3},"C3":{"discomfort":{"bcv":[0.024,-0.044,0.084],"cvco":[-0.006,-0.06,0.052],"s2":[-0.046,-0.287,0.185],"P":[52.0,43.8,60.7],"Dbest":"CV","Dholds":false,"F1":2,"means":[2.96,2.93,2.94],"d2":0.4,"d2pp":0.2,"bar":31.6},"competence":{"bcv":[-0.012,-0.085,0.065],"cvco":[0.02,-0.06,0.104],"s2":[0.149,-0.083,0.354],"P":[49.0,39.5,59.0],"Dbest":"CV","Dholds":false,"F1":3,"means":[5.38,5.39,5.37],"d2":0.4,"d2pp":0.4,"bar":9.7},"F1all":5},"C4":{"discomfort":{"bcv":[-0.008,-0.06,0.047],"cvco":[-0.039,-0.093,0.015],"s2":[-0.199,-0.423,0.031],"P":[48.6,39.2,57.9],"Dbest":"Blind","Dholds":false,"F1":2,"means":[3.0,3.01,3.05],"d2":0.3,"d2pp":0.3,"bar":31.6},"competence":{"bcv":[0.142,0.037,0.246],"cvco":[0.075,-0.021,0.163],"s2":[0.078,-0.098,0.236],"P":[45.1,33.3,55.6],"Dbest":"Blind","Dholds":false,"F1":2,"means":[5.51,5.37,5.3],"d2":0.3,"d2pp":0.6,"bar":9.7},"F1all":4},"C5":{"discomfort":{"bcv":[0.001,-0.058,0.064],"cvco":[0.019,-0.036,0.076],"s2":[-0.209,-0.42,0.003],"P":[45.9,36.2,55.8],"Dbest":"CoHAN","Dholds":false,"F1":2,"means":[2.88,2.88,2.86],"d2":0.2,"d2pp":0.3,"bar":31.6},"competence":{"bcv":[-0.063,-0.147,0.017],"cvco":[0.06,-0.053,0.173],"s2":[-0.061,-0.297,0.178],"P":[49.0,36.8,60.8],"Dbest":"CV","Dholds":false,"F1":3,"means":[5.34,5.4,5.34],"d2":0.8,"d2pp":0.7,"bar":9.7},"F1all":5},"C6":{"discomfort":{"bcv":[0.074,0.022,0.127],"cvco":[-0.03,-0.094,0.037],"s2":[0.01,-0.197,0.214],"P":[45.3,36.2,53.8],"Dbest":"CV","Dholds":false,"F1":2,"means":[2.98,2.91,2.94],"d2":0.6,"d2pp":0.4,"bar":31.6},"competence":{"bcv":[0.038,-0.053,0.132],"cvco":[-0.055,-0.132,0.025],"s2":[-0.147,-0.355,0.067],"P":[49.0,37.3,60.8],"Dbest":"CoHAN","Dholds":false,"F1":3,"means":[5.31,5.27,5.33],"d2":0.4,"d2pp":0.1,"bar":9.7},"F1all":5}},"motion":{"C1":{"discomfort":{"closest_m":[-0.2495,-0.4398,-0.034],"near_s":[0.2054,-0.0184,0.4029],"path_m":[-0.0037,-0.2307,0.2309]},"competence":{"closest_m":[0.0312,-0.125,0.1941],"near_s":[0.0325,-0.1506,0.2195],"path_m":[-0.011,-0.2534,0.228]}},"C2":{"discomfort":{"closest_m":[-0.3835,-0.5478,-0.2026],"near_s":[0.3119,0.126,0.4841],"path_m":[0.0777,-0.1281,0.2744]},"competence":{"closest_m":[0.1504,-0.0278,0.3113],"near_s":[-0.1577,-0.364,0.0608],"path_m":[-0.066,-0.2424,0.1481]}},"C3":{"discomfort":{"closest_m":[-0.2324,-0.4006,-0.0553],"near_s":[0.2507,0.0003,0.463],"path_m":[0.149,-0.0401,0.3163]},"competence":{"closest_m":[0.0945,-0.0874,0.2642],"near_s":[0.0024,-0.2369,0.2494],"path_m":[-0.0623,-0.3213,0.2191]}},"C4":{"discomfort":{"closest_m":[-0.6036,-0.72,-0.4587],"near_s":[0.3286,0.0986,0.5301],"path_m":[0.0685,-0.1392,0.2923]},"competence":{"closest_m":[0.0099,-0.1994,0.2162],"near_s":[-0.1112,-0.314,0.1014],"path_m":[-0.0339,-0.2006,0.1408]}},"C5":{"discomfort":{"closest_m":[-0.4603,-0.6472,-0.2212],"near_s":[0.3696,0.1135,0.5648],"path_m":[0.2005,-0.0533,0.418]},"competence":{"closest_m":[0.2867,0.0656,0.4793],"near_s":[-0.19,-0.3557,-0.0038],"path_m":[-0.0314,-0.2637,0.2051]}},"C6":{"discomfort":{"closest_m":[-0.5222,-0.6832,-0.2945],"near_s":[0.2503,0.0425,0.4193],"path_m":[0.0488,-0.2368,0.3041]},"competence":{"closest_m":[0.2786,0.0689,0.4442],"near_s":[-0.0967,-0.2234,0.0663],"path_m":[-0.2069,-0.4074,0.0041]}},"people":{"discomfort":{"closest_m":[0.0808,-0.1399,0.2855],"near_s":[-0.0813,-0.2696,0.1307],"path_m":[0.1798,-0.131,0.4408]},"competence":{"closest_m":[0.1683,-0.1052,0.4139],"near_s":[-0.1002,-0.2798,0.0971],"path_m":[-0.2369,-0.4732,0.0562]}}},"motionAbs":{"C1":{"discomfort":{"closest_m":[-0.0329,-0.2521,0.1801],"near_s":[0.0602,-0.1122,0.2388],"path_m":[0.0992,-0.0688,0.2737]},"competence":{"closest_m":[-0.0581,-0.2392,0.1317],"near_s":[0.1049,-0.112,0.3224],"path_m":[0.0524,-0.1999,0.2848]}},"C2":{"discomfort":{"closest_m":[-0.0935,-0.3363,0.1391],"near_s":[0.1069,-0.1262,0.3458],"path_m":[-0.0432,-0.2198,0.1531]},"competence":{"closest_m":[-0.232,-0.4558,0.0125],"near_s":[-0.1649,-0.3788,0.0696],"path_m":[-0.1,-0.2788,0.0926]}},"C3":{"discomfort":{"closest_m":[0.0091,-0.23,0.2593],"near_s":[0.0895,-0.1212,0.2869],"path_m":[-0.0744,-0.2533,0.0787]},"competence":{"closest_m":[-0.0493,-0.2551,0.1811],"near_s":[-0.0637,-0.2535,0.1288],"path_m":[0.02,-0.1761,0.2203]}},"C4":{"discomfort":{"closest_m":[0.1321,-0.0981,0.3769],"near_s":[0.1771,-0.0937,0.4198],"path_m":[0.0332,-0.1876,0.2692]},"competence":{"closest_m":[0.0441,-0.1616,0.2357],"near_s":[-0.0411,-0.2106,0.1419],"path_m":[0.1132,-0.064,0.2776]}},"C5":{"discomfort":{"closest_m":[0.2112,0.0066,0.3975],"near_s":[-0.0182,-0.2866,0.2267],"path_m":[-0.0311,-0.2405,0.1748]},"competence":{"closest_m":[-0.1521,-0.3695,0.0582],"near_s":[-0.079,-0.2517,0.0916],"path_m":[0.0908,-0.1192,0.2914]}},"C6":{"discomfort":{"closest_m":[0.2301,0.066,0.3865],"near_s":[-0.0973,-0.2963,0.1025],"path_m":[0.1197,-0.0817,0.3127]},"competence":{"closest_m":[0.1064,-0.0888,0.2797],"near_s":[0.1382,-0.1041,0.3713],"path_m":[0.0499,-0.1814,0.2885]}},"people":{"discomfort":{"closest_m":[-0.205,-0.4258,0.0377],"near_s":[-0.0704,-0.2422,0.103],"path_m":[-0.027,-0.2375,0.181]},"competence":{"closest_m":[0.16,-0.0729,0.3881],"near_s":[-0.03,-0.2913,0.2189],"path_m":[0.1008,-0.1254,0.3243]}}},"sign":{"C1":{"discomfort":[35.2,22.1,49.3,71],"competence":[41.5,30.2,53.0,65]},"C2":{"discomfort":[35.1,27.3,41.7,74],"competence":[50.0,37.5,61.4,72]},"C3":{"discomfort":[52.2,40.3,63.8,69],"competence":[63.2,51.4,74.3,76]},"C4":{"discomfort":[41.1,27.8,54.2,73],"competence":[48.6,37.5,59.2,72]},"C5":{"discomfort":[55.7,42.9,68.0,70],"competence":[57.7,44.8,69.9,71]},"C6":{"discomfort":[49.3,38.0,60.6,73],"competence":[53.4,43.5,63.4,73]}},"spread":{"C1":{"discomfort":[0.05,0.12,0.23,0.35,0.55],"competence":[0.0,0.05,0.15,0.3,0.4]},"C2":{"discomfort":[0.02,0.07,0.15,0.25,0.4],"competence":[0.02,0.1,0.2,0.4,0.55]},"C3":{"discomfort":[0.0,0.05,0.15,0.25,0.4],"competence":[0.07,0.12,0.25,0.38,0.53]},"C4":{"discomfort":[0.05,0.12,0.25,0.35,0.47],"competence":[0.03,0.1,0.25,0.37,0.53]},"C5":{"discomfort":[0.02,0.12,0.25,0.35,0.45],"competence":[0.02,0.07,0.15,0.35,0.58]},"C6":{"discomfort":[0.02,0.08,0.25,0.38,0.52],"competence":[0.03,0.05,0.2,0.37,0.45]},"people":{"discomfort":[0.33,0.83,1.33,1.83,3.17],"competence":[0.17,0.5,1.0,2.0,2.67]}},"humanD2":63.1,"motionGap":{"closest_m":0.09095581595669644,"near_s":8.400000000000002,"path_m":6.855249513159805},"humanRef":{"means":[[3.1944444444444438,2.5,3.0987654320987663],[4.737654320987654,5.1080246913580245,4.543209876543209]],"gaps":[[0.6944444444444438,0.09567901234567744,-0.5987654320987663],[-0.37037037037037024,0.19444444444444553,0.5648148148148158]],"gaps_ci":[[[0.24074074074074003,-0.37044753086419824,-0.9476080246913589],[-0.8828703703703695,-0.23155864197530543,0.10486111111111376]],[[1.1452932098765423,0.5648919753086407,-0.2561728395061733],[0.13904320987654367,0.617283950617284,0.9908179012345708]]],"sd":[[1.6103925600706388,1.072476461894093,1.433548117168433],[1.6109839834428252,1.473412309837705,1.4073532586507784]],"split_half_w1":{"mean":[[0.6558302469135795,0.4130061728395066,0.6385123456790127],[0.48683950617284044,0.5157376543209876,0.49692283950617255]],"lo":[[0.3148148148148159,0.20370370370370447,0.290123456790123],[0.28395061728395005,0.2839506172839504,0.2654320987654313]],"hi":[[1.1421296296296304,0.7592592592592593,1.1421296296296286],[0.765586419753085,0.8703703703703706,0.9074074074074091]]},"rho_p1_p2":[0.10958213706851769,0.43362566506824934],"rho_p1_p2_ci":[[-0.12480422376359748,0.24320240023965736],[0.3555178334698738,0.5895025795549698]],"pref_ceiling":[0.6029411764705882,0.7222222222222222],"pref_ceiling_ci":[[0.46374107722258273,0.6],[0.730188343994314,0.8356164383561644]],"trial_sd":[1.0801861632927605,1.281128189365035],"judged":[[true,false,true],[false,false,true]],"best":["CV","CV"]},"lockPP":"abc10c72ccbe"};
+  const NS = "http://www.w3.org/2000/svg";
+  const CONDS = [
+    { id: "C1", name: "Raw frames" }, { id: "C2", name: "Text coords" }, { id: "C3", name: "Frames + coords" },
+    { id: "C4", name: "+ Top-down" }, { id: "C5", name: "+ Description" }, { id: "C6", name: "All four" },
+  ];
+  const PEOPLE = "var(--people)", MODEL = "var(--model)", NOINPUT = "var(--noinput)";
+  const SCI = { discomfort: 0, competence: 1 };
+  let scale = "discomfort";
+  const label = c => `${c.id} ${c.name}`;
+
+  // ---------- helpers
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) { if (k === "style") Object.assign(n.style, v); else n.setAttribute(k, v); }
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function text(parent, x, y, s, cls, anchor) {
+    const t = el("text", { x, y, class: cls || "t-ax", "text-anchor": anchor || "start" }, parent);
+    t.textContent = s; return t;
+  }
+  const lin = (d0, d1, r0, r1) => v => r0 + (v - d0) / (d1 - d0) * (r1 - r0);
+  function fmt(v, d, sign) {
+    const s = Math.abs(v).toFixed(d); const zero = Number(s) === 0;
+    return (v < 0 && !zero ? "−" : (sign && !zero ? "+" : "")) + s;
+  }
+  const ci = (a, d, unit) => `${fmt(a[0], d, true)}${unit || ""} [${fmt(a[1], d, true)}, ${fmt(a[2], d, true)}]`;
+  const pct = (a) => `${a[0].toFixed(0)}% [${a[1].toFixed(0)}, ${a[2].toFixed(0)}]`;
+  const star = a => (a[1] > 0 || a[2] < 0) ? " *" : "";
+  function svgFor(host, h) {
+    host.replaceChildren();
+    const w = Math.max(240, Math.floor(host.clientWidth));
+    const svg = el("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` }, host);
+    return { svg, w, h };
+  }
+  function dot(g, x, y, color, hollow, r) {
+    r = r || 5;
+    return el("circle", { cx: x, cy: y, r, style: hollow
+      ? { fill: "var(--surface)", stroke: color, strokeWidth: 2 }
+      : { fill: color, stroke: "var(--surface)", strokeWidth: 1.5 } }, g);
+  }
+  function barH(x0, x1, y, h, r) {
+    const len = x1 - x0; if (len <= 0) return "";
+    const rr = Math.min(r || 4, len / 2, h / 2);
+    return `M${x0 + rr},${y} H${x1 - rr} Q${x1},${y} ${x1},${y + rr} V${y + h - rr} Q${x1},${y + h} ${x1 - rr},${y + h} H${x0 + rr} Q${x0},${y + h} ${x0},${y + h - rr} V${y + rr} Q${x0},${y} ${x0 + rr},${y} Z`;
+  }
+
+  // ---------- tooltip
+  const tip = document.getElementById("tip");
+  function showTip(head, rows, x, y) {
+    tip.replaceChildren();
+    if (head) { const h = document.createElement("div"); h.className = "tip-head"; h.textContent = head; tip.appendChild(h); }
+    for (const r of rows) {
+      const row = document.createElement("div"); row.className = "tip-row";
+      const key = document.createElement("span"); key.className = "tip-key"; key.style.borderColor = r.c || "var(--ink-3)";
+      const v = document.createElement("strong"); v.textContent = r.v;
+      const l = document.createElement("span"); l.className = "tip-label"; l.textContent = r.l;
+      row.append(key, v, l); tip.appendChild(row);
+    }
+    tip.hidden = false;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = x + 14, top = y + 14;
+    if (left + w > innerWidth - 8) left = x - w - 14;
+    if (top + h > innerHeight - 8) top = y - h - 14;
+    tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+  function hover(node, head, rows) {
+    node.addEventListener("pointermove", e => showTip(head, rows, e.clientX, e.clientY));
+    node.addEventListener("pointerleave", hideTip);
+  }
+  function bind(node, head, rows) {
+    node.setAttribute("tabindex", "0"); node.setAttribute("role", "img");
+    node.setAttribute("aria-label", head + ": " + rows.map(r => `${r.l} ${r.v}`).join("; "));
+    hover(node, head, rows);
+    node.addEventListener("focus", () => { const b = node.getBoundingClientRect(); showTip(head, rows, b.left + b.width / 2, b.top + b.height / 2); });
+    node.addEventListener("blur", hideTip);
+  }
+  const hitRect = (svg, x, y, w, h) => el("rect", { x, y, width: Math.max(0, w), height: Math.max(0, h), class: "hit", "pointer-events": "all" }, svg);
+  function table(id, head, rows, numFrom, hlCol) {
+    const t = document.createElement("table");
+    const thead = t.createTHead().insertRow();
+    head.forEach((h, i) => { const th = document.createElement("th"); th.textContent = h; if (i >= numFrom) th.className = "num"; thead.appendChild(th); });
+    const tb = t.createTBody();
+    rows.forEach(r => { const tr = tb.insertRow(); r.forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i >= numFrom) td.className = "num"; }); });
+    document.getElementById(id).replaceChildren(t);
+  }
+
+  document.getElementById("lock").textContent = D.lockPP + "…";
+
+  // ---------- forest (generic)
+  const whoCol = r => r.who === "people" ? PEOPLE : r.who === "r0" ? NOINPUT : MODEL;
+  const whoName = r => r.who === "people" ? "People" : r.who === "r0" ? "No input" : "Model";
+  function forest(host, rows, o) {
+    const rowH = 30, T = o.zoneLabel ? 22 : 10, B = 40;
+    const { svg, w, h } = svgFor(host, T + rows.length * rowH + B);
+    const L = Math.min(132, Math.round(w * 0.38)), R = 12;
+    const x = lin(o.dom[0], o.dom[1], L, w - R);
+    const clamp = v => Math.max(o.dom[0], Math.min(o.dom[1], v));
+    const yb = T + rows.length * rowH;
+    if (o.zone) {
+      const z0 = x(clamp(o.zone[0])), z1 = x(clamp(o.zone[1]));
+      el("rect", { x: Math.min(z0, z1), y: T - 4, width: Math.abs(z1 - z0), height: yb - T + 4, class: "zone" }, svg);
+      if (o.zoneLabel) text(svg, (z0 + z1) / 2, T - 9, o.zoneLabel, "t-note", "middle");
+    }
+    o.ticks.forEach(t => {
+      el("line", { x1: x(t), x2: x(t), y1: T - 4, y2: yb, class: t === 0 ? "axis" : "grid" }, svg);
+      text(svg, x(t), yb + 16, fmt(t, o.td, false), "t-ax", "middle");
+    });
+    text(svg, (L + w - R) / 2, h - 4, o.axisTitle, "t-note", "middle");
+    rows.forEach((r, i) => {
+      const cy = T + i * rowH + rowH / 2;
+      bind(hitRect(svg, 0, cy - rowH / 2, w, rowH), r.label, [{ v: ci(r.v, 2), l: r.tipLabel || whoName(r), c: whoCol(r) }]);
+      text(svg, L - 10, cy + 4, r.label, r.who === "people" ? "t-lab t-strong" : "t-lab", "end");
+    });
+    const g = el("g", { class: "nopt" }, svg);
+    rows.forEach((r, i) => {
+      const cy = T + i * rowH + rowH / 2, col = whoCol(r);
+      el("line", { x1: x(clamp(r.v[1])), x2: x(clamp(r.v[2])), y1: cy, y2: cy, class: "ci", style: { stroke: col } }, g);
+      dot(g, x(clamp(r.v[0])), cy, col, o.hollowIfCrossesZero && r.v[1] <= 0 && r.v[2] >= 0);
+    });
+  }
+
+  // ---------- 1. spread
+  function renderSpread() {
+    const s = scale;
+    const rows = [{ label: "People", q: D.spread.people[s], who: "people", mean: D.people.all.C1[s].hum },
+      ...CONDS.map(c => ({ label: label(c), q: D.spread[c.id][s], who: "model", mean: D.people.all[c.id][s].ab }))];
+    const maxQ = Math.max(...rows.map(r => r.q[4]));
+    const dmax = Math.ceil(maxQ * 2 + 0.4) / 2;
+    const rowH = 32, T = 8, B = 40;
+    const host = document.getElementById("f-spread");
+    const { svg, w, h } = svgFor(host, T + rows.length * rowH + B);
+    const L = Math.min(150, Math.round(w * 0.36)), R = 14;
+    const x = lin(0, dmax, L, w - R), yb = T + rows.length * rowH;
+    for (let t = 0; t <= dmax + 1e-9; t += 0.5) {
+      const major = Math.abs(t - Math.round(t)) < 1e-9;
+      el("line", { x1: x(t), x2: x(t), y1: T - 4, y2: yb, class: t === 0 ? "axis" : "grid" }, svg);
+      if (major || w > 560) text(svg, x(t), yb + 16, t.toFixed(t % 1 ? 1 : 0), "t-ax", "middle");
+    }
+    text(svg, (L + w - R) / 2, h - 4, `Within-pair gap, ${s} (points on the 1–9 scale)`, "t-note", "middle");
+    rows.forEach((r, i) => {
+      const cy = T + i * rowH + rowH / 2;
+      const col = r.who === "people" ? PEOPLE : MODEL;
+      bind(hitRect(svg, 0, cy - rowH / 2, w, rowH), r.label, [
+        { v: r.q[2].toFixed(2), l: "median", c: col }, { v: `${r.q[1].toFixed(2)}–${r.q[3].toFixed(2)}`, l: "middle half", c: col },
+        { v: `${r.q[0].toFixed(2)}–${r.q[4].toFixed(2)}`, l: "10th–90th percentile", c: col }, { v: r.mean.toFixed(2), l: "mean", c: col }]);
+      text(svg, L - 10, cy + 4, r.label, r.who === "people" ? "t-lab t-strong" : "t-lab", "end");
+      const g = el("g", { class: "nopt" }, svg);
+      el("line", { x1: x(r.q[0]), x2: x(r.q[4]), y1: cy, y2: cy, class: "ci", style: { stroke: col } }, g);
+      el("path", { d: barH(x(r.q[1]), Math.max(x(r.q[3]), x(r.q[1]) + 4), cy - 6, 12, 4), style: { fill: col, fillOpacity: 0.32, stroke: col, strokeWidth: 1.5 } }, g);
+      dot(g, x(r.q[2]), cy, col, false, 5);
+    });
+    table("t-spread", ["Rater", "Mean", "10th", "25th", "Median", "75th", "90th"],
+      rows.map(r => [r.label, r.mean.toFixed(2), ...r.q.map(v => v.toFixed(2))]), 1);
+  }
+
+  // ---------- 2. scatter grid
+  const fs = document.getElementById("f-scatter");
+  CONDS.forEach(c => {
+    const p = document.createElement("div"); p.className = "panel";
+    const t = document.createElement("div"); t.className = "panel-title";
+    const code = document.createElement("span"); code.className = "mono"; code.textContent = c.id;
+    t.append(code, document.createTextNode(c.name.replace(/^\+ /, "C3 + ")));
+    const sub = document.createElement("div"); sub.className = "panel-sub";
+    const plot = document.createElement("div"); plot.className = "plot";
+    p.append(t, sub, plot); fs.appendChild(p);
+  });
+  function scatterTable(s) {
+    table("t-scatter", ["Input", "HP1 ρ, direct [95% CI]", "HP1 ρ, swapped", "Same person picked, direct [95% CI]", "Trials counted (no ties)"],
+      CONDS.map(c => { const q = D.people.all[c.id][s], sg = D.sign[c.id][s];
+        return [label(c), ci(q.hp1, 2), fmt(-q.hp1[0], 2, true), pct(sg), String(sg[3])]; }), 1);
+  }
+  // Public build: no per-trial participant data, so the scatter becomes the "same person picked" table.
+  const PUBLIC = !D.points;
+  if (PUBLIC) {
+    const fig = document.getElementById("scatter-fig");
+    fig.querySelector(".fig-title").textContent = "How often the model picks the person who reported more";
+    fig.querySelector(".fig-sub").textContent = "Direct assignment (A = person 0); trials where either side tied are left out. The per-trial scatter plot is omitted from this public version because it is built from participant-level ratings.";
+    fig.querySelector(".legend").hidden = true;
+    fs.hidden = true;
+    const det = fig.querySelector("details"); det.open = true; det.querySelector("summary").hidden = true;
+    document.getElementById("scatter-prose").textContent = "For each trial, did the model give the higher answer to the same person who reported the higher rating? If the model tracked individuals, it would do so well above the 50% expected by chance. It doesn't, at any input, and the correlation tests below agree.";
+    document.getElementById("ex-fig").hidden = true;
+    document.getElementById("generic-link-note").hidden = true;
+  }
+  function renderScatter() {
+    if (PUBLIC) { scatterTable(scale); return; }
+    const s = scale, hx = D.humanDiff[s];
+    const xmax = Math.ceil(Math.max(...hx.map(Math.abs)));
+    const ymaxData = Math.max(...CONDS.flatMap(c => D.points[c.id][s].map(Math.abs)));
+    const ymax = Math.max(1.2, Math.ceil(ymaxData * 5) / 5);
+    const step = xmax > 5 ? 2 : 1;
+    const xt = []; for (let k = -Math.floor(xmax / step); k <= Math.floor(xmax / step); k++) xt.push(k * step);
+    const yt = ymax > 1.25 ? [-1, 0, 1] : [-1, -0.5, 0, 0.5, 1];
+    [...fs.children].forEach((p, i) => {
+      const c = CONDS[i], ys = D.points[c.id][s], q = D.people.all[c.id][s], sg = D.sign[c.id][s];
+      p.querySelector(".panel-sub").textContent = `ρ ${ci(q.hp1, 2)} · same person ${sg[0].toFixed(0)}% of ${sg[3]} trials`;
+      const plot = p.querySelector(".plot");
+      p.setAttribute("aria-label", `${label(c)}: Spearman rho ${ci(q.hp1, 2)}; model picks the same person in ${sg[0].toFixed(0)}% of trials`);
+      const { svg, w, h } = svgFor(plot, 230);
+      const L = 46, R = 8, T = 8, B = 34;
+      const x = lin(-xmax, xmax, L, w - R), y = lin(-ymax, ymax, h - B, T);
+      el("rect", { x: x(0), y: y(ymax), width: x(xmax) - x(0), height: y(0) - y(ymax), class: "zone" }, svg);
+      el("rect", { x: x(-xmax), y: y(0), width: x(0) - x(-xmax), height: y(-ymax) - y(0), class: "zone" }, svg);
+      xt.forEach(t => { el("line", { x1: x(t), x2: x(t), y1: T, y2: h - B, class: t === 0 ? "axis" : "grid" }, svg); text(svg, x(t), h - B + 15, fmt(t, 0, true), "t-ax", "middle"); });
+      yt.forEach(t => { el("line", { x1: L, x2: w - R, y1: y(t), y2: y(t), class: t === 0 ? "axis" : "grid" }, svg); text(svg, L - 6, y(t) + 4, fmt(t, t % 1 ? 1 : 0, true), "t-ax", "end"); });
+      text(svg, (L + w - R) / 2, h - 3, "People: person 0 − person 1", "t-note", "middle");
+      const yl = el("text", { x: 0, y: 0, class: "t-note", "text-anchor": "middle", transform: `translate(11,${(T + h - B) / 2}) rotate(-90)` }, svg);
+      yl.textContent = "Model: A − B";
+      const g = el("g", {}, svg);
+      ys.forEach((v, k) => {
+        const um = D.site[k] === 1, cx = x(hx[k]), cy = y(v);
+        const mk = el("circle", { cx, cy, r: 3.6, style: um ? { fill: "var(--surface)", stroke: MODEL, strokeWidth: 1.6 } : { fill: MODEL, stroke: "var(--surface)", strokeWidth: 1, fillOpacity: 0.85 } }, g);
+        mk.setAttribute("pointer-events", "none");
+        const hit = el("circle", { cx, cy, r: 7, class: "pt-hit", "pointer-events": "all" }, g);
+        hover(hit, `${c.id} · ${um ? "UM" : "LAAS"} trial`, [{ v: fmt(hx[k], 2, true), l: "people, 0 − 1", c: PEOPLE }, { v: fmt(v, 2, true), l: "model, A − B", c: MODEL }]);
+      });
+    });
+    scatterTable(s);
+  }
+
+  // ---------- 3. HP1 / HP2 forests
+  function renderHP() {
+    const s = scale;
+    const opts = { dom: [-0.6, 0.6], ticks: [-0.5, -0.25, 0, 0.25, 0.5], td: 2, hollowIfCrossesZero: true, zone: [0, 0.6], zoneLabel: "pass if interval sits here" };
+    forest(document.getElementById("f-hp1"), CONDS.map(c => ({ label: label(c), v: D.people.all[c.id][s].hp1, tipLabel: "ρ, direct" })), { ...opts, axisTitle: "Spearman ρ, model A−B vs people 0−1" });
+    forest(document.getElementById("f-hp2"), CONDS.map(c => ({ label: label(c), v: D.people.all[c.id][s].hp2, tipLabel: "ρ, sizes" })), { ...opts, axisTitle: "Spearman ρ, |model A−B| vs |people 0−1|" });
+    const rng = k => { const v = CONDS.map(c => D.people.all[c.id][s][k][0]); return `${fmt(Math.min(...v), 2, true)} to ${fmt(Math.max(...v), 2, true)}`; };
+    document.getElementById("hp1-sub").textContent = `ρ from ${rng("hp1")}; none passes`;
+    document.getElementById("hp2-sub").textContent = `ρ from ${rng("hp2")}; none passes`;
+  }
+
+  // ---------- 4. preference agreement
+  function renderPref() {
+    const s = scale, k = SCI[s];
+    const r0 = D.pair.R0[s].P[0], ceil = D.humanRef.pref_ceiling[k] * 100;
+    const rows = CONDS.map(c => ({ c, q: D.people.all[c.id][s] }));
+    const rowH = 38, T = 34, B = 40;
+    const host = document.getElementById("f-pref");
+    const { svg, w, h } = svgFor(host, T + rows.length * rowH + B);
+    const L = Math.min(132, Math.round(w * 0.34)), R = 14;
+    const dom = [25, 85], x = lin(dom[0], dom[1], L, w - R), yb = T + rows.length * rowH;
+    [30, 40, 50, 60, 70, 80].forEach(t => { el("line", { x1: x(t), x2: x(t), y1: T - 4, y2: yb, class: "grid" }, svg); text(svg, x(t), yb + 16, t + "%", "t-ax", "middle"); });
+    text(svg, (L + w - R) / 2, h - 4, "Controller pairs ordered like the person", "t-note", "middle");
+    const refs = [{ v: 50, cls: "ref-chance", lab: "chance", dy: 0 }, { v: r0, cls: "ref-r0", lab: "no input", dy: -13 }, { v: ceil, cls: "ref-people", lab: "participant vs participant", dy: -13 }];
+    const gr = el("g", { class: "nopt" }, svg);
+    refs.forEach(rf => { el("line", { x1: x(rf.v), x2: x(rf.v), y1: T - 6, y2: yb, class: "ref " + rf.cls }, gr);
+      text(gr, x(rf.v), T - 12 + rf.dy, `${rf.lab} ${rf.v.toFixed(0)}%`, "t-note", rf.v === r0 ? "end" : rf.v === ceil ? "start" : "middle"); });
+    rows.forEach((r, i) => {
+      const cy = T + i * rowH + rowH / 2;
+      bind(hitRect(svg, 0, cy - rowH / 2, w, rowH), label(r.c), [{ v: pct(r.q.prD), l: "direct", c: MODEL }, { v: pct(r.q.prS), l: "swapped", c: MODEL }, { v: `${r.q.v4.toFixed(0)}%`, l: "generic run (v4)", c: "var(--ink-3)" }]);
+      text(svg, L - 10, cy + 4, label(r.c), "t-lab", "end");
+      const g = el("g", { class: "nopt" }, svg);
+      [[r.q.prD, -6, false], [r.q.prS, 6, true]].forEach(([a, dy, hollow]) => {
+        el("line", { x1: x(a[1]), x2: x(a[2]), y1: cy + dy, y2: cy + dy, class: "ci", style: { stroke: MODEL, strokeOpacity: hollow ? 0.55 : 1 } }, g);
+        dot(g, x(a[0]), cy + dy, MODEL, hollow, 4.5);
+      });
+    });
+    table("t-pref", ["Input", "Direct [95% CI]", "Swapped [95% CI]", "Generic run (v4)", "HP3: direct − v4 [95% CI]", "Model ties v4 → pp"],
+      rows.map(r => [label(r.c), pct(r.q.prD), pct(r.q.prS), r.q.v4.toFixed(0) + "%", `${fmt(r.q.hp3[0], 0, true)} pts [${fmt(r.q.hp3[1], 0, true)}, ${fmt(r.q.hp3[2], 0, true)}]${r.q.hp3[1] > 0 ? " ✓" : ""}`, `${r.q.tiesV4.toFixed(0)}% → ${r.q.tiesPP.toFixed(0)}%`]), 1);
+  }
+
+  // ---------- 5. motion
+  function renderMotion() {
+    const s = scale;
+    const rows = f => [{ label: "People", v: D.motion.people[s][f], who: "people", tipLabel: "people, 0 − 1" },
+      ...CONDS.map(c => ({ label: label(c), v: D.motion[c.id][s][f], tipLabel: "model, A − B" }))];
+    const opts = { dom: [-0.8, 0.6], ticks: [-0.75, -0.5, -0.25, 0, 0.25, 0.5], td: 2, hollowIfCrossesZero: true };
+    forest(document.getElementById("f-m1"), rows("closest_m"), { ...opts, axisTitle: "ρ with closest-approach difference (m)" });
+    forest(document.getElementById("f-m2"), rows("near_s"), { ...opts, axisTitle: "ρ with time-within-1 m difference (s)" });
+    const g = D.motionGap;
+    document.getElementById("m1-sub").textContent = `Typical difference between the two people: ${g.closest_m.toFixed(2)} m`;
+    document.getElementById("m2-sub").textContent = `Typical difference between the two people: ${g.near_s.toFixed(0)} s`;
+    const F = [["closest_m", "Closest approach"], ["near_s", "Time within 1 m"], ["path_m", "Distance walked"]];
+    const who = [["people", "People (0 − 1)"], ...CONDS.map(c => [c.id, `Model ${c.id}`])];
+    table("t-motion", ["Rater", ...F.map(f => `${f[1]}, signed`), ...F.map(f => `${f[1]}, sizes only`)],
+      who.map(([k, n]) => [n, ...F.map(f => ci(D.motion[k][s][f[0]], 2) + star(D.motion[k][s][f[0]])), ...F.map(f => ci(D.motionAbs[k][s][f[0]], 2) + star(D.motionAbs[k][s][f[0]]))]), 1);
+  }
+
+  // ---------- 6. pair level
+  function renderPair() {
+    const s = scale, k = SCI[s], hr = D.humanRef;
+    const hum = j => [hr.gaps[k][j], hr.gaps_ci[0][k][j], hr.gaps_ci[1][k][j]];
+    const rows = key => [{ label: "People", v: hum(key === "bcv" ? 0 : 2), who: "people" }, { label: "R0 No input", v: D.pair.R0[s][key], who: "r0" },
+      ...CONDS.map(c => ({ label: label(c), v: D.pair[c.id][s][key], tipLabel: "Model, A and B averaged" }))];
+    const opts = { dom: [-1.1, 1.3], ticks: [-1, -0.5, 0, 0.5, 1], td: 1, axisTitle: `Gap in mean ${s} (1–9 scale)`, zoneLabel: "pass zone" };
+    const zone = hg => hg > 0 ? [hg / 2, 1.3] : [-1.1, hg / 2];
+    forest(document.getElementById("f-g1"), rows("bcv"), { ...opts, zone: zone(hr.gaps[k][0]) });
+    forest(document.getElementById("f-g2"), rows("cvco"), { ...opts, zone: zone(hr.gaps[k][2]) });
+    const bestH = hr.best[k];
+    table("t-pair", ["Input", "Pair preference P [95% CI]", "Lowest-rated controller", "S2 trial ρ [95% CI]", "F1 cells (of 3)", "D2 pair", "D2 per person"],
+      [["People", `${(hr.pref_ceiling[k] * 100).toFixed(0)}% (participant vs participant)`, bestH, "", "", `${D.humanD2.toFixed(0)}% (resampled)`, ""],
+       ["R0 No input", pct(D.pair.R0[s].P), D.pair.R0[s].Dbest + (D.pair.R0[s].Dholds ? " ✓" : ""), ci(D.pair.R0[s].s2, 2), String(D.pair.R0[s].F1), "", ""],
+       ...CONDS.map(c => { const p = D.pair[c.id][s];
+         return [label(c), pct(p.P), p.Dbest + (p.Dholds ? " ✓" : ""), ci(p.s2, 2), String(p.F1), p.d2.toFixed(1) + "%", p.d2pp.toFixed(1) + "%"]; })], 1);
+    const bar = D.pair.C1[s].bar;
+    document.getElementById("pair-cap").textContent = `${s === "discomfort" ? "Lowest-rated" : "Highest-rated"} controller: ✓ when the model names the people's choice (${bestH}) and its gap to the runner-up has an interval excluding 0. D2 is the share of 1,000 simulated studies that reach the people's full conclusion; the bar is ${bar.toFixed(0)}%. “Per person” draws each simulated participant from their own person's answer.`;
+    const hdr = document.querySelector("#t-pair th:nth-child(3)"); if (hdr) hdr.textContent = s === "discomfort" ? "Least uncomfortable" : "Most competent";
+  }
+
+  // ---------- 7. sites
+  function renderSites() {
+    const s = scale;
+    const cell = (site, c, key) => { const a = D.people[site][c.id][s][key]; return ci(a, 2) + star(a); };
+    table("t-sites", ["Input", "HP1 ρ · LAAS", "HP1 ρ · UM", "HP2 ρ · LAAS", "HP2 ρ · UM", "Pref. · LAAS", "Pref. · UM"],
+      CONDS.map(c => [label(c), cell("laas", c, "hp1"), cell("um", c, "hp1"), cell("laas", c, "hp2"), cell("um", c, "hp2"),
+        `${D.people.laas[c.id][s].prD[0].toFixed(0)}% / ${D.people.laas[c.id][s].prS[0].toFixed(0)}%`,
+        `${D.people.um[c.id][s].prD[0].toFixed(0)}% / ${D.people.um[c.id][s].prS[0].toFixed(0)}%`]), 1);
+  }
+
+  // ---------- example
+  (function example() {
+    const e = D.example; if (!e) return;
+    const cond = CONDS.find(c => c.id === e.cond);
+    document.getElementById("ex-sub").textContent = `Trial ${e.tid} (${e.site.toUpperCase()}), input ${label(cond)}. Expected discomfort from the model's counts.`;
+    const host = document.getElementById("ex");
+    ["A", "B"].forEach(p => {
+      const v = document.createElement("div"); v.className = "voice";
+      const top = document.createElement("div"); top.className = "voice-top";
+      const b = document.createElement("b"); b.textContent = `As person ${p}`;
+      const sp = document.createElement("span"); const st = document.createElement("strong"); st.textContent = e[p].mean.toFixed(1);
+      sp.append(st, document.createTextNode(" discomfort"));
+      top.append(b, sp);
+      const q = document.createElement("p"); q.textContent = "“" + e[p].evidence + "”";
+      v.append(top, q); host.appendChild(v);
+    });
+  })();
+
+  // ---------- scale toggles, render, resize
+  const segs = [...document.querySelectorAll(".seg button")];
+  const resultsView = document.querySelector('[data-view="results"]');
+  function renderAll() { hideTip(); if (resultsView.hidden) return; renderSpread(); renderScatter(); renderHP(); renderPref(); renderMotion(); renderPair(); renderSites(); }
+  segs.forEach(b => b.addEventListener("click", () => {
+    scale = b.dataset.scale;
+    segs.forEach(x => x.setAttribute("aria-pressed", String(x.dataset.scale === scale)));
+    renderAll();
+  }));
+  document.getElementById("copy").addEventListener("click", e => {
+    const t = document.getElementById("wording").textContent, btn = e.currentTarget;
+    const done = () => { btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy wording"; }, 1600); };
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents(document.getElementById("wording")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = "Selected, press Ctrl+C"; };
+    try { navigator.clipboard.writeText(t).then(done, fallback); } catch (_) { fallback(); }
+  });
+  // ---------- views: one per tab, routed on the hash (#results is the start view)
+  const views = [...document.querySelectorAll("[data-view]")];
+  const tabs = [...document.querySelectorAll(".tabs a")];
+  function route(fromNav) {
+    const want = location.hash.slice(1);
+    const v = views.some(s => s.dataset.view === want) ? want : "results";
+    views.forEach(s => { s.hidden = s.dataset.view !== v; });
+    tabs.forEach(a => { if (a.getAttribute("href") === "#" + v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    const active = tabs.find(a => a.getAttribute("href") === "#" + v);
+    if (active) active.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (fromNav) window.scrollTo(0, 0);
+    renderAll();
+  }
+  addEventListener("hashchange", () => route(true));
+  route(false);
+  let raf = 0, lastW = innerWidth;
+  addEventListener("resize", () => { if (innerWidth === lastW) return; lastW = innerWidth; cancelAnimationFrame(raf); raf = requestAnimationFrame(renderAll); });
+  addEventListener("scroll", hideTip, { passive: true });
+})();
+</script>
+</body>
+</html>
